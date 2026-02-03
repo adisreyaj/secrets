@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ApiTokenDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
+import { ShortcutHint } from '../components/ShortcutHint'
 import { TokensPanel } from '../components/TokensPanel'
 import { Button } from '../components/ui/button'
 import { api, ApiError } from '../lib/api'
@@ -90,11 +91,12 @@ export const TokensPage = ({
         actions={
           <Button
             variant="outline"
-            className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+            className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
             onClick={() => navigate(`/projects/${projectId}`)}
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview
+            <ShortcutHint keys="b" />
           </Button>
         }
       />

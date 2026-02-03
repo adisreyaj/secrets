@@ -3,6 +3,7 @@ import type { AuditLogDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
 import { AuditLog } from '../components/AuditLog'
 import { PageHeader } from '../components/PageHeader'
+import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -77,11 +78,12 @@ export const AuditPage = ({
         actions={
           <Button
             variant="outline"
-            className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+            className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
             onClick={() => navigate(`/projects/${projectId}`)}
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview
+            <ShortcutHint keys="b" />
           </Button>
         }
       />

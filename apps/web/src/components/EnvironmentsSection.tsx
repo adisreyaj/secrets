@@ -3,6 +3,7 @@ import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDateTime } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { ShortcutHint } from './ShortcutHint'
 import { SectionCard, SectionHeader } from './SectionCard'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -64,6 +65,15 @@ export const EnvironmentsSection = ({
   }, [dialogOpen])
 
   useRegisterShortcut('n', () => setDialogOpen(true))
+  useRegisterShortcut('1', () => environments[0] && onSelect(environments[0].id))
+  useRegisterShortcut('2', () => environments[1] && onSelect(environments[1].id))
+  useRegisterShortcut('3', () => environments[2] && onSelect(environments[2].id))
+  useRegisterShortcut('4', () => environments[3] && onSelect(environments[3].id))
+  useRegisterShortcut('5', () => environments[4] && onSelect(environments[4].id))
+  useRegisterShortcut('6', () => environments[5] && onSelect(environments[5].id))
+  useRegisterShortcut('7', () => environments[6] && onSelect(environments[6].id))
+  useRegisterShortcut('8', () => environments[7] && onSelect(environments[7].id))
+  useRegisterShortcut('9', () => environments[8] && onSelect(environments[8].id))
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -91,10 +101,11 @@ export const EnvironmentsSection = ({
             <DialogTrigger asChild>
               <Button
                 variant="outline"
-                className="h-10 gap-2 rounded-full border-border px-4 text-sm font-semibold text-foreground hover:border-foreground/40"
+                className="flex h-10 items-center gap-2 rounded-full border-border px-4 text-sm font-semibold text-foreground hover:border-foreground/40"
               >
                 <Plus className="h-4 w-4" />
                 New environment
+                <ShortcutHint keys="n" />
               </Button>
             </DialogTrigger>
             <DialogContent className="rounded-3xl border-border/70 bg-popover text-popover-foreground">
@@ -177,8 +188,9 @@ export const EnvironmentsSection = ({
             Create your first environment.
           </li>
         ) : (
-          environments.map((env) => {
+          environments.map((env, index) => {
             const isSelected = env.id === selectedEnvironmentId
+            const shortcutKey = index < 9 ? `${index + 1}` : null
             return (
               <li key={env.id}>
                 <Button
@@ -204,6 +216,7 @@ export const EnvironmentsSection = ({
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {shortcutKey ? <ShortcutHint keys={shortcutKey} /> : null}
                     <Badge
                       variant={isSelected ? 'default' : 'secondary'}
                       className={

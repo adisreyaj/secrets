@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { KeyRound, Trash2, X } from 'lucide-react'
 import { formatDateTime } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { ShortcutHint } from './ShortcutHint'
 import { SectionCard, SectionHeader } from './SectionCard'
 import { Button } from './ui/button'
 import {
@@ -96,10 +97,11 @@ export const TokensPanel = ({
             <DialogTrigger asChild>
               <Button
                 variant="outline"
-                className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+                className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
               >
                 <KeyRound className="h-4 w-4" />
                 New token
+                <ShortcutHint keys="n" />
               </Button>
             </DialogTrigger>
             <DialogContent className="rounded-3xl border-white/70 bg-white/95">

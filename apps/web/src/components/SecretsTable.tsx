@@ -4,6 +4,7 @@ import { Copy, Eye, EyeOff, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-re
 import { formatDateTime, formatKeyPreview } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { SectionCard } from './SectionCard'
+import { ShortcutHint } from './ShortcutHint'
 import { Button } from './ui/button'
 import {
   Dialog,
@@ -430,10 +431,11 @@ export const SecretsTable = ({
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 rounded-full text-xs"
+                className="flex items-center gap-2 rounded-full text-xs"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Add secret
+                <ShortcutHint keys="n" />
               </Button>
             </DialogTrigger>
             <DialogContent className="rounded-3xl border-white/70 bg-white/95">
@@ -494,10 +496,11 @@ export const SecretsTable = ({
             variant="secondary"
             size="sm"
             onClick={() => onToggleValues(!includeValues)}
-            className="gap-2 rounded-full bg-muted px-3 py-1 font-medium text-muted-foreground hover:bg-muted/80"
+            className="flex items-center gap-2 rounded-full bg-muted px-3 py-1 font-medium text-muted-foreground hover:bg-muted/80"
           >
             {includeValues ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             {includeValues ? 'Hide values' : 'Show values'}
+            <ShortcutHint keys="v" />
           </Button>
         </div>
       </div>

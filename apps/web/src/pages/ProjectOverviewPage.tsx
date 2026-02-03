@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft, Layers, ShieldCheck, KeyRound } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
+import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -74,11 +75,12 @@ export const ProjectOverviewPage = ({
         actions={
           <Button
             variant="outline"
-            className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+            className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
             onClick={() => navigate('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />
             Back to projects
+            <ShortcutHint keys="b" />
           </Button>
         }
       />
@@ -96,14 +98,17 @@ export const ProjectOverviewPage = ({
             onClick={() => navigate(`/projects/${projectId}/environments`)}
             className="h-auto w-full flex-col items-start justify-start rounded-2xl border-border bg-card p-5 text-left shadow-soft hover:border-foreground/30 whitespace-normal"
           >
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Layers className="h-4 w-4 text-muted-foreground" />
-                Environments
+            <div className="flex w-full items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Layers className="h-4 w-4 text-muted-foreground" />
+                  Environments
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {environments.length} environments
+                </p>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {environments.length} environments
-              </p>
+              <ShortcutHint keys="e" />
             </div>
           </Button>
         </li>
@@ -113,12 +118,15 @@ export const ProjectOverviewPage = ({
             onClick={() => navigate(`/projects/${projectId}/audit`)}
             className="h-auto w-full flex-col items-start justify-start rounded-2xl border-border bg-card p-5 text-left shadow-soft hover:border-foreground/30 whitespace-normal"
           >
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                Audit log
+            <div className="flex w-full items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                  Audit log
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">Review changes</p>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">Review changes</p>
+              <ShortcutHint keys="a" />
             </div>
           </Button>
         </li>
@@ -128,12 +136,15 @@ export const ProjectOverviewPage = ({
             onClick={() => navigate(`/projects/${projectId}/tokens`)}
             className="h-auto w-full flex-col items-start justify-start rounded-2xl border-border bg-card p-5 text-left shadow-soft hover:border-foreground/30 whitespace-normal"
           >
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <KeyRound className="h-4 w-4 text-muted-foreground" />
-                API tokens
+            <div className="flex w-full items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <KeyRound className="h-4 w-4 text-muted-foreground" />
+                  API tokens
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">Create access keys</p>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">Create access keys</p>
+              <ShortcutHint keys="t" />
             </div>
           </Button>
         </li>

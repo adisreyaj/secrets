@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { formatShortDate } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { ShortcutHint } from './ShortcutHint'
 import { SectionCard, SectionHeader } from './SectionCard'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -81,10 +82,11 @@ export const ProjectsSection = ({
             <DialogTrigger asChild>
               <Button
                 variant="outline"
-                className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+                className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
               >
                 <Plus className="h-4 w-4" />
                 New project
+                <ShortcutHint keys="n" />
               </Button>
             </DialogTrigger>
             <DialogContent className="rounded-3xl border-border/70 bg-popover text-popover-foreground">
