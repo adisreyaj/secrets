@@ -11,6 +11,7 @@ export interface AuthContext {
   viaToken: boolean;
   projectId?: string;
   role?: Role | null;
+  readOnly?: boolean;
 }
 
 declare module 'fastify' {

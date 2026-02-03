@@ -1,0 +1,19 @@
+{
+  "name": "@secrets/cli",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "secrets": "dist/index.js"
+  },
+  "dependencies": {
+    "@secrets/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

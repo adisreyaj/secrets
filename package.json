@@ -11,6 +11,8 @@
     "dev:web": "pnpm -C apps/web dev",
     "build:server": "pnpm -C apps/server build",
     "build:web": "pnpm -C apps/web build",
+    "build:cli": "pnpm -C packages/cli build",
+    "build:sdk": "pnpm -C packages/sdk build",
     "test:server": "pnpm -C apps/server test",
     "prisma:generate": "pnpm -C apps/server prisma:generate",
     "prisma:migrate": "pnpm -C apps/server prisma:migrate"

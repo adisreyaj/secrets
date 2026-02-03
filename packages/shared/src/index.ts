@@ -9,6 +9,7 @@ export interface UserDto {
 export interface ProjectDto {
   id: string;
   name: string;
+  slug?: string | null;
   createdAt: string;
   updatedAt: string;
   role?: Role;
@@ -18,6 +19,7 @@ export interface EnvironmentDto {
   id: string;
   projectId: string;
   name: string;
+  slug?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -46,6 +48,7 @@ export interface ApiTokenDto {
   id: string;
   projectId: string;
   name: string;
+  readOnly?: boolean;
   createdAt: string;
   lastUsedAt?: string | null;
 }
@@ -119,6 +122,7 @@ export interface CopyEnvironmentSecretsResponse {
 
 export interface CreateTokenRequest {
   name: string;
+  readOnly?: boolean;
 }
 
 export interface CreateTokenResponse {

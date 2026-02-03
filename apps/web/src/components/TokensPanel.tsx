@@ -27,12 +27,13 @@ export const TokensPanel = ({
   tokens: ApiTokenDto[]
   loading: boolean
   error: string | null
-  onCreate: (name: string) => Promise<CreateTokenResponse | null>
+  onCreate: (name: string, readOnly: boolean) => Promise<CreateTokenResponse | null>
   onDelete: (tokenId: string) => Promise<void>
   lastCreated: CreateTokenResponse | null
   onClearLastCreated: () => void
 }) => {
   const [name, setName] = useState('')
+  const [readOnly, setReadOnly] = useState(true)
   const [creating, setCreating] = useState(false)
   const [activeToken, setActiveToken] = useState<ApiTokenDto | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -43,7 +44,7 @@ export const TokensPanel = ({
     if (!name.trim() || creating) return
     setCreating(true)
     try {
-      await onCreate(name.trim())
+      await onCreate(name.trim(), readOnly)
       setName('')
     } finally {
       setCreating(false)
@@ -77,7 +78,7 @@ export const TokensPanel = ({
         kicker="API tokens"
         title="Programmatic access"
         action={
-          <form onSubmit={handleSubmit} className="flex items-center gap-2">
+          <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-3">
             <Input
               ref={nameInputRef}
               value={name}
@@ -85,6 +86,15 @@ export const TokensPanel = ({
               placeholder="Token name"
               className="w-[180px] rounded-full bg-background"
             />
+            <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={readOnly}
+                onChange={(event) => setReadOnly(event.target.checked)}
+                className="h-4 w-4 rounded border-border text-foreground accent-foreground"
+              />
+              Read-only
+            </label>
             <Button
               type="submit"
               variant="outline"
@@ -133,7 +143,14 @@ export const TokensPanel = ({
               className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3"
             >
               <article>
-                <p className="font-semibold text-foreground">{token.name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-foreground">{token.name}</p>
+                  {token.readOnly ? (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                      Read-only
+                    </span>
+                  ) : null}
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Created <time dateTime={token.createdAt}>{formatDateTime(token.createdAt)}</time>
                 </p>

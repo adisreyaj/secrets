@@ -22,17 +22,58 @@ function isRole(value: string): value is Role {
   return value === 'ADMIN' || value === 'EDITOR' || value === 'VIEWER';
 }
 
+function slugify(value: string, fallback: string): string {
+  const base = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+  return base.length > 0 ? base : fallback;
+}
+
+async function ensureUniqueProjectSlug(base: string): Promise<string> {
+  const normalized = slugify(base, 'project').slice(0, 48);
+  let candidate = normalized;
+  let suffix = 1;
+  while (true) {
+    const existing = await prisma.project.findUnique({ where: { slug: candidate } });
+    if (!existing) {
+      return candidate;
+    }
+    suffix += 1;
+    candidate = `${normalized}-${suffix}`.slice(0, 64);
+  }
+}
+
+async function ensureUniqueEnvironmentSlug(projectId: string, base: string): Promise<string> {
+  const normalized = slugify(base, 'env').slice(0, 48);
+  let candidate = normalized;
+  let suffix = 1;
+  while (true) {
+    const existing = await prisma.environment.findFirst({
+      where: { projectId, slug: candidate },
+      select: { id: true },
+    });
+    if (!existing) {
+      return candidate;
+    }
+    suffix += 1;
+    candidate = `${normalized}-${suffix}`.slice(0, 64);
+  }
+}
+
 function toUserDto(user: { id: string; email: string; name: string | null }) {
   return { id: user.id, email: user.email, name: user.name };
 }
 
 function toProjectDto(
-  project: { id: string; name: string; createdAt: Date; updatedAt: Date },
+  project: { id: string; name: string; slug: string | null; createdAt: Date; updatedAt: Date },
   role?: Role,
 ) {
   return {
     id: project.id,
     name: project.name,
+    slug: project.slug,
     createdAt: project.createdAt.toISOString(),
     updatedAt: project.updatedAt.toISOString(),
     role,
@@ -43,6 +84,7 @@ function toEnvironmentDto(env: {
   id: string;
   projectId: string;
   name: string;
+  slug: string | null;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -50,6 +92,7 @@ function toEnvironmentDto(env: {
     id: env.id,
     projectId: env.projectId,
     name: env.name,
+    slug: env.slug,
     createdAt: env.createdAt.toISOString(),
     updatedAt: env.updatedAt.toISOString(),
   };
@@ -192,6 +235,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             viaToken: true,
             projectId: token.projectId,
             role: membership?.role ?? null,
+            readOnly: token.readOnly,
           };
 
           await prisma.apiToken.update({
@@ -206,6 +250,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.addHook('preHandler', async (request, reply) => {
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
       return;
+    }
+
+    if (request.auth?.viaToken && request.auth.readOnly) {
+      return reply.code(403).send({ error: 'Read-only token cannot perform write actions' });
     }
 
     if (request.auth?.viaToken) {
@@ -415,9 +463,11 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
+    const slug = await ensureUniqueProjectSlug(body.name);
     const project = await prisma.project.create({
       data: {
         name: body.name,
+        slug,
         members: {
           create: {
             userId: auth.user.id,
@@ -450,6 +500,27 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.send(memberships.map((membership) => toProjectDto(membership.project, membership.role)));
+  });
+
+  app.get('/projects/slug/:slug', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { slug } = request.params as { slug: string };
+    const project = await prisma.project.findUnique({ where: { slug } });
+    if (!project) {
+      reply.code(404).send({ error: 'Project not found' });
+      return;
+    }
+
+    const role = await requireProjectRole(request, reply, project.id, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    reply.send(toProjectDto(project, role));
   });
 
   app.post('/projects/:id/members', async (request, reply) => {
@@ -525,10 +596,12 @@ export async function buildApp(): Promise<FastifyInstance> {
       }
     }
 
+    const slug = await ensureUniqueEnvironmentSlug(projectId, body.name);
     const env = await prisma.environment.create({
       data: {
         projectId,
         name: body.name,
+        slug,
       },
     });
 
@@ -626,6 +699,30 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.send(envs.map(toEnvironmentDto));
+  });
+
+  app.get('/projects/:id/environments/slug/:slug', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId, slug } = request.params as { id: string; slug: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const env = await prisma.environment.findFirst({
+      where: { projectId, slug },
+    });
+
+    if (!env) {
+      reply.code(404).send({ error: 'Environment not found' });
+      return;
+    }
+
+    reply.send(toEnvironmentDto(env));
   });
 
   app.get('/environments/:id/secrets', async (request, reply) => {
@@ -1337,7 +1434,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
-    const body = request.body as { name?: string } | undefined;
+    const body = request.body as { name?: string; readOnly?: boolean } | undefined;
     if (!body?.name) {
       reply.code(400).send({ error: 'Name is required' });
       return;
@@ -1350,6 +1447,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         name: body.name,
         tokenHash: hashToken(raw),
         createdBy: auth.user.id,
+        readOnly: body.readOnly === true,
       },
     });
 
@@ -1367,6 +1465,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         id: token.id,
         projectId: token.projectId,
         name: token.name,
+        readOnly: token.readOnly,
         createdAt: token.createdAt.toISOString(),
         lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
       },
@@ -1395,6 +1494,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         id: token.id,
         projectId: token.projectId,
         name: token.name,
+        readOnly: token.readOnly,
         createdAt: token.createdAt.toISOString(),
         lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
       })),

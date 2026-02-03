@@ -70,8 +70,8 @@ export const TokensPage = ({
 
   useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
 
-  const handleCreateToken = async (name: string) => {
-    const data = await api.createToken(projectId, { name })
+  const handleCreateToken = async (name: string, readOnly: boolean) => {
+    const data = await api.createToken(projectId, { name, readOnly })
     setLastToken(data)
     await loadTokens()
     return data

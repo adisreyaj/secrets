@@ -46,6 +46,7 @@ model UserSession {
 model Project {
   id          String          @id @default(cuid())
   name        String
+  slug        String?         @unique
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
   members     ProjectMember[]
@@ -75,6 +76,7 @@ model Environment {
   id        String   @id @default(cuid())
   projectId String   @map("project_id")
   name      String
+  slug      String?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -82,6 +84,7 @@ model Environment {
   secrets Secret[]
 
   @@unique([projectId, name])
+  @@unique([projectId, slug])
   @@map("environments")
 }
 
@@ -125,6 +128,7 @@ model ApiToken {
   name       String
   tokenHash  String   @map("token_hash")
   createdBy  String   @map("created_by")
+  readOnly   Boolean  @default(false) @map("read_only")
   createdAt  DateTime @default(now()) @map("created_at")
   lastUsedAt DateTime? @map("last_used_at")
 
