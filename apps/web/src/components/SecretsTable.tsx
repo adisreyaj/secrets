@@ -719,6 +719,7 @@ export const SecretsTable = ({
             onOpenCopy={openCopyDialog}
             editingRows={editingRows}
             rowErrors={rowErrors}
+            includeValues={includeValues}
             onRowKeyChange={handleRowKeyChange}
             onRowValueChange={handleRowValueChange}
             onCancelRow={cancelEditingRow}
@@ -884,6 +885,7 @@ const SecretsTableBody = memo(
     canCopy,
     editingRows,
     rowErrors,
+    includeValues,
     onRowKeyChange,
     onRowValueChange,
     onCancelRow,
@@ -900,6 +902,7 @@ const SecretsTableBody = memo(
       { key: string; value: string; dirtyKey: boolean; dirtyValue: boolean }
     >
     rowErrors: Record<string, string>
+    includeValues: boolean
     onRowKeyChange: (secretId: string, value: string) => void
     onRowValueChange: (secretId: string, value: string) => void
     onCancelRow: (secretId: string) => void
@@ -920,137 +923,173 @@ const SecretsTableBody = memo(
           </TableRow>
         ) : (
           secrets.map((secret) => (
-            <TableRow key={secret.id} className="text-sm text-muted-foreground">
-              {(() => {
-                const editing = editingRows[secret.id]
-                const error = rowErrors[secret.id]
-                return (
-                  <TableHead className="py-3 font-semibold text-foreground">
-                    {editing ? (
-                      <div className="space-y-1">
-                        <Input
-                          value={editing.key}
-                          onChange={(event) => onRowKeyChange(secret.id, event.target.value)}
-                          className="h-8 rounded-lg"
-                          placeholder="SECRET_KEY"
-                        />
-                        {error ? (
-                          <p className="text-xs text-rose-600">{error}</p>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <p>{secret.key}</p>
-                    )}
-                  </TableHead>
-                )
-              })()}
-              <TableCell className="py-3">
-                {editingRows[secret.id] ? (
-                  <Input
-                    value={editingRows[secret.id].value}
-                    onChange={(event) => onRowValueChange(secret.id, event.target.value)}
-                    className="h-8 rounded-lg"
-                    placeholder="New value"
-                  />
-                ) : (
-                  <>
-                    <span className="inline group-data-[show-values=true]:hidden">
-                      *******
-                    </span>
-                    <span className="hidden group-data-[show-values=true]:inline">
-                      {formatKeyPreview(secret.value)}
-                    </span>
-                  </>
-                )}
-              </TableCell>
-              <TableCell className="py-3">{secret.versionId?.slice(0, 6) ?? '—'}</TableCell>
-              <TableCell className="py-3">
-                <time dateTime={secret.updatedAt}>{formatDateTime(secret.updatedAt)}</time>
-              </TableCell>
-              <TableCell className="py-3 text-right">
-                <div className="flex flex-wrap justify-end gap-2 text-xs">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        onClick={() => onOpenCopy(secret)}
-                        className="h-8 w-8 rounded-full"
-                        disabled={!canCopy || !!editingRows[secret.id]}
-                        aria-label="Copy secret"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Copy this key to other environments</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        onClick={() => onStartEdit(secret)}
-                        className="h-8 w-8 rounded-full"
-                        disabled={!!editingRows[secret.id]}
-                        aria-label="Edit secret"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Edit secret key or value</TooltipContent>
-                  </Tooltip>
-                  {editingRows[secret.id] ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => onCancelRow(secret.id)}
-                          className="h-8 w-8 rounded-full"
-                          aria-label="Cancel edits"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>Cancel edits for this row</TooltipContent>
-                    </Tooltip>
-                  ) : null}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        onClick={() => onOpenRollback(secret)}
-                        className="h-8 w-8 rounded-full"
-                        disabled={!!editingRows[secret.id]}
-                        aria-label="Rollback secret"
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Restore previous value</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        onClick={() => onOpenDelete(secret)}
-                        className="h-8 w-8 rounded-full border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700"
-                        disabled={!!editingRows[secret.id]}
-                        aria-label="Delete secret"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Remove secret</TooltipContent>
-                  </Tooltip>
-                </div>
-              </TableCell>
-            </TableRow>
+            <SecretRow
+              key={secret.id}
+              secret={secret}
+              editingRow={editingRows[secret.id]}
+              rowError={rowErrors[secret.id]}
+              includeValues={includeValues}
+              canCopy={canCopy}
+              onOpenCopy={onOpenCopy}
+              onStartEdit={onStartEdit}
+              onCancelRow={onCancelRow}
+              onOpenRollback={onOpenRollback}
+              onOpenDelete={onOpenDelete}
+              onRowKeyChange={onRowKeyChange}
+              onRowValueChange={onRowValueChange}
+            />
           ))
         )}
       </TableBody>
+    )
+  },
+)
+
+const SecretRow = memo(
+  ({
+    secret,
+    editingRow,
+    rowError,
+    includeValues,
+    canCopy,
+    onOpenCopy,
+    onStartEdit,
+    onCancelRow,
+    onOpenRollback,
+    onOpenDelete,
+    onRowKeyChange,
+    onRowValueChange,
+  }: {
+    secret: SecretDto
+    editingRow?: { key: string; value: string; dirtyKey: boolean; dirtyValue: boolean }
+    rowError?: string
+    includeValues: boolean
+    canCopy: boolean
+    onOpenCopy: (secret: SecretDto) => void
+    onStartEdit: (secret: SecretDto) => void
+    onCancelRow: (secretId: string) => void
+    onOpenRollback: (secret: SecretDto) => void
+    onOpenDelete: (secret: SecretDto) => void
+    onRowKeyChange: (secretId: string, value: string) => void
+    onRowValueChange: (secretId: string, value: string) => void
+  }) => {
+    const isEditing = !!editingRow
+    return (
+      <TableRow className="text-sm text-muted-foreground">
+        <TableHead className="py-3 font-semibold text-foreground">
+          {isEditing ? (
+            <div className="space-y-1">
+              <Input
+                value={editingRow?.key ?? ''}
+                onChange={(event) => onRowKeyChange(secret.id, event.target.value)}
+                className="h-8 rounded-lg"
+                placeholder="SECRET_KEY"
+              />
+              {rowError ? <p className="text-xs text-rose-600">{rowError}</p> : null}
+            </div>
+          ) : (
+            <p>{secret.key}</p>
+          )}
+        </TableHead>
+        <TableCell className="py-3">
+          {isEditing ? (
+            <Input
+              value={editingRow?.value ?? ''}
+              onChange={(event) => onRowValueChange(secret.id, event.target.value)}
+              className="h-8 rounded-lg"
+              placeholder="New value"
+            />
+          ) : includeValues ? (
+            <span>{formatKeyPreview(secret.value)}</span>
+          ) : (
+            <span>*******</span>
+          )}
+        </TableCell>
+        <TableCell className="py-3">{secret.versionId?.slice(0, 6) ?? '—'}</TableCell>
+        <TableCell className="py-3">
+          <time dateTime={secret.updatedAt}>{formatDateTime(secret.updatedAt)}</time>
+        </TableCell>
+        <TableCell className="py-3 text-right">
+          <div className="flex flex-wrap justify-end gap-2 text-xs">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => onOpenCopy(secret)}
+                  className="h-8 w-8 rounded-full"
+                  disabled={!canCopy || isEditing}
+                  aria-label="Copy secret"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Copy this key to other environments</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => onStartEdit(secret)}
+                  className="h-8 w-8 rounded-full"
+                  disabled={isEditing}
+                  aria-label="Edit secret"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Edit secret key or value</TooltipContent>
+            </Tooltip>
+            {isEditing ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => onCancelRow(secret.id)}
+                    className="h-8 w-8 rounded-full"
+                    aria-label="Cancel edits"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Cancel edits for this row</TooltipContent>
+              </Tooltip>
+            ) : null}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => onOpenRollback(secret)}
+                  className="h-8 w-8 rounded-full"
+                  disabled={isEditing}
+                  aria-label="Rollback secret"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Restore previous value</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => onOpenDelete(secret)}
+                  className="h-8 w-8 rounded-full border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700"
+                  disabled={isEditing}
+                  aria-label="Delete secret"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Remove secret</TooltipContent>
+            </Tooltip>
+          </div>
+        </TableCell>
+      </TableRow>
     )
   },
 )
