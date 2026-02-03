@@ -1,11 +1,31 @@
 import type { ProjectDto } from '@secrets/shared'
+import {
+  ChevronRight,
+  Key,
+  KeyRound,
+  LayoutDashboard,
+  Layers,
+  ShieldCheck,
+  type LucideIcon,
+} from 'lucide-react'
+import { Button } from './ui/button'
 
-const navItems = [
-  { key: 'overview', label: 'Overview', path: (id: string) => `/projects/${id}` },
-  { key: 'environments', label: 'Environments', path: (id: string) => `/projects/${id}/environments` },
-  { key: 'secrets', label: 'Secrets', path: (id: string) => `/projects/${id}/environments` },
-  { key: 'audit', label: 'Audit log', path: (id: string) => `/projects/${id}/audit` },
-  { key: 'tokens', label: 'API tokens', path: (id: string) => `/projects/${id}/tokens` },
+const navItems: {
+  key: 'overview' | 'environments' | 'secrets' | 'audit' | 'tokens'
+  label: string
+  icon: LucideIcon
+  path: (id: string) => string
+}[] = [
+  { key: 'overview', label: 'Overview', icon: LayoutDashboard, path: (id: string) => `/projects/${id}` },
+  {
+    key: 'environments',
+    label: 'Environments',
+    icon: Layers,
+    path: (id: string) => `/projects/${id}/environments`,
+  },
+  { key: 'secrets', label: 'Secrets', icon: Key, path: (id: string) => `/projects/${id}/environments` },
+  { key: 'audit', label: 'Audit log', icon: ShieldCheck, path: (id: string) => `/projects/${id}/audit` },
+  { key: 'tokens', label: 'API tokens', icon: KeyRound, path: (id: string) => `/projects/${id}/tokens` },
 ]
 
 export const Sidebar = ({
@@ -23,13 +43,15 @@ export const Sidebar = ({
   active: 'overview' | 'environments' | 'audit' | 'tokens' | 'secrets'
   onNavigate: (path: string) => void
 }) => (
-  <aside className="space-y-4 rounded-3xl border border-white/60 bg-white/70 p-6 shadow-soft">
+  <aside className="space-y-4 rounded-3xl border border-border/60 bg-card/70 p-6 shadow-soft">
     <header>
-      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Workspace</p>
-      <p className="mt-2 text-lg font-semibold text-slate-900">
+      <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+        Workspace
+      </p>
+      <p className="mt-2 text-lg font-semibold text-foreground">
         {project?.name ?? 'No project'}
       </p>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-muted-foreground">
         {project ? (
           <>
             Updated{' '}
@@ -43,31 +65,39 @@ export const Sidebar = ({
       </p>
     </header>
     <nav aria-label="Project sections">
-      <ul className="space-y-3 text-sm text-slate-600">
+      <ul className="space-y-3 text-sm text-muted-foreground">
         {navItems.map((item) => {
           const isActive = item.key === active
           return (
             <li key={item.key}>
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => onNavigate(item.path(projectId))}
-                className={`flex w-full items-center justify-between rounded-full px-3 py-2 text-left transition ${
-                  isActive ? 'bg-slate-900 text-white' : 'hover:bg-white'
+                className={`flex h-auto w-full items-center justify-between rounded-full px-3 py-2 text-left transition ${
+                  isActive
+                    ? 'bg-foreground text-background hover:bg-foreground'
+                    : 'hover:bg-accent'
                 }`}
               >
-                <span>{item.label}</span>
-                <span className={`text-xs ${isActive ? 'text-white/70' : 'text-slate-400'}`}>
-                  →
+                <span className="flex items-center gap-2">
+                  <item.icon className="h-4 w-4" />
+                  {item.label}
                 </span>
-              </button>
+                <ChevronRight
+                  className={`h-4 w-4 ${isActive ? 'text-background/70' : 'text-muted-foreground'}`}
+                />
+              </Button>
             </li>
           )
         })}
       </ul>
     </nav>
-    <section className="rounded-2xl bg-slate-900 p-4 text-white">
-      <p className="text-xs uppercase tracking-[0.3em] text-white/70">Coverage</p>
+    <section className="rounded-2xl bg-foreground p-4 text-background">
+      <p className="text-xs uppercase tracking-[0.3em] text-background/70">
+        Coverage
+      </p>
       <p className="mt-2 text-lg font-semibold">{secretCount}</p>
-      <p className="text-xs text-white/70">
+      <p className="text-xs text-background/70">
         {environmentCount} environments with secrets
       </p>
     </section>

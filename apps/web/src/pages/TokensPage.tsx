@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ApiTokenDto, ProjectDto } from '@secrets/shared'
+import { ArrowLeft } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { TokensPanel } from '../components/TokensPanel'
+import { Button } from '../components/ui/button'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
@@ -72,18 +74,25 @@ export const TokensPage = ({
     return data
   }
 
+  const handleDeleteToken = async (tokenId: string) => {
+    await api.deleteToken(projectId, tokenId)
+    await loadTokens()
+  }
+
   return (
     <section className="flex flex-col gap-6">
       <PageHeader
         title="API tokens"
         subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
         actions={
-          <button
-            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+          <Button
+            variant="outline"
+            className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
             onClick={() => navigate(`/projects/${projectId}`)}
           >
+            <ArrowLeft className="h-4 w-4" />
             Back to overview
-          </button>
+          </Button>
         }
       />
 
@@ -98,6 +107,7 @@ export const TokensPage = ({
         loading={tokensLoading}
         error={tokensError}
         onCreate={handleCreateToken}
+        onDelete={handleDeleteToken}
         lastCreated={lastToken}
         onClearLastCreated={() => setLastToken(null)}
       />

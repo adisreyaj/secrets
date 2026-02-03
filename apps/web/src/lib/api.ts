@@ -7,6 +7,10 @@ import type {
   CreateSecretRequest,
   CreateTokenRequest,
   CreateTokenResponse,
+  CopySecretRequest,
+  CopySecretResponse,
+  CopyEnvironmentSecretsRequest,
+  CopyEnvironmentSecretsResponse,
   EnvironmentDto,
   LoginRequest,
   ProjectDto,
@@ -113,6 +117,16 @@ export const api = {
     }),
   deleteSecret: (secretId: string) =>
     apiFetch<{ ok: true }>(`/secrets/${secretId}`, { method: 'DELETE' }),
+  copySecret: (secretId: string, payload: CopySecretRequest) =>
+    apiFetch<CopySecretResponse>(`/secrets/${secretId}/copy`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  copySecretsFromEnvironment: (environmentId: string, payload: CopyEnvironmentSecretsRequest) =>
+    apiFetch<CopyEnvironmentSecretsResponse>(`/environments/${environmentId}/secrets/copy-from`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   exportEnv: (environmentId: string) =>
     apiFetch<string>(`/environments/${environmentId}/export?format=dotenv`),
@@ -123,6 +137,10 @@ export const api = {
     apiFetch<CreateTokenResponse>(`/projects/${projectId}/api-tokens`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+  deleteToken: (projectId: string, tokenId: string) =>
+    apiFetch<{ ok: true }>(`/projects/${projectId}/api-tokens/${tokenId}`, {
+      method: 'DELETE',
     }),
 
   listAudit: (projectId: string) =>

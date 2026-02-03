@@ -144,6 +144,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(cors, {
     origin: config.appOrigin,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
   await app.register(rateLimit, { global: false });
 
@@ -422,10 +423,23 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
-    const body = request.body as { name?: string } | undefined;
+    const body = request.body as { name?: string; copyFromEnvironmentId?: string | null } | undefined;
     if (!body?.name) {
       reply.code(400).send({ error: 'Name is required' });
       return;
+    }
+
+    const copyFromId = body.copyFromEnvironmentId?.trim();
+    let sourceEnv: { id: string; projectId: string } | null = null;
+    if (copyFromId) {
+      sourceEnv = await prisma.environment.findFirst({
+        where: { id: copyFromId, projectId },
+        select: { id: true, projectId: true },
+      });
+      if (!sourceEnv) {
+        reply.code(400).send({ error: 'Source environment not found' });
+        return;
+      }
     }
 
     const env = await prisma.environment.create({
@@ -435,12 +449,77 @@ export async function buildApp(): Promise<FastifyInstance> {
       },
     });
 
+    let copiedCount = 0;
+    if (sourceEnv) {
+      const secrets = await prisma.secret.findMany({
+        where: { environmentId: sourceEnv.id, deletedAt: null },
+        include: {
+          versions: {
+            where: { isActive: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
+        orderBy: { key: 'asc' },
+      });
+
+      if (secrets.length > 0) {
+        const operations: Prisma.PrismaPromise<unknown>[] = [];
+        for (const secret of secrets) {
+          const version = secret.versions[0];
+          if (!version) {
+            operations.push(
+              prisma.secret.create({
+                data: {
+                  environmentId: env.id,
+                  key: secret.key,
+                },
+              }),
+            );
+            continue;
+          }
+
+          const value = decryptSecret(
+            { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
+            masterKey,
+          );
+          const payload = encryptSecret(value, masterKey);
+          const keyVersion = masterKeyVersion();
+
+          operations.push(
+            prisma.secret.create({
+              data: {
+                environmentId: env.id,
+                key: secret.key,
+                versions: {
+                  create: {
+                    ciphertext: payload.ciphertext,
+                    iv: payload.iv,
+                    tag: payload.tag,
+                    keyVersion,
+                    createdBy: auth.user.id,
+                    isActive: true,
+                  },
+                },
+              },
+            }),
+          );
+        }
+
+        await prisma.$transaction(operations);
+        copiedCount = secrets.length;
+      }
+    }
+
     await logAudit({
       projectId,
       actorUserId: auth.user.id,
       action: 'environment.create',
       resourceType: 'environment',
       resourceId: env.id,
+      metadataJson: sourceEnv
+        ? { copyFromEnvironmentId: sourceEnv.id, copiedSecrets: copiedCount }
+        : null,
     });
 
     reply.code(201).send(toEnvironmentDto(env));
@@ -666,6 +745,299 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.send({ ok: true });
+  });
+
+  app.post('/secrets/:id/copy', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: secretId } = request.params as { id: string };
+    const body = request.body as
+      | { targetEnvironmentIds?: string[]; overwrite?: boolean }
+      | undefined;
+    const rawTargets = body?.targetEnvironmentIds?.filter((id) => id.trim().length > 0) ?? [];
+    const targetIds = Array.from(new Set(rawTargets));
+    if (targetIds.length === 0) {
+      reply.code(400).send({ error: 'Target environments are required' });
+      return;
+    }
+
+    const secret = await prisma.secret.findUnique({
+      include: {
+        environment: true,
+        versions: {
+          where: { isActive: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      where: { id: secretId },
+    });
+    if (!secret) {
+      reply.code(404).send({ error: 'Secret not found' });
+      return;
+    }
+
+    const role = await requireProjectRole(
+      request,
+      reply,
+      secret.environment.projectId,
+      Role.EDITOR,
+    );
+    if (!role) {
+      return;
+    }
+
+    const activeVersion = secret.versions[0];
+    if (!activeVersion) {
+      reply.code(400).send({ error: 'Secret has no active version' });
+      return;
+    }
+
+    const targetIdsWithoutSource = targetIds.filter((id) => id !== secret.environmentId);
+    if (targetIdsWithoutSource.length === 0) {
+      reply.code(400).send({ error: 'No target environments provided' });
+      return;
+    }
+
+    const targetEnvs = await prisma.environment.findMany({
+      where: { id: { in: targetIdsWithoutSource } },
+    });
+    if (targetEnvs.length !== targetIdsWithoutSource.length) {
+      reply.code(404).send({ error: 'One or more environments not found' });
+      return;
+    }
+
+    if (targetEnvs.some((env) => env.projectId !== secret.environment.projectId)) {
+      reply.code(400).send({ error: 'Targets must belong to the same project' });
+      return;
+    }
+
+    const value = decryptSecret(
+      { ciphertext: activeVersion.ciphertext, iv: activeVersion.iv, tag: activeVersion.tag },
+      masterKey,
+    );
+    const keyVersion = masterKeyVersion();
+    const overwrite = body?.overwrite === true;
+
+    const created: string[] = [];
+    const updated: string[] = [];
+    const skipped: string[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (const env of targetEnvs) {
+        const existing = await tx.secret.findUnique({
+          where: { environmentId_key: { environmentId: env.id, key: secret.key } },
+        });
+
+        if (existing && !overwrite) {
+          skipped.push(env.id);
+          continue;
+        }
+
+        let targetSecretId = existing?.id;
+        if (!targetSecretId) {
+          const createdSecret = await tx.secret.create({
+            data: { environmentId: env.id, key: secret.key },
+          });
+          targetSecretId = createdSecret.id;
+          created.push(env.id);
+        } else {
+          updated.push(env.id);
+        }
+
+        const payload = encryptSecret(value, masterKey);
+
+        await tx.secretVersion.updateMany({
+          where: { secretId: targetSecretId },
+          data: { isActive: false },
+        });
+        await tx.secretVersion.create({
+          data: {
+            secretId: targetSecretId,
+            ciphertext: payload.ciphertext,
+            iv: payload.iv,
+            tag: payload.tag,
+            keyVersion,
+            createdBy: auth.user.id,
+            isActive: true,
+          },
+        });
+        await tx.secret.update({
+          where: { id: targetSecretId },
+          data: { updatedAt: new Date(), deletedAt: null },
+        });
+      }
+    });
+
+    await logAudit({
+      projectId: secret.environment.projectId,
+      actorUserId: auth.user.id,
+      action: 'secret.copy',
+      resourceType: 'secret',
+      resourceId: secret.id,
+      metadataJson: {
+        key: secret.key,
+        sourceEnvironmentId: secret.environmentId,
+        targetEnvironmentIds: targetIdsWithoutSource,
+        overwrite,
+        created,
+        updated,
+        skipped,
+      },
+    });
+
+    reply.send({ created, updated, skipped });
+  });
+
+  app.post('/environments/:id/secrets/copy-from', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: targetEnvId } = request.params as { id: string };
+    const body = request.body as
+      | { sourceEnvironmentId?: string; keys?: string[]; overwrite?: boolean }
+      | undefined;
+
+    const sourceEnvironmentId = body?.sourceEnvironmentId?.trim();
+    if (!sourceEnvironmentId) {
+      reply.code(400).send({ error: 'Source environment is required' });
+      return;
+    }
+
+    const targetEnv = await prisma.environment.findUnique({ where: { id: targetEnvId } });
+    if (!targetEnv) {
+      reply.code(404).send({ error: 'Target environment not found' });
+      return;
+    }
+
+    const sourceEnv = await prisma.environment.findUnique({ where: { id: sourceEnvironmentId } });
+    if (!sourceEnv) {
+      reply.code(404).send({ error: 'Source environment not found' });
+      return;
+    }
+
+    if (sourceEnv.projectId !== targetEnv.projectId) {
+      reply.code(400).send({ error: 'Source and target must belong to the same project' });
+      return;
+    }
+
+    const role = await requireProjectRole(
+      request,
+      reply,
+      targetEnv.projectId,
+      Role.EDITOR,
+    );
+    if (!role) {
+      return;
+    }
+
+    const overwrite = body?.overwrite === true;
+    const keys = body?.keys?.filter((key) => key.trim().length > 0);
+
+    const sourceSecrets = await prisma.secret.findMany({
+      where: {
+        environmentId: sourceEnv.id,
+        deletedAt: null,
+        ...(keys?.length ? { key: { in: keys } } : {}),
+      },
+      include: {
+        versions: {
+          where: { isActive: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { key: 'asc' },
+    });
+
+    if (sourceSecrets.length === 0) {
+      reply.send({ created: [], updated: [], skipped: [] });
+      return;
+    }
+
+    const created: string[] = [];
+    const updated: string[] = [];
+    const skipped: string[] = [];
+    const keyVersion = masterKeyVersion();
+
+    await prisma.$transaction(async (tx) => {
+      for (const sourceSecret of sourceSecrets) {
+        const version = sourceSecret.versions[0];
+        if (!version) {
+          continue;
+        }
+
+        const existing = await tx.secret.findUnique({
+          where: {
+            environmentId_key: { environmentId: targetEnv.id, key: sourceSecret.key },
+          },
+        });
+
+        if (existing && !overwrite) {
+          skipped.push(sourceSecret.key);
+          continue;
+        }
+
+        let targetSecretId = existing?.id;
+        if (!targetSecretId) {
+          const createdSecret = await tx.secret.create({
+            data: { environmentId: targetEnv.id, key: sourceSecret.key },
+          });
+          targetSecretId = createdSecret.id;
+          created.push(sourceSecret.key);
+        } else {
+          updated.push(sourceSecret.key);
+        }
+
+        const value = decryptSecret(
+          { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
+          masterKey,
+        );
+        const payload = encryptSecret(value, masterKey);
+
+        await tx.secretVersion.updateMany({
+          where: { secretId: targetSecretId },
+          data: { isActive: false },
+        });
+        await tx.secretVersion.create({
+          data: {
+            secretId: targetSecretId,
+            ciphertext: payload.ciphertext,
+            iv: payload.iv,
+            tag: payload.tag,
+            keyVersion,
+            createdBy: auth.user.id,
+            isActive: true,
+          },
+        });
+        await tx.secret.update({
+          where: { id: targetSecretId },
+          data: { updatedAt: new Date(), deletedAt: null },
+        });
+      }
+    });
+
+    await logAudit({
+      projectId: targetEnv.projectId,
+      actorUserId: auth.user.id,
+      action: 'secret.copy.bulk',
+      resourceType: 'secret',
+      metadataJson: {
+        sourceEnvironmentId: sourceEnv.id,
+        targetEnvironmentId: targetEnv.id,
+        overwrite,
+        created,
+        updated,
+        skipped,
+      },
+    });
+
+    reply.send({ created, updated, skipped });
   });
 
   app.post('/secrets/:id/rollback', async (request, reply) => {
@@ -899,6 +1271,40 @@ export async function buildApp(): Promise<FastifyInstance> {
         lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
       })),
     );
+  });
+
+  app.delete('/projects/:id/api-tokens/:tokenId', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId, tokenId } = request.params as { id: string; tokenId: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const token = await prisma.apiToken.findFirst({
+      where: { id: tokenId, projectId },
+    });
+
+    if (!token) {
+      reply.code(404).send({ error: 'Token not found' });
+      return;
+    }
+
+    await prisma.apiToken.delete({ where: { id: token.id } });
+
+    await logAudit({
+      projectId,
+      actorUserId: auth.user.id,
+      action: 'token.delete',
+      resourceType: 'api_token',
+      resourceId: token.id,
+    });
+
+    reply.code(204).send();
   });
 
   app.get('/audit', async (request, reply) => {

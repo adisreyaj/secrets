@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
+import { Card, CardHeader, CardTitle } from './ui/card'
 
 export const SectionCard = ({ children }: { children: ReactNode }) => (
-  <section className="rounded-3xl border border-white/70 bg-white/80 p-6 shadow-soft">
+  <Card className="rounded-3xl border-border/70 bg-card/80 p-6 shadow-soft">
     {children}
-  </section>
+  </Card>
 )
 
 export const SectionHeader = ({
@@ -15,11 +16,13 @@ export const SectionHeader = ({
   title: string
   action?: ReactNode
 }) => (
-  <header className="flex flex-wrap items-center justify-between gap-4">
+  <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4 p-0">
     <div>
-      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">{kicker}</p>
-      <h2 className="mt-1 text-2xl font-semibold text-slate-900">{title}</h2>
+      <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+        {kicker}
+      </p>
+      <CardTitle className="mt-1">{title}</CardTitle>
     </div>
     {action}
-  </header>
+  </CardHeader>
 )

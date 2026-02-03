@@ -71,6 +71,7 @@ export interface CreateProjectRequest {
 
 export interface CreateEnvironmentRequest {
   name: string;
+  copyFromEnvironmentId?: string;
 }
 
 export interface CreateSecretRequest {
@@ -84,6 +85,29 @@ export interface UpdateSecretRequest {
 
 export interface RollbackSecretRequest {
   versionId?: string;
+}
+
+export interface CopySecretRequest {
+  targetEnvironmentIds: string[];
+  overwrite?: boolean;
+}
+
+export interface CopySecretResponse {
+  created: string[];
+  updated: string[];
+  skipped: string[];
+}
+
+export interface CopyEnvironmentSecretsRequest {
+  sourceEnvironmentId: string;
+  keys?: string[];
+  overwrite?: boolean;
+}
+
+export interface CopyEnvironmentSecretsResponse {
+  created: string[];
+  updated: string[];
+  skipped: string[];
 }
 
 export interface CreateTokenRequest {

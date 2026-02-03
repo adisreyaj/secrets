@@ -1,14 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
 import type { ProjectDto } from '@secrets/shared'
-import { ProjectsSection } from '../components/ProjectsSection'
+import { useCallback, useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { ProjectsSection } from '../components/ProjectsSection'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
 const getErrorMessage = (error: unknown) =>
   error instanceof ApiError ? error.message : 'Something went wrong.'
 
-export const ProjectsPage = ({ navigate }: { navigate: (path: string) => void }) => {
+export const ProjectsPage = ({
+  navigate,
+}: {
+  navigate: (path: string) => void
+}) => {
   const { user, loading } = useAuth()
   const [projects, setProjects] = useState<ProjectDto[]>([])
   const [projectsLoading, setProjectsLoading] = useState(false)
@@ -49,14 +53,6 @@ export const ProjectsPage = ({ navigate }: { navigate: (path: string) => void })
       <PageHeader
         title="Projects"
         subtitle="Pick a workspace or create a new one."
-        actions={
-          <button
-            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-            onClick={() => navigate('/login')}
-          >
-            {user ? 'Account' : 'Sign in'}
-          </button>
-        }
       />
 
       <ProjectsSection

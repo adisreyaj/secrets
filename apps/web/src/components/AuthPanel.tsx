@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { Card } from './ui/card'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
 
 export const AuthPanel = ({
   loading,
@@ -29,51 +32,52 @@ export const AuthPanel = ({
   }
 
   return (
-    <section className="mx-auto w-full max-w-md rounded-3xl border border-white/70 bg-white/90 p-8 shadow-soft">
-      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">
+    <Card className="mx-auto w-full max-w-md rounded-3xl border-border/70 bg-card/90 p-8 shadow-soft">
+      <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
         {mode === 'login' ? 'Welcome back' : 'Create account'}
       </p>
-      <h2 className="mt-3 text-2xl font-semibold text-slate-900">
+      <h2 className="mt-3 text-2xl font-semibold text-foreground">
         {mode === 'login' ? 'Sign in to manage secrets' : 'Start your secure workspace'}
       </h2>
       <form onSubmit={handleSubmit} className="mt-6 space-y-3">
         {mode === 'register' ? (
-          <input
+          <Input
             value={form.name}
             onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
             placeholder="Full name"
-            className="h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm"
+            className="h-11 rounded-2xl"
           />
         ) : null}
-        <input
+        <Input
           value={form.email}
           onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
           placeholder="Email"
           type="email"
-          className="h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm"
+          className="h-11 rounded-2xl"
         />
-        <input
+        <Input
           value={form.password}
           onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
           placeholder="Password"
           type="password"
-          className="h-11 w-full rounded-2xl border border-slate-200 px-4 text-sm"
+          className="h-11 rounded-2xl"
         />
         {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-        <button
+        <Button
           type="submit"
           disabled={loading}
-          className="h-11 w-full rounded-full bg-slate-900 text-sm font-semibold text-white"
+          className="h-11 w-full rounded-full bg-foreground text-sm font-semibold text-background hover:bg-foreground/90"
         >
           {loading ? 'Working...' : mode === 'login' ? 'Sign in' : 'Create account'}
-        </button>
+        </Button>
       </form>
-      <button
+      <Button
+        variant="ghost"
         onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-        className="mt-4 text-xs font-semibold text-slate-600"
+        className="mt-4 h-auto px-0 text-xs font-semibold text-muted-foreground hover:bg-transparent"
       >
         {mode === 'login' ? 'Need an account? Register' : 'Already have an account? Sign in'}
-      </button>
-    </section>
+      </Button>
+    </Card>
   )
 }

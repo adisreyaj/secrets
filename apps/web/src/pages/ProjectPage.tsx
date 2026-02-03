@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ApiTokenDto, AuditLogDto, EnvironmentDto, ProjectDto } from '@secrets/shared'
+import { ArrowLeft, Download, FileDown } from 'lucide-react'
 import { AuditLog } from '../components/AuditLog'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
 import { Hero } from '../components/Hero'
 import { ProjectsSection } from '../components/ProjectsSection'
 import { TokensPanel } from '../components/TokensPanel'
+import { Button } from '../components/ui/button'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
@@ -116,8 +118,11 @@ export const ProjectPage = ({
     await loadProjects()
   }
 
-  const handleCreateEnvironment = async (name: string) => {
-    await api.createEnvironment(projectId, { name })
+  const handleCreateEnvironment = async (payload: {
+    name: string
+    copyFromEnvironmentId?: string | null
+  }) => {
+    await api.createEnvironment(projectId, payload)
     await loadEnvironments()
   }
 
@@ -140,6 +145,11 @@ export const ProjectPage = ({
     return data
   }
 
+  const handleDeleteToken = async (tokenId: string) => {
+    await api.deleteToken(projectId, tokenId)
+    await loadTokens()
+  }
+
   const selectedProject = projects.find((project) => project.id === projectId) ?? null
 
   return (
@@ -155,19 +165,22 @@ export const ProjectPage = ({
         ]}
         actions={
           <>
-            <button
-              className="rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+            <Button
+              className="gap-2 rounded-full bg-foreground px-6 py-3 text-sm font-semibold text-background transition hover:bg-foreground/90"
               onClick={handleExportEnv}
               disabled={!selectedEnvironmentId}
             >
+              <FileDown className="h-4 w-4" />
               Export .env
-            </button>
-            <button
-              className="rounded-full border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2 rounded-full border-border px-6 py-3 text-sm font-semibold text-foreground transition hover:border-foreground/40"
               onClick={() => navigate('/projects')}
             >
+              <ArrowLeft className="h-4 w-4" />
               Back to projects
-            </button>
+            </Button>
           </>
         }
       />
@@ -187,6 +200,8 @@ export const ProjectPage = ({
           selectedEnvironmentId={selectedEnvironmentId}
           loading={envLoading}
           error={envError}
+          missingCounts={{}}
+          coverageLoading={false}
           onSelect={(environmentId) => {
             setSelectedEnvironmentId(environmentId)
             navigate(`/projects/${projectId}/environments/${environmentId}`)
@@ -194,13 +209,15 @@ export const ProjectPage = ({
           onCreate={handleCreateEnvironment}
         />
 
-        <section className="rounded-3xl border border-white/70 bg-slate-900 p-6 text-white shadow-soft">
-          <p className="text-xs uppercase tracking-[0.3em] text-white/60">Export</p>
+        <section className="rounded-3xl border border-border/70 bg-foreground p-6 text-background shadow-soft">
+          <p className="text-xs uppercase tracking-[0.3em] text-background/60">
+            Export
+          </p>
           <h2 className="mt-2 text-2xl font-semibold">Ship secrets safely</h2>
-          <p className="mt-3 text-sm text-white/70">
+          <p className="mt-3 text-sm text-background/70">
             Generate a time-bound .env file with masked values and share securely with your runtime.
           </p>
-          <ul className="mt-6 space-y-3 text-xs text-white/70">
+          <ul className="mt-6 space-y-3 text-xs text-background/70">
             {['Rotation reminder: keep values fresh', 'Audit trail included', 'Tokenized downloads'].map(
               (item) => (
                 <li key={item} className="flex items-center gap-2">
@@ -210,13 +227,14 @@ export const ProjectPage = ({
               ),
             )}
           </ul>
-          <button
+          <Button
             onClick={handleExportEnv}
             disabled={!selectedEnvironmentId}
-            className="mt-6 w-full rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900 disabled:opacity-60"
+            className="mt-6 w-full gap-2 rounded-full bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-60"
           >
+            <Download className="h-4 w-4" />
             Download .env
-          </button>
+          </Button>
         </section>
       </section>
 
@@ -227,6 +245,7 @@ export const ProjectPage = ({
           loading={tokensLoading}
           error={tokensError}
           onCreate={handleCreateToken}
+          onDelete={handleDeleteToken}
           lastCreated={lastToken}
           onClearLastCreated={() => setLastToken(null)}
         />

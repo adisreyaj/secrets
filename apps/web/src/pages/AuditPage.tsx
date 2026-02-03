@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AuditLogDto, ProjectDto } from '@secrets/shared'
+import { ArrowLeft } from 'lucide-react'
 import { AuditLog } from '../components/AuditLog'
 import { PageHeader } from '../components/PageHeader'
+import { Button } from '../components/ui/button'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
@@ -70,12 +72,14 @@ export const AuditPage = ({
         title="Audit log"
         subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
         actions={
-          <button
-            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+          <Button
+            variant="outline"
+            className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
             onClick={() => navigate(`/projects/${projectId}`)}
           >
+            <ArrowLeft className="h-4 w-4" />
             Back to overview
-          </button>
+          </Button>
         }
       />
 

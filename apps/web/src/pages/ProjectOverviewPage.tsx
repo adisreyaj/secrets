@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
+import { ArrowLeft, Layers, ShieldCheck, KeyRound } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
+import { Button } from '../components/ui/button'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
@@ -64,12 +66,14 @@ export const ProjectOverviewPage = ({
         title={selectedProject?.name ?? 'Project'}
         subtitle="Choose a section to continue."
         actions={
-          <button
-            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+          <Button
+            variant="outline"
+            className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
             onClick={() => navigate('/projects')}
           >
+            <ArrowLeft className="h-4 w-4" />
             Back to projects
-          </button>
+          </Button>
         }
       />
 
@@ -81,31 +85,51 @@ export const ProjectOverviewPage = ({
 
       <ul className="grid gap-4 md:grid-cols-2">
         <li>
-          <button
+          <Button
+            variant="outline"
             onClick={() => navigate(`/projects/${projectId}/environments`)}
-            className="w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-soft hover:border-slate-300"
+            className="h-auto w-full flex-col items-start justify-start rounded-2xl border-border bg-card p-5 text-left shadow-soft hover:border-foreground/30 whitespace-normal"
           >
-            <p className="text-sm font-semibold text-slate-900">Environments</p>
-            <p className="mt-1 text-xs text-slate-500">{environments.length} environments</p>
-          </button>
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Layers className="h-4 w-4 text-muted-foreground" />
+                Environments
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {environments.length} environments
+              </p>
+            </div>
+          </Button>
         </li>
         <li>
-          <button
+          <Button
+            variant="outline"
             onClick={() => navigate(`/projects/${projectId}/audit`)}
-            className="w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-soft hover:border-slate-300"
+            className="h-auto w-full flex-col items-start justify-start rounded-2xl border-border bg-card p-5 text-left shadow-soft hover:border-foreground/30 whitespace-normal"
           >
-            <p className="text-sm font-semibold text-slate-900">Audit log</p>
-            <p className="mt-1 text-xs text-slate-500">Review changes</p>
-          </button>
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                Audit log
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Review changes</p>
+            </div>
+          </Button>
         </li>
         <li>
-          <button
+          <Button
+            variant="outline"
             onClick={() => navigate(`/projects/${projectId}/tokens`)}
-            className="w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-soft hover:border-slate-300"
+            className="h-auto w-full flex-col items-start justify-start rounded-2xl border-border bg-card p-5 text-left shadow-soft hover:border-foreground/30 whitespace-normal"
           >
-            <p className="text-sm font-semibold text-slate-900">API tokens</p>
-            <p className="mt-1 text-xs text-slate-500">Create access keys</p>
-          </button>
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <KeyRound className="h-4 w-4 text-muted-foreground" />
+                API tokens
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Create access keys</p>
+            </div>
+          </Button>
         </li>
       </ul>
     </section>
