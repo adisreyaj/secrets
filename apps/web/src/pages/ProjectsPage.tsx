@@ -1,7 +1,7 @@
 import type { ProjectDto } from '@secrets/shared'
 import { useCallback, useEffect, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
-import { ProjectsSection } from '../components/ProjectsSection'
+import { ProjectsSection, type ProjectTemplate } from '../components/ProjectsSection'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
@@ -43,8 +43,22 @@ export const ProjectsPage = ({
     }
   }, [user, loadProjects])
 
-  const handleCreate = async (name: string) => {
-    await api.createProject({ name })
+  const handleCreate = async (payload: { name: string; template: ProjectTemplate }) => {
+    const project = await api.createProject({ name: payload.name })
+    const templates: Record<ProjectTemplate, string[]> = {
+      starter: ['development', 'prod'],
+      full: ['development', 'staging', 'prod'],
+      empty: [],
+    }
+
+    const environments = templates[payload.template] ?? []
+    if (environments.length > 0) {
+      await Promise.all(
+        environments.map((envName) =>
+          api.createEnvironment(project.id, { name: envName }),
+        ),
+      )
+    }
     await loadProjects()
   }
 

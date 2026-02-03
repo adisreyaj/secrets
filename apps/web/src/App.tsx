@@ -1,18 +1,129 @@
+import { useEffect, useState } from 'react'
 import { Header } from './components/Header'
+import { ShortcutsHelpDialog } from './components/ShortcutsHelpDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useAuth } from './lib/auth'
 import { useHashRouter } from './lib/router'
+import {
+  ShortcutsProvider,
+  getLastEnvironmentId,
+  getLastProjectId,
+  setLastEnvironmentId,
+  setLastProjectId,
+  useRegisterShortcut,
+} from './lib/shortcuts'
 import { AuditPage } from './pages/AuditPage'
 import { EnvironmentPage } from './pages/EnvironmentPage'
 import { EnvironmentsPage } from './pages/EnvironmentsPage'
 import { LoginPage } from './pages/LoginPage'
+import { ProfilePage } from './pages/ProfilePage'
 import { ProjectOverviewPage } from './pages/ProjectOverviewPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { TokensPage } from './pages/TokensPage'
 
-export default function App() {
+const AppShell = () => {
   const { user, logout } = useAuth()
   const { match, navigate } = useHashRouter()
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const shortcutsEnabled = !!user && match.name !== 'login'
+
+  useEffect(() => {
+    if (match.name === 'project') {
+      setLastProjectId(match.projectId)
+    }
+    if (match.name === 'environments') {
+      setLastProjectId(match.projectId)
+    }
+    if (match.name === 'environment') {
+      setLastProjectId(match.projectId)
+      setLastEnvironmentId(match.projectId, match.environmentId)
+    }
+    if (match.name === 'audit') {
+      setLastProjectId(match.projectId)
+    }
+    if (match.name === 'tokens') {
+      setLastProjectId(match.projectId)
+    }
+  }, [match])
+
+  const resolveProjectId = () =>
+    match.name === 'project' ||
+    match.name === 'environments' ||
+    match.name === 'environment' ||
+    match.name === 'audit' ||
+    match.name === 'tokens'
+      ? match.projectId
+      : getLastProjectId()
+
+  const resolveEnvironmentId = (projectId: string | null) => {
+    if (!projectId) return null
+    if (match.name === 'environment') {
+      return match.environmentId
+    }
+    return getLastEnvironmentId(projectId)
+  }
+
+  useRegisterShortcut('?', () => setShortcutsOpen(true), {
+    enabled: shortcutsEnabled,
+  })
+
+  useRegisterShortcut('g p', () => navigate('/projects'), {
+    enabled: shortcutsEnabled,
+  })
+
+  useRegisterShortcut(
+    'g o',
+    () => {
+      const projectId = resolveProjectId()
+      navigate(projectId ? `/projects/${projectId}` : '/projects')
+    },
+    { enabled: shortcutsEnabled },
+  )
+
+  useRegisterShortcut(
+    'g e',
+    () => {
+      const projectId = resolveProjectId()
+      navigate(projectId ? `/projects/${projectId}/environments` : '/projects')
+    },
+    { enabled: shortcutsEnabled },
+  )
+
+  useRegisterShortcut(
+    'g s',
+    () => {
+      const projectId = resolveProjectId()
+      if (!projectId) {
+        navigate('/projects')
+        return
+      }
+      const environmentId = resolveEnvironmentId(projectId)
+      navigate(
+        environmentId
+          ? `/projects/${projectId}/environments/${environmentId}`
+          : `/projects/${projectId}/environments`,
+      )
+    },
+    { enabled: shortcutsEnabled },
+  )
+
+  useRegisterShortcut(
+    'g a',
+    () => {
+      const projectId = resolveProjectId()
+      navigate(projectId ? `/projects/${projectId}/audit` : '/projects')
+    },
+    { enabled: shortcutsEnabled },
+  )
+
+  useRegisterShortcut(
+    'g t',
+    () => {
+      const projectId = resolveProjectId()
+      navigate(projectId ? `/projects/${projectId}/tokens` : '/projects')
+    },
+    { enabled: shortcutsEnabled },
+  )
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -22,21 +133,25 @@ export default function App() {
           <Header
             user={user}
             onLogout={logout}
-            showAccount={match.name !== 'projects'}
+            onProfile={() => navigate('/profile')}
+            onOpenShortcuts={() => setShortcutsOpen(true)}
+            showAccount={match.name !== 'login'}
           />
         </div>
 
         <div
-          className="bg-blob-left pointer-events-none absolute top-24 left-0 z-0 h-64 w-64 rounded-full blur-3xl"
+          className="bg-blob-left/50 pointer-events-none absolute top-24 left-0 z-0 h-64 w-64 rounded-full blur-3xl"
           aria-hidden="true"
         />
         <div
-          className="bg-blob-right pointer-events-none absolute top-10 right-0 z-0 h-72 w-72 rounded-full blur-3xl"
+          className="bg-blob-right/50 pointer-events-none absolute top-10 right-0 z-0 h-72 w-72 rounded-full blur-3xl"
           aria-hidden="true"
         />
         <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 pb-16">
           {match.name === 'login' ? (
             <LoginPage navigate={navigate} />
+          ) : match.name === 'profile' ? (
+            <ProfilePage navigate={navigate} />
           ) : match.name === 'projects' ? (
             <ProjectsPage navigate={navigate} />
           ) : match.name === 'project' ? (
@@ -58,7 +173,20 @@ export default function App() {
             />
           )}
         </main>
+        <ShortcutsHelpDialog
+          open={shortcutsOpen}
+          onOpenChange={setShortcutsOpen}
+          match={match}
+        />
       </div>
     </TooltipProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <ShortcutsProvider>
+      <AppShell />
+    </ShortcutsProvider>
   )
 }

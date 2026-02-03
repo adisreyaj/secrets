@@ -1,8 +1,9 @@
 import type { EnvironmentDto, SecretDto } from '@secrets/shared'
 import { memo, useCallback, useMemo, useState } from 'react'
-import { Copy, Eye, EyeOff, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { Copy, Eye, EyeOff, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { formatDateTime, formatKeyPreview } from '../lib/format'
-import { SectionCard, SectionHeader } from './SectionCard'
+import { useRegisterShortcut } from '../lib/shortcuts'
+import { SectionCard } from './SectionCard'
 import { Button } from './ui/button'
 import {
   Dialog,
@@ -11,6 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from './ui/dialog'
 import { Input } from './ui/input'
 import {
@@ -36,11 +38,12 @@ export const SecretsTable = ({
   missingKeysByEnvironment,
   onToggleValues,
   onCreate,
-  onUpdate,
+  onUpdateMany,
   onRollback,
   onDelete,
   onCopy,
   onCopyMissing,
+  className,
 }: {
   secrets: SecretDto[]
   environments: EnvironmentDto[]
@@ -53,7 +56,9 @@ export const SecretsTable = ({
   missingKeysByEnvironment: Record<string, string[]>
   onToggleValues: (next: boolean) => void
   onCreate: (payload: { key: string; value: string }) => Promise<void>
-  onUpdate: (secretId: string, value: string) => Promise<void>
+  onUpdateMany: (
+    changes: { id: string; key?: string; value?: string }[],
+  ) => Promise<void>
   onRollback: (secretId: string) => Promise<void>
   onDelete: (secretId: string) => Promise<void>
   onCopy: (
@@ -65,14 +70,15 @@ export const SecretsTable = ({
     updated: string[]
     skipped: string[]
   }>
+  className?: string
 }) => {
   const [form, setForm] = useState({ key: '', value: '' })
   const [creating, setCreating] = useState(false)
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [activeSecret, setActiveSecret] = useState<SecretDto | null>(null)
   const [dialogMode, setDialogMode] = useState<
-    'update' | 'rollback' | 'delete' | 'copy' | null
+    'rollback' | 'delete' | 'copy' | null
   >(null)
-  const [nextValue, setNextValue] = useState('')
   const [selectedTargets, setSelectedTargets] = useState<string[]>([])
   const [overwriteExisting, setOverwriteExisting] = useState(false)
   const [copying, setCopying] = useState(false)
@@ -81,12 +87,112 @@ export const SecretsTable = ({
   const [missingSourceEnvId, setMissingSourceEnvId] = useState<string | null>(null)
   const [missingCopying, setMissingCopying] = useState(false)
   const [selectedMissingKeys, setSelectedMissingKeys] = useState<string[]>([])
+  const [editingRows, setEditingRows] = useState<
+    Record<
+      string,
+      { key: string; value: string; dirtyKey: boolean; dirtyValue: boolean }
+    >
+  >({})
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
+  const [savingChanges, setSavingChanges] = useState(false)
+  const [topError, setTopError] = useState<string | null>(null)
 
-  const openUpdateDialog = useCallback((secret: SecretDto) => {
-    setActiveSecret(secret)
-    setDialogMode('update')
-    setNextValue('')
+  useRegisterShortcut('n', () => setAddDialogOpen(true))
+
+  const secretById = useMemo(
+    () => new Map(secrets.map((secret) => [secret.id, secret])),
+    [secrets],
+  )
+
+  const startEditingRow = useCallback(
+    (secret: SecretDto) => {
+      setEditingRows((prev) => {
+        if (prev[secret.id]) {
+          return prev
+        }
+        return {
+          ...prev,
+          [secret.id]: {
+            key: secret.key,
+            value: includeValues ? secret.value ?? '' : '',
+            dirtyKey: false,
+            dirtyValue: false,
+          },
+        }
+      })
+      setRowErrors((prev) => {
+        if (!prev[secret.id]) return prev
+        const next = { ...prev }
+        delete next[secret.id]
+        return next
+      })
+      setTopError(null)
+    },
+    [includeValues],
+  )
+
+  const cancelEditingRow = useCallback((secretId: string) => {
+    setEditingRows((prev) => {
+      if (!prev[secretId]) return prev
+      const next = { ...prev }
+      delete next[secretId]
+      return next
+    })
+    setRowErrors((prev) => {
+      if (!prev[secretId]) return prev
+      const next = { ...prev }
+      delete next[secretId]
+      return next
+    })
+    setTopError(null)
   }, [])
+
+  const handleRowKeyChange = useCallback(
+    (secretId: string, value: string) => {
+      const original = secretById.get(secretId)?.key ?? ''
+      setEditingRows((prev) => {
+        const current = prev[secretId]
+        if (!current) return prev
+        const dirtyKey = value.trim() !== original
+        return {
+          ...prev,
+          [secretId]: { ...current, key: value, dirtyKey },
+        }
+      })
+      setRowErrors((prev) => {
+        if (!prev[secretId]) return prev
+        const next = { ...prev }
+        delete next[secretId]
+        return next
+      })
+      setTopError(null)
+    },
+    [secretById],
+  )
+
+  const handleRowValueChange = useCallback(
+    (secretId: string, value: string) => {
+      const original = secretById.get(secretId)?.value ?? ''
+      const trimmed = value.trim()
+      const dirtyValue = trimmed.length > 0 && trimmed !== original
+      setEditingRows((prev) => {
+        const current = prev[secretId]
+        if (!current) return prev
+        return {
+          ...prev,
+          [secretId]: { ...current, value, dirtyValue },
+        }
+      })
+      setRowErrors((prev) => {
+        if (!prev[secretId]) return prev
+        const next = { ...prev }
+        delete next[secretId]
+        return next
+      })
+      setTopError(null)
+    },
+    [secretById],
+  )
 
   const openRollbackDialog = useCallback((secret: SecretDto) => {
     setActiveSecret(secret)
@@ -118,6 +224,7 @@ export const SecretsTable = ({
     try {
       await onCreate({ key: form.key.trim(), value: form.value.trim() })
       setForm({ key: '', value: '' })
+      setAddDialogOpen(false)
     } finally {
       setCreating(false)
     }
@@ -126,7 +233,6 @@ export const SecretsTable = ({
   const closeDialog = () => {
     setDialogMode(null)
     setActiveSecret(null)
-    setNextValue('')
     setSelectedTargets([])
     setOverwriteExisting(false)
     setCopying(false)
@@ -158,6 +264,84 @@ export const SecretsTable = ({
   const totalKeyCount = activeMissingKeys.length
   const missingSelectionLabel =
     selectedKeyCount === 0 ? '' : `Selected ${selectedKeyCount} of ${totalKeyCount}`
+  const pendingChanges = useMemo(
+    () =>
+      Object.entries(editingRows).filter(
+        ([, row]) => row.dirtyKey || row.dirtyValue,
+      ),
+    [editingRows],
+  )
+  const pendingChangesCount = pendingChanges.length
+
+  const discardChanges = () => {
+    setEditingRows({})
+    setRowErrors({})
+    setTopError(null)
+  }
+
+  const saveChanges = async () => {
+    if (savingChanges || pendingChangesCount === 0) return
+    const nextErrors: Record<string, string> = {}
+    const keyToIds = new Map<string, string[]>()
+    for (const secret of secrets) {
+      const edit = editingRows[secret.id]
+      const nextKey = edit ? edit.key.trim() : secret.key
+      if (edit?.dirtyKey && !nextKey) {
+        nextErrors[secret.id] = 'Key is required.'
+      }
+      if (nextKey) {
+        const list = keyToIds.get(nextKey) ?? []
+        list.push(secret.id)
+        keyToIds.set(nextKey, list)
+      }
+    }
+
+    for (const [key, ids] of keyToIds.entries()) {
+      if (ids.length < 2) continue
+      for (const id of ids) {
+        if (editingRows[id]) {
+          nextErrors[id] = `Key "${key}" is already used.`
+        }
+      }
+    }
+
+    for (const [id, row] of Object.entries(editingRows)) {
+      if (row.dirtyValue && !row.value.trim()) {
+        nextErrors[id] = 'Value is required.'
+      }
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setRowErrors(nextErrors)
+      setTopError('Fix the highlighted fields before saving.')
+      return
+    }
+
+    const changes = pendingChanges
+      .map(([id, row]) => {
+        const payload: { id: string; key?: string; value?: string } = { id }
+        if (row.dirtyKey) {
+          payload.key = row.key.trim()
+        }
+        if (row.dirtyValue) {
+          payload.value = row.value.trim()
+        }
+        return payload
+      })
+      .filter((change) => change.key !== undefined || change.value !== undefined)
+
+    if (changes.length === 0) return
+    setSavingChanges(true)
+    setTopError(null)
+    try {
+      await onUpdateMany(changes)
+      discardChanges()
+    } catch (error) {
+      setTopError(error instanceof Error ? error.message : 'Failed to save changes.')
+    } finally {
+      setSavingChanges(false)
+    }
+  }
 
   const handleMissingCopy = async () => {
     if (!missingSourceEnvId || missingCopying) return
@@ -173,10 +357,6 @@ export const SecretsTable = ({
 
   const handleConfirm = async () => {
     if (!activeSecret || !dialogMode) return
-    if (dialogMode === 'update') {
-      if (!nextValue.trim()) return
-      await onUpdate(activeSecret.id, nextValue.trim())
-    }
     if (dialogMode === 'rollback') {
       await onRollback(activeSecret.id)
     }
@@ -212,25 +392,117 @@ export const SecretsTable = ({
   const otherEnvironments = environments.filter((env) => env.id !== environmentId)
 
   return (
-    <SectionCard>
-      <SectionHeader
-        kicker="Secrets"
-        title="Key registry"
-        action={
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => onToggleValues(!includeValues)}
-              className="gap-2 rounded-full bg-muted px-3 py-1 font-medium text-muted-foreground hover:bg-muted/80"
-            >
-              {includeValues ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              {includeValues ? 'Hide values' : 'Include values'}
-            </Button>
-          </div>
-        }
-      />
+    <SectionCard className={className}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-foreground">Key registry</h3>
+          <p className="text-xs text-muted-foreground">
+            Manage and audit secret keys for this environment.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {pendingChangesCount > 0 ? (
+            <>
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                {pendingChangesCount} pending
+              </span>
+              <Button
+                size="sm"
+                className="rounded-full px-4 text-xs"
+                onClick={saveChanges}
+                disabled={savingChanges}
+              >
+                {savingChanges ? 'Saving...' : 'Save changes'}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="rounded-full px-3 text-xs"
+                onClick={discardChanges}
+                disabled={savingChanges}
+              >
+                Discard
+              </Button>
+            </>
+          ) : null}
+          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 rounded-full text-xs"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add secret
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="rounded-3xl border-white/70 bg-white/95">
+              <DialogHeader className="text-left">
+                <DialogTitle>Add secret</DialogTitle>
+                <DialogDescription>
+                  Create a new secret key/value pair for this environment.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="grid gap-4">
+                <label className="grid gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Secret key
+                  </span>
+                  <Input
+                    value={form.key}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, key: event.target.value }))
+                    }
+                    placeholder="SECRET_KEY"
+                    className="h-11 rounded-2xl bg-white px-4"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Secret value
+                  </span>
+                  <Input
+                    value={form.value}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, value: event.target.value }))
+                    }
+                    placeholder="secret-value"
+                    className="h-11 rounded-2xl bg-white px-4"
+                  />
+                </label>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="rounded-full px-4 text-sm"
+                    onClick={() => setAddDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="rounded-full bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
+                    disabled={creating || !form.key.trim() || !form.value.trim()}
+                  >
+                    {creating ? 'Saving...' : 'Add secret'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onToggleValues(!includeValues)}
+            className="gap-2 rounded-full bg-muted px-3 py-1 font-medium text-muted-foreground hover:bg-muted/80"
+          >
+            {includeValues ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            {includeValues ? 'Hide values' : 'Show values'}
+          </Button>
+        </div>
+      </div>
       {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
+      {topError ? <p className="mt-3 text-sm text-rose-600">{topError}</p> : null}
 
       <div className="mt-4 rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm">
         {coverageLoading ? (
@@ -418,31 +690,6 @@ export const SecretsTable = ({
         </DialogContent>
       </Dialog>
 
-      <form
-        onSubmit={handleSubmit}
-        className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-border bg-card/70 p-4"
-      >
-        <Input
-          value={form.key}
-          onChange={(event) => setForm((prev) => ({ ...prev, key: event.target.value }))}
-          placeholder="SECRET_KEY"
-          className="flex-1 rounded-full"
-        />
-        <Input
-          value={form.value}
-          onChange={(event) => setForm((prev) => ({ ...prev, value: event.target.value }))}
-          placeholder="secret-value"
-          className="flex-1 rounded-full"
-        />
-        <Button
-          type="submit"
-          className="gap-2 rounded-full bg-foreground text-background hover:bg-foreground/90"
-        >
-          <Plus className="h-4 w-4" />
-          {creating ? 'Saving...' : 'Add secret'}
-        </Button>
-      </form>
-
       <div
         className="group mt-5 overflow-x-auto rounded-2xl border border-border"
         data-show-values={includeValues ? 'true' : 'false'}
@@ -452,9 +699,9 @@ export const SecretsTable = ({
           <TableHeader className="bg-muted">
             <TableRow className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
               <TableHead>Key</TableHead>
-              <TableHead>Updated</TableHead>
-              <TableHead>Version</TableHead>
               <TableHead>Value</TableHead>
+              <TableHead>Version</TableHead>
+              <TableHead>Updated</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -464,8 +711,13 @@ export const SecretsTable = ({
             canCopy={otherEnvironments.length > 0}
             onOpenDelete={openDeleteDialog}
             onOpenRollback={openRollbackDialog}
-            onOpenUpdate={openUpdateDialog}
+            onStartEdit={startEditingRow}
             onOpenCopy={openCopyDialog}
+            editingRows={editingRows}
+            rowErrors={rowErrors}
+            onRowKeyChange={handleRowKeyChange}
+            onRowValueChange={handleRowValueChange}
+            onCancelRow={cancelEditingRow}
           />
         </Table>
       </div>
@@ -479,40 +731,21 @@ export const SecretsTable = ({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {dialogMode === 'update'
-                ? 'Update secret'
-                : dialogMode === 'rollback'
+              {dialogMode === 'rollback'
                 ? 'Rollback secret'
                 : dialogMode === 'copy'
                 ? 'Copy secret'
                 : 'Delete secret'}
             </DialogTitle>
             <DialogDescription>
-              {dialogMode === 'update'
-                ? 'Enter the new value for this key.'
-                : dialogMode === 'rollback'
+              {dialogMode === 'rollback'
                 ? 'This will restore the previous version for the selected key.'
                 : dialogMode === 'copy'
                 ? 'Choose which environments should receive this key.'
                 : 'This action cannot be undone.'}
             </DialogDescription>
           </DialogHeader>
-          {dialogMode === 'update' ? (
-            <div className="space-y-3">
-              <div className="rounded-2xl border border-dashed border-border bg-muted p-3 text-xs text-muted-foreground">
-                Updating{' '}
-                <span className="font-semibold text-foreground">
-                  {activeSecret?.key}
-                </span>
-              </div>
-              <Input
-                value={nextValue}
-                onChange={(event) => setNextValue(event.target.value)}
-                placeholder="New secret value"
-                className="rounded-full"
-              />
-            </div>
-          ) : dialogMode === 'copy' ? (
+          {dialogMode === 'copy' ? (
             <div className="space-y-4">
               <div className="rounded-2xl border border-dashed border-border bg-muted p-3 text-xs text-muted-foreground">
                 Copying{' '}
@@ -612,7 +845,6 @@ export const SecretsTable = ({
               variant={dialogMode === 'delete' ? 'outline' : 'default'}
               onClick={handleConfirm}
               disabled={
-                (dialogMode === 'update' && !nextValue.trim()) ||
                 (dialogMode === 'copy' &&
                   (selectedTargets.length === 0 || copying || otherEnvironments.length === 0))
               }
@@ -622,9 +854,7 @@ export const SecretsTable = ({
                   : 'rounded-full'
               }
             >
-              {dialogMode === 'update'
-                ? 'Update secret'
-                : dialogMode === 'rollback'
+              {dialogMode === 'rollback'
                 ? 'Confirm rollback'
                 : dialogMode === 'copy'
                 ? copying
@@ -643,19 +873,32 @@ const SecretsTableBody = memo(
   ({
     secrets,
     loading,
-    onOpenUpdate,
+    onStartEdit,
     onOpenRollback,
     onOpenDelete,
     onOpenCopy,
     canCopy,
+    editingRows,
+    rowErrors,
+    onRowKeyChange,
+    onRowValueChange,
+    onCancelRow,
   }: {
     secrets: SecretDto[]
     loading: boolean
-    onOpenUpdate: (secret: SecretDto) => void
+    onStartEdit: (secret: SecretDto) => void
     onOpenRollback: (secret: SecretDto) => void
     onOpenDelete: (secret: SecretDto) => void
     onOpenCopy: (secret: SecretDto) => void
     canCopy: boolean
+    editingRows: Record<
+      string,
+      { key: string; value: string; dirtyKey: boolean; dirtyValue: boolean }
+    >
+    rowErrors: Record<string, string>
+    onRowKeyChange: (secretId: string, value: string) => void
+    onRowValueChange: (secretId: string, value: string) => void
+    onCancelRow: (secretId: string) => void
   }) => {
     return (
       <TableBody>
@@ -674,35 +917,65 @@ const SecretsTableBody = memo(
         ) : (
           secrets.map((secret) => (
             <TableRow key={secret.id} className="text-sm text-muted-foreground">
-              <TableHead className="py-3 font-semibold text-foreground">
-                <p>{secret.key}</p>
-                <p className="text-xs text-muted-foreground">
-                  ID {secret.id.slice(0, 6)}
-                </p>
-              </TableHead>
+              {(() => {
+                const editing = editingRows[secret.id]
+                const error = rowErrors[secret.id]
+                return (
+                  <TableHead className="py-3 font-semibold text-foreground">
+                    {editing ? (
+                      <div className="space-y-1">
+                        <Input
+                          value={editing.key}
+                          onChange={(event) => onRowKeyChange(secret.id, event.target.value)}
+                          className="h-8 rounded-lg"
+                          placeholder="SECRET_KEY"
+                        />
+                        {error ? (
+                          <p className="text-xs text-rose-600">{error}</p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p>{secret.key}</p>
+                    )}
+                  </TableHead>
+                )
+              })()}
               <TableCell className="py-3">
-                <time dateTime={secret.updatedAt}>{formatDateTime(secret.updatedAt)}</time>
+                {editingRows[secret.id] ? (
+                  <Input
+                    value={editingRows[secret.id].value}
+                    onChange={(event) => onRowValueChange(secret.id, event.target.value)}
+                    className="h-8 rounded-lg"
+                    placeholder="New value"
+                  />
+                ) : (
+                  <>
+                    <span className="inline group-data-[show-values=true]:hidden">
+                      *******
+                    </span>
+                    <span className="hidden group-data-[show-values=true]:inline">
+                      {formatKeyPreview(secret.value)}
+                    </span>
+                  </>
+                )}
               </TableCell>
               <TableCell className="py-3">{secret.versionId?.slice(0, 6) ?? '—'}</TableCell>
               <TableCell className="py-3">
-                <span className="inline group-data-[show-values=true]:hidden">Hidden</span>
-                <span className="hidden group-data-[show-values=true]:inline">
-                  {formatKeyPreview(secret.value)}
-                </span>
+                <time dateTime={secret.updatedAt}>{formatDateTime(secret.updatedAt)}</time>
               </TableCell>
               <TableCell className="py-3 text-right">
                 <div className="flex flex-wrap justify-end gap-2 text-xs">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="outline"
                         onClick={() => onOpenCopy(secret)}
-                        className="h-7 gap-2 rounded-full px-3"
-                        disabled={!canCopy}
+                        className="h-8 w-8 rounded-full"
+                        disabled={!canCopy || !!editingRows[secret.id]}
+                        aria-label="Copy secret"
                       >
-                        <Copy className="h-3.5 w-3.5" />
-                        Copy
+                        <Copy className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>Copy this key to other environments</TooltipContent>
@@ -710,27 +983,45 @@ const SecretsTableBody = memo(
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="outline"
-                        onClick={() => onOpenUpdate(secret)}
-                        className="h-7 gap-2 rounded-full px-3"
+                        onClick={() => onStartEdit(secret)}
+                        className="h-8 w-8 rounded-full"
+                        disabled={!!editingRows[secret.id]}
+                        aria-label="Edit secret"
                       >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Update
+                        <Pencil className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Update secret value</TooltipContent>
+                    <TooltipContent>Edit secret key or value</TooltipContent>
                   </Tooltip>
+                  {editingRows[secret.id] ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => onCancelRow(secret.id)}
+                          className="h-8 w-8 rounded-full"
+                          aria-label="Cancel edits"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Cancel edits for this row</TooltipContent>
+                    </Tooltip>
+                  ) : null}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="outline"
                         onClick={() => onOpenRollback(secret)}
-                        className="h-7 gap-2 rounded-full px-3"
+                        className="h-8 w-8 rounded-full"
+                        disabled={!!editingRows[secret.id]}
+                        aria-label="Rollback secret"
                       >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        Rollback
+                        <RotateCcw className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>Restore previous value</TooltipContent>
@@ -738,13 +1029,14 @@ const SecretsTableBody = memo(
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="outline"
                         onClick={() => onOpenDelete(secret)}
-                        className="h-7 gap-2 rounded-full border-rose-200 bg-rose-50 px-3 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700"
+                        className="h-8 w-8 rounded-full border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700"
+                        disabled={!!editingRows[secret.id]}
+                        aria-label="Delete secret"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>Remove secret</TooltipContent>

@@ -1,7 +1,8 @@
 import type { ApiTokenDto, CreateTokenResponse } from '@secrets/shared'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { KeyRound, Trash2, X } from 'lucide-react'
 import { formatDateTime } from '../lib/format'
+import { useRegisterShortcut } from '../lib/shortcuts'
 import { SectionCard, SectionHeader } from './SectionCard'
 import { Button } from './ui/button'
 import {
@@ -35,6 +36,7 @@ export const TokensPanel = ({
   const [creating, setCreating] = useState(false)
   const [activeToken, setActiveToken] = useState<ApiTokenDto | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const nameInputRef = useRef<HTMLInputElement | null>(null)
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -64,6 +66,11 @@ export const TokensPanel = ({
     closeDeleteDialog()
   }
 
+  useRegisterShortcut('n', () => {
+    nameInputRef.current?.focus()
+    nameInputRef.current?.select()
+  })
+
   return (
     <SectionCard>
       <SectionHeader
@@ -72,6 +79,7 @@ export const TokensPanel = ({
         action={
           <form onSubmit={handleSubmit} className="flex items-center gap-2">
             <Input
+              ref={nameInputRef}
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="Token name"

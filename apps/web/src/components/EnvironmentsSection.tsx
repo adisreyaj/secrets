@@ -2,6 +2,7 @@ import type { EnvironmentDto } from '@secrets/shared'
 import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDateTime } from '../lib/format'
+import { useRegisterShortcut } from '../lib/shortcuts'
 import { SectionCard, SectionHeader } from './SectionCard'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -61,6 +62,8 @@ export const EnvironmentsSection = ({
       setCopyFromId('none')
     }
   }, [dialogOpen])
+
+  useRegisterShortcut('n', () => setDialogOpen(true))
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()

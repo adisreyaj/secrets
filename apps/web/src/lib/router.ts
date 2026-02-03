@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 export type RouteMatch =
   | { name: 'login' }
   | { name: 'projects' }
+  | { name: 'profile' }
   | { name: 'project'; projectId: string }
   | { name: 'environments'; projectId: string }
   | { name: 'environment'; projectId: string; environmentId: string }
@@ -21,6 +22,10 @@ const parseRoute = (hash: string): RouteMatch => {
 
   if (segments[0] === 'login') {
     return { name: 'login' }
+  }
+
+  if (segments[0] === 'profile') {
+    return { name: 'profile' }
   }
 
   if (segments[0] === 'projects') {

@@ -5,6 +5,7 @@ import { PageHeader } from '../components/PageHeader'
 import { Button } from '../components/ui/button'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { useRegisterShortcut } from '../lib/shortcuts'
 
 const getErrorMessage = (error: unknown) =>
   error instanceof ApiError ? error.message : 'Something went wrong.'
@@ -59,6 +60,11 @@ export const ProjectOverviewPage = ({
     () => projects.find((project) => project.id === projectId) ?? null,
     [projects, projectId],
   )
+
+  useRegisterShortcut('e', () => navigate(`/projects/${projectId}/environments`))
+  useRegisterShortcut('a', () => navigate(`/projects/${projectId}/audit`))
+  useRegisterShortcut('t', () => navigate(`/projects/${projectId}/tokens`))
+  useRegisterShortcut('b', () => navigate('/projects'))
 
   return (
     <section className="flex flex-col gap-6">

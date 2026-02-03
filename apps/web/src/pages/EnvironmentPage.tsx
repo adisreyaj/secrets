@@ -1,8 +1,9 @@
 import type { EnvironmentDto, ProjectDto, SecretDto } from '@secrets/shared'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, FileDown } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { SecretsTable } from '../components/SecretsTable'
+import { SectionCard } from '../components/SectionCard'
 import { Button } from '../components/ui/button'
 import {
   Dialog,
@@ -24,9 +25,18 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { useRegisterShortcut } from '../lib/shortcuts'
 
 const getErrorMessage = (error: unknown) =>
   error instanceof ApiError ? error.message : 'Something went wrong.'
+
+const toSlug = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
 
 export const EnvironmentPage = ({
   projectId,
@@ -223,9 +233,23 @@ export const EnvironmentPage = ({
     await loadSecrets(valuesLoaded)
   }
 
-  const handleUpdateSecret = async (secretId: string, value: string) => {
-    await api.updateSecret(secretId, { value })
+  const handleUpdateSecrets = async (
+    changes: { id: string; key?: string; value?: string }[],
+  ) => {
+    let keyUpdated = false
+    for (const change of changes) {
+      if (change.key !== undefined) {
+        keyUpdated = true
+      }
+      await api.updateSecret(change.id, {
+        key: change.key,
+        value: change.value,
+      })
+    }
     await loadSecrets(valuesLoaded)
+    if (keyUpdated) {
+      await loadSecretCoverage()
+    }
   }
 
   const handleRollbackSecret = async (secretId: string) => {
@@ -286,20 +310,56 @@ export const EnvironmentPage = ({
     }
   }
 
+  const handleExportEnv = async () => {
+    if (!selectedEnvironment) return
+    const content = await api.exportEnv(selectedEnvironment.id)
+    const projectSlug =
+      toSlug(selectedProject?.name ?? projectId.slice(0, 6)) ||
+      projectId.slice(0, 6)
+    const environmentSlug =
+      toSlug(selectedEnvironment.name) || selectedEnvironment.id.slice(0, 6)
+    const filename = `${projectSlug}-${environmentSlug}.env`
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  useRegisterShortcut('b', () =>
+    navigate(`/projects/${projectId}/environments`),
+  )
+  useRegisterShortcut('v', () => handleToggleValues(!valuesVisible))
+  useRegisterShortcut('d', () => handleExportEnv())
+  useRegisterShortcut('shift+n', () => setDialogOpen(true))
+
   return (
     <section className="flex flex-col gap-6">
       <PageHeader
-        title={selectedEnvironment?.name ?? 'Environment'}
+        title="Secrets"
         subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
         actions={
-          <Button
-            variant="outline"
-            className="border-border text-foreground hover:border-foreground/40 gap-2 rounded-full px-4 py-2 text-sm font-semibold"
-            onClick={() => navigate(`/projects/${projectId}/environments`)}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to environments
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              className="h-10 gap-2 rounded-full border-border bg-muted/40 px-4 text-sm font-semibold text-foreground hover:bg-muted"
+              onClick={handleExportEnv}
+              disabled={!selectedEnvironment}
+            >
+              <FileDown className="h-4 w-4" />
+              Download .env
+            </Button>
+            <Button
+              variant="outline"
+              className="border-border text-foreground hover:border-foreground/40 h-10 gap-2 rounded-full px-4 text-sm font-semibold transition"
+              onClick={() => navigate(`/projects/${projectId}/environments`)}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to environments
+            </Button>
+          </>
         }
       />
 
@@ -309,144 +369,147 @@ export const EnvironmentPage = ({
         </div>
       )}
 
-      <section className="flex flex-col gap-2">
-        <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-          Environments
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="min-w-0 flex-1">
-            {envLoading ? (
-              <div className="border-border bg-card/70 text-muted-foreground rounded-full border border-dashed px-4 py-2 text-sm">
-                Loading environments...
-              </div>
-            ) : environments.length === 0 ? (
-              <div className="border-border bg-card/70 text-muted-foreground rounded-full border border-dashed px-4 py-2 text-sm">
-                Create your first environment.
-              </div>
-            ) : (
-              <Tabs
-                value={environmentId}
-                onValueChange={(envId) =>
-                  navigate(`/projects/${projectId}/environments/${envId}`)
-                }
-                className="w-full"
-              >
-                <div className="overflow-x-auto pb-1">
-                  <TabsList className="w-max">
-                    {environments.map((env) => (
-                      <TabsTrigger
-                        key={env.id}
-                        value={env.id}
-                        className="gap-2"
-                      >
-                        <span className="font-semibold">{env.name}</span>
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
+      <section className="flex flex-col gap-0">
+        <SectionCard className="-mb-px rounded-b-none border-b-0 p-4">
+          <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+            Environments
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <div className="min-w-0 flex-1">
+              {envLoading ? (
+                <div className="border-border bg-card/70 text-muted-foreground rounded-full border border-dashed px-4 py-2 text-sm">
+                  Loading environments...
                 </div>
-              </Tabs>
-            )}
-          </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="border-border text-foreground hover:border-foreground/40 gap-2 rounded-full px-4 text-sm font-semibold"
-              >
-                New environment
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
-              <DialogHeader className="text-left">
-                <DialogTitle>Create environment</DialogTitle>
-                <DialogDescription>
-                  Spin up a new environment and optionally duplicate keys from
-                  an existing one.
-                </DialogDescription>
-              </DialogHeader>
-              <form
-                onSubmit={handleCreateEnvironmentSubmit}
-                className="grid gap-4"
-              >
-                <label className="grid gap-2 text-sm">
-                  <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                    Environment name
-                  </span>
-                  <Input
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="e.g. staging"
-                    className="bg-background h-11 rounded-2xl px-4"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm">
-                  <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                    Copy keys from
-                  </span>
-                  <Select
-                    value={copyFromId}
-                    onValueChange={setCopyFromId}
-                    disabled={environmentOptions.length === 0}
-                  >
-                    <SelectTrigger className="h-11 px-4">
-                      <SelectValue placeholder="Don't copy anything" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">
-                        Don&apos;t copy anything
-                      </SelectItem>
-                      {environmentOptions.map((env) => (
-                        <SelectItem key={env.id} value={env.id}>
-                          {env.name}
-                        </SelectItem>
+              ) : environments.length === 0 ? (
+                <div className="border-border bg-card/70 text-muted-foreground rounded-full border border-dashed px-4 py-2 text-sm">
+                  Create your first environment.
+                </div>
+              ) : (
+                <Tabs
+                  value={environmentId}
+                  onValueChange={(envId) =>
+                    navigate(`/projects/${projectId}/environments/${envId}`)
+                  }
+                  className="w-full"
+                >
+                  <div className="overflow-x-auto pb-1">
+                    <TabsList className="w-max">
+                      {environments.map((env) => (
+                        <TabsTrigger
+                          key={env.id}
+                          value={env.id}
+                          className="gap-2"
+                        >
+                          <span className="font-semibold">{env.name}</span>
+                        </TabsTrigger>
                       ))}
-                    </SelectContent>
-                  </Select>
-                  <span className="text-muted-foreground text-xs">
-                    Copies keys (and current values) into the new environment.
-                  </span>
-                </label>
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="rounded-full px-4 text-sm"
-                    onClick={() => setDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-6 text-sm font-semibold"
-                    disabled={creating || !name.trim()}
-                  >
-                    {creating ? 'Creating...' : 'Create environment'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </section>
+                    </TabsList>
+                  </div>
+                </Tabs>
+              )}
+            </div>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="border-border text-foreground hover:border-foreground/40 gap-2 rounded-full px-4 text-sm font-semibold"
+                >
+                  New environment
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
+                <DialogHeader className="text-left">
+                  <DialogTitle>Create environment</DialogTitle>
+                  <DialogDescription>
+                    Spin up a new environment and optionally duplicate keys from
+                    an existing one.
+                  </DialogDescription>
+                </DialogHeader>
+                <form
+                  onSubmit={handleCreateEnvironmentSubmit}
+                  className="grid gap-4"
+                >
+                  <label className="grid gap-2 text-sm">
+                    <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+                      Environment name
+                    </span>
+                    <Input
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      placeholder="e.g. staging"
+                      className="bg-background h-11 rounded-2xl px-4"
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm">
+                    <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+                      Copy keys from
+                    </span>
+                    <Select
+                      value={copyFromId}
+                      onValueChange={setCopyFromId}
+                      disabled={environmentOptions.length === 0}
+                    >
+                      <SelectTrigger className="h-11 px-4">
+                        <SelectValue placeholder="Don't copy anything" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">
+                          Don&apos;t copy anything
+                        </SelectItem>
+                        {environmentOptions.map((env) => (
+                          <SelectItem key={env.id} value={env.id}>
+                            {env.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-muted-foreground text-xs">
+                      Copies keys (and current values) into the new environment.
+                    </span>
+                  </label>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="rounded-full px-4 text-sm"
+                      onClick={() => setDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-6 text-sm font-semibold"
+                      disabled={creating || !name.trim()}
+                    >
+                      {creating ? 'Creating...' : 'Create environment'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </SectionCard>
 
-      <SecretsTable
-        secrets={secrets}
-        environments={environments}
-        environmentId={environmentId}
-        includeValues={valuesVisible}
-        loading={secretsLoading}
-        coverageLoading={coverageLoading}
-        error={secretsError}
-        missingKeys={missingKeys}
-        missingKeysByEnvironment={missingKeysByEnvironment}
-        onToggleValues={handleToggleValues}
-        onCreate={handleCreateSecret}
-        onUpdate={handleUpdateSecret}
-        onRollback={handleRollbackSecret}
-        onDelete={handleDeleteSecret}
-        onCopy={handleCopySecret}
-        onCopyMissing={handleCopyMissingSecrets}
-      />
+        <SecretsTable
+          secrets={secrets}
+          environments={environments}
+          environmentId={environmentId}
+          includeValues={valuesVisible}
+          loading={secretsLoading}
+          coverageLoading={coverageLoading}
+          error={secretsError}
+          missingKeys={missingKeys}
+          missingKeysByEnvironment={missingKeysByEnvironment}
+          onToggleValues={handleToggleValues}
+          onCreate={handleCreateSecret}
+          onUpdateMany={handleUpdateSecrets}
+          onRollback={handleRollbackSecret}
+          onDelete={handleDeleteSecret}
+          onCopy={handleCopySecret}
+          onCopyMissing={handleCopyMissingSecrets}
+          className="rounded-t-none border-t-0"
+        />
+      </section>
     </section>
   )
 }

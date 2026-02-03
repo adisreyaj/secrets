@@ -8,16 +8,21 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
 
 export const Header = ({
   user,
   onLogout,
+  onProfile,
+  onOpenShortcuts,
   showAccount = true,
 }: {
   user: UserDto | null
   onLogout: () => void
+  onProfile: () => void
+  onOpenShortcuts: () => void
   showAccount?: boolean
 }) => {
   const { theme, setTheme } = useTheme()
@@ -60,6 +65,15 @@ export const Header = ({
                   <DropdownMenuLabel className="tracking-normal text-popover-foreground normal-case">
                     {user.name ?? user.email}
                   </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={onProfile}>
+                    Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={onOpenShortcuts}>
+                    Keyboard shortcuts
+                    <DropdownMenuShortcut>?</DropdownMenuShortcut>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <div className="px-2 py-2">
                     <p className="mb-2 text-xs font-semibold text-muted-foreground">

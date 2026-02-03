@@ -320,6 +320,89 @@ export async function buildApp(): Promise<FastifyInstance> {
     reply.send({ user: auth.user });
   });
 
+  app.patch('/me', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    if (auth.viaToken) {
+      reply.code(403).send({ error: 'Token sessions cannot update profile' });
+      return;
+    }
+
+    const body = request.body as
+      | {
+          name?: string;
+          email?: string;
+          currentPassword?: string;
+          newPassword?: string;
+        }
+      | undefined;
+
+    const name = body?.name?.trim();
+    const newPassword = body?.newPassword?.trim();
+    const currentPassword = body?.currentPassword;
+
+    const wantsName = typeof body?.name !== 'undefined';
+    const wantsPassword = typeof body?.newPassword !== 'undefined';
+
+    if (typeof body?.email !== 'undefined') {
+      reply.code(400).send({ error: 'Email updates are not supported' });
+      return;
+    }
+
+    if (!wantsName && !wantsPassword) {
+      reply.code(400).send({ error: 'No changes provided' });
+      return;
+    }
+
+    if (wantsName && !name) {
+      reply.code(400).send({ error: 'Name is required' });
+      return;
+    }
+
+    if (wantsPassword && !newPassword) {
+      reply.code(400).send({ error: 'New password is required' });
+      return;
+    }
+
+    if (wantsPassword && !currentPassword) {
+      reply.code(400).send({ error: 'Current password is required' });
+      return;
+    }
+
+    if (wantsPassword) {
+      const userRecord = await prisma.user.findUnique({
+        where: { id: auth.user.id },
+      });
+      if (!userRecord) {
+        reply.code(404).send({ error: 'User not found' });
+        return;
+      }
+      const valid = await verifyPassword(currentPassword ?? '', userRecord.passwordHash);
+      if (!valid) {
+        reply.code(401).send({ error: 'Invalid credentials' });
+        return;
+      }
+    }
+
+    const data: { name?: string; passwordHash?: string } = {};
+    if (wantsName && name) {
+      data.name = name;
+    }
+    if (wantsPassword && newPassword) {
+      data.passwordHash = await hashPassword(newPassword);
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: auth.user.id },
+      data,
+    });
+
+    reply.send({ user: toUserDto(updated) });
+  });
+
   app.post('/projects', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
@@ -686,8 +769,20 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     const { id: secretId } = request.params as { id: string };
-    const body = request.body as { value?: string } | undefined;
-    if (body?.value === undefined) {
+    const body = request.body as { key?: string; value?: string } | undefined;
+    const nextKeyRaw = typeof body?.key === 'string' ? body?.key : undefined;
+    const nextValueRaw = typeof body?.value === 'string' ? body?.value : undefined;
+    const nextKey = nextKeyRaw?.trim();
+    const nextValue = nextValueRaw?.trim();
+    if (nextKeyRaw === undefined && nextValueRaw === undefined) {
+      reply.code(400).send({ error: 'Key or value is required' });
+      return;
+    }
+    if (nextKeyRaw !== undefined && !nextKey) {
+      reply.code(400).send({ error: 'Key is required' });
+      return;
+    }
+    if (nextValueRaw !== undefined && !nextValue) {
       reply.code(400).send({ error: 'Value is required' });
       return;
     }
@@ -711,30 +806,58 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
-    const payload = encryptSecret(body.value, masterKey);
-    const keyVersion = masterKeyVersion();
-
-    await prisma.$transaction([
-      prisma.secretVersion.updateMany({
-        where: { secretId },
-        data: { isActive: false },
-      }),
-      prisma.secretVersion.create({
-        data: {
-          secretId,
-          ciphertext: payload.ciphertext,
-          iv: payload.iv,
-          tag: payload.tag,
-          keyVersion,
-          createdBy: auth.user.id,
-          isActive: true,
+    const keyChanged = nextKey && nextKey !== secret.key;
+    if (keyChanged) {
+      const existing = await prisma.secret.findUnique({
+        where: {
+          environmentId_key: { environmentId: secret.environmentId, key: nextKey },
         },
-      }),
+      });
+      if (existing && existing.id !== secretId) {
+        reply.code(409).send({ error: 'Key already exists in this environment' });
+        return;
+      }
+    }
+
+    const updateData: { key?: string; updatedAt: Date; deletedAt: null } = {
+      updatedAt: new Date(),
+      deletedAt: null,
+    };
+    if (keyChanged && nextKey) {
+      updateData.key = nextKey;
+    }
+
+    const transactionOps = [];
+    const valueChanged = nextValueRaw !== undefined;
+    if (valueChanged && nextValue) {
+      const payload = encryptSecret(nextValue, masterKey);
+      const keyVersion = masterKeyVersion();
+      transactionOps.push(
+        prisma.secretVersion.updateMany({
+          where: { secretId },
+          data: { isActive: false },
+        }),
+        prisma.secretVersion.create({
+          data: {
+            secretId,
+            ciphertext: payload.ciphertext,
+            iv: payload.iv,
+            tag: payload.tag,
+            keyVersion,
+            createdBy: auth.user.id,
+            isActive: true,
+          },
+        }),
+      );
+    }
+    transactionOps.push(
       prisma.secret.update({
         where: { id: secretId },
-        data: { updatedAt: new Date(), deletedAt: null },
+        data: updateData,
       }),
-    ]);
+    );
+
+    await prisma.$transaction(transactionOps);
 
     await logAudit({
       projectId: secret.environment.projectId,
@@ -742,6 +865,11 @@ export async function buildApp(): Promise<FastifyInstance> {
       action: 'secret.update',
       resourceType: 'secret',
       resourceId: secretId,
+      metadataJson: {
+        previousKey: secret.key,
+        updatedKey: keyChanged ? nextKey : secret.key,
+        updatedValue: valueChanged,
+      },
     });
 
     reply.send({ ok: true });

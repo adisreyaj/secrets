@@ -10,6 +10,11 @@ interface AuthContextValue {
   login: (payload: { email: string; password: string }) => Promise<void>
   register: (payload: { email: string; password: string; name?: string }) => Promise<void>
   logout: () => Promise<void>
+  updateProfile: (payload: {
+    name?: string
+    currentPassword?: string
+    newPassword?: string
+  }) => Promise<void>
   refresh: () => Promise<void>
 }
 
@@ -82,8 +87,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
+  const updateProfile = async (payload: {
+    name?: string
+    currentPassword?: string
+    newPassword?: string
+  }) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await api.updateMe(payload)
+      setUser(data.user)
+    } catch (err) {
+      setError(getErrorMessage(err))
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const value = useMemo(
-    () => ({ user, loading, error, login, register, logout, refresh }),
+    () => ({ user, loading, error, login, register, logout, updateProfile, refresh }),
     [user, loading, error],
   )
 

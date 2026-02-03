@@ -1,11 +1,24 @@
 import type { ProjectDto } from '@secrets/shared'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { formatShortDate } from '../lib/format'
+import { useRegisterShortcut } from '../lib/shortcuts'
 import { SectionCard, SectionHeader } from './SectionCard'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from './ui/dialog'
 import { Input } from './ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+
+export type ProjectTemplate = 'starter' | 'full' | 'empty'
 
 export const ProjectsSection = ({
   projects,
@@ -20,18 +33,39 @@ export const ProjectsSection = ({
   loading: boolean
   error: string | null
   onSelect: (projectId: string) => void
-  onCreate: (name: string) => Promise<void>
+  onCreate: (payload: { name: string; template: ProjectTemplate }) => Promise<void>
 }) => {
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [template, setTemplate] = useState<ProjectTemplate>('starter')
+
+  const templates = useMemo(
+    () => [
+      { id: 'starter', label: 'Starter (Dev + Prod)' },
+      { id: 'full', label: 'Full stack (Dev + Staging + Prod)' },
+      { id: 'empty', label: 'Empty project' },
+    ],
+    [],
+  )
+
+  useEffect(() => {
+    if (!dialogOpen) {
+      setName('')
+      setTemplate('starter')
+    }
+  }, [dialogOpen])
+
+  useRegisterShortcut('n', () => setDialogOpen(true))
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!name.trim() || creating) return
+    const trimmedName = name.trim()
+    if (!trimmedName || creating) return
     setCreating(true)
     try {
-      await onCreate(name.trim())
-      setName('')
+      await onCreate({ name: trimmedName, template })
+      setDialogOpen(false)
     } finally {
       setCreating(false)
     }
@@ -43,22 +77,75 @@ export const ProjectsSection = ({
         kicker="Projects"
         title="Your active workspaces"
         action={
-          <form onSubmit={handleSubmit} className="flex items-center gap-2">
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="New project name"
-              className="w-[220px] rounded-full bg-background"
-            />
-            <Button
-              type="submit"
-              variant="outline"
-              className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
-            >
-              <Plus className="h-4 w-4" />
-              {creating ? 'Creating...' : 'New project'}
-            </Button>
-          </form>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+              >
+                <Plus className="h-4 w-4" />
+                New project
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="rounded-3xl border-border/70 bg-popover text-popover-foreground">
+              <DialogHeader className="text-left">
+                <DialogTitle>Create project</DialogTitle>
+                <DialogDescription>
+                  Give your workspace a name and pick a starting environment layout.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="grid gap-4">
+                <label className="grid gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Project name
+                  </span>
+                  <Input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="e.g. Signalflow"
+                    className="h-11 rounded-2xl bg-background px-4"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Environment template
+                  </span>
+                  <Select value={template} onValueChange={(value) => setTemplate(value as ProjectTemplate)}>
+                    <SelectTrigger className="h-11 px-4">
+                      <SelectValue placeholder="Select a template" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-xs text-muted-foreground">
+                    We&apos;ll pre-create the environments you pick so you can start immediately.
+                  </span>
+                </label>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="rounded-full px-4 text-sm"
+                    onClick={() => setDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
+                    disabled={creating || !name.trim()}
+                  >
+                    {creating ? 'Creating...' : 'Create project'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         }
       />
       {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}

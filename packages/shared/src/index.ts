@@ -54,6 +54,12 @@ export interface AuthResponse {
   user: UserDto;
 }
 
+export interface UpdateMeRequest {
+  name?: string;
+  currentPassword?: string;
+  newPassword?: string;
+}
+
 export interface RegisterRequest {
   email: string;
   password: string;
@@ -80,7 +86,8 @@ export interface CreateSecretRequest {
 }
 
 export interface UpdateSecretRequest {
-  value: string;
+  key?: string;
+  value?: string;
 }
 
 export interface RollbackSecretRequest {

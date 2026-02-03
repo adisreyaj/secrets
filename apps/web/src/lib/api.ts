@@ -16,6 +16,7 @@ import type {
   ProjectDto,
   RegisterRequest,
   SecretDto,
+  UpdateMeRequest,
   UpdateSecretRequest,
 } from '@secrets/shared'
 
@@ -80,6 +81,11 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   logout: () => apiFetch<{ ok: true }>('/auth/logout', { method: 'POST' }),
+  updateMe: (payload: UpdateMeRequest) =>
+    apiFetch<AuthResponse>('/me', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
 
   listProjects: () => apiFetch<ProjectDto[]>('/projects'),
   createProject: (payload: CreateProjectRequest) =>

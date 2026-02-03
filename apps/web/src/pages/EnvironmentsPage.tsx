@@ -6,6 +6,7 @@ import { PageHeader } from '../components/PageHeader'
 import { Button } from '../components/ui/button'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { useRegisterShortcut } from '../lib/shortcuts'
 
 const getErrorMessage = (error: unknown) =>
   error instanceof ApiError ? error.message : 'Something went wrong.'
@@ -65,6 +66,8 @@ export const EnvironmentsPage = ({
     () => projects.find((project) => project.id === projectId) ?? null,
     [projects, projectId],
   )
+
+  useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
 
   const handleCreateEnvironment = async (payload: {
     name: string
