@@ -104,7 +104,7 @@ export const TokensPanel = ({
                 <ShortcutHint keys="n" />
               </Button>
             </DialogTrigger>
-            <DialogContent className="rounded-3xl border-white/70 bg-white/95">
+            <DialogContent className="rounded-3xl border-border/70 bg-popover text-popover-foreground">
               <DialogHeader className="text-left">
                 <DialogTitle>Create API token</DialogTitle>
                 <DialogDescription>
@@ -113,7 +113,7 @@ export const TokensPanel = ({
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4">
                 <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     Token name
                   </span>
                   <Input
@@ -121,10 +121,11 @@ export const TokensPanel = ({
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="e.g. CI deploy"
-                    className="h-11 rounded-2xl bg-white px-4"
+                    autoComplete="off"
+                    className="h-11 rounded-2xl bg-background px-4"
                   />
                 </label>
-                <label className="flex items-center gap-3 text-sm text-slate-600">
+                <label className="flex items-center gap-3 text-sm text-muted-foreground">
                   <Checkbox
                     checked={readOnly}
                     onCheckedChange={(checked) => setReadOnly(Boolean(checked))}
@@ -142,7 +143,7 @@ export const TokensPanel = ({
                   </Button>
                   <Button
                     type="submit"
-                    className="rounded-full bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
+                    className="rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
                     disabled={creating || !name.trim()}
                   >
                     {creating ? 'Creating...' : 'Create token'}

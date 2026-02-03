@@ -12,7 +12,7 @@ export const LoginPage = ({ navigate }: { navigate: (path: string) => void }) =>
   }, [user, navigate])
 
   return (
-    <section className="flex flex-col items-center gap-6">
+    <section className="flex flex-1 flex-col items-center justify-center gap-6">
       <AuthPanel
         loading={loading}
         error={error}

@@ -128,16 +128,18 @@ const AppShell = () => {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="bg-background text-foreground min-h-screen">
+      <div className="bg-background text-foreground min-h-screen flex flex-col">
         <div className="relative overflow-hidden">
           <div className="absolute inset-0" aria-hidden="true" />
-          <Header
-            user={user}
-            onLogout={logout}
-            onProfile={() => navigate('/profile')}
-            onOpenShortcuts={() => setShortcutsOpen(true)}
-            showAccount={match.name !== 'login'}
-          />
+          {match.name !== 'login' ? (
+            <Header
+              user={user}
+              onLogout={logout}
+              onProfile={() => navigate('/profile')}
+              onOpenShortcuts={() => setShortcutsOpen(true)}
+              showAccount
+            />
+          ) : null}
         </div>
 
         <div
@@ -148,7 +150,7 @@ const AppShell = () => {
           className="bg-blob-right/50 pointer-events-none absolute top-10 right-0 z-0 h-72 w-72 rounded-full blur-3xl"
           aria-hidden="true"
         />
-        <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 pb-16">
+        <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 pb-16">
           {match.name === 'login' ? (
             <LoginPage navigate={navigate} />
           ) : match.name === 'profile' ? (

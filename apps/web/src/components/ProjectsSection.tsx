@@ -168,7 +168,7 @@ export const ProjectsSection = ({
                 <Button
                   onClick={() => onSelect(project.id)}
                   variant="ghost"
-                  className={`h-auto w-full flex-col items-start justify-start gap-3 rounded-2xl border p-4 text-left transition hover:-translate-y-1 hover:shadow-lg whitespace-normal ${
+                  className={`h-auto w-full flex-col items-start justify-start gap-3 rounded-2xl border p-4 text-left transition-transform hover:-translate-y-1 hover:shadow-lg motion-reduce:transform-none motion-reduce:hover:transform-none whitespace-normal ${
                     isSelected
                       ? 'border-foreground bg-foreground text-background hover:bg-foreground'
                       : 'border-border bg-card text-card-foreground hover:bg-card'
@@ -199,7 +199,7 @@ export const ProjectsSection = ({
                   <h3 className="mt-3 text-lg font-semibold">{project.name}</h3>
                   <p
                     className={`mt-2 text-xs ${
-                      isSelected ? 'text-background/70' : 'text-muted-foreground'
+                      isSelected ? 'text-background/70' : 'text-foreground/70'
                     }`}
                   >
                     Project ID: {project.id.slice(0, 6)}

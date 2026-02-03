@@ -28,6 +28,7 @@ export const Header = ({
 }) => {
   const { theme, setTheme } = useTheme()
   const { enabled: hintsEnabled, setEnabled: setHintsEnabled } = useShortcutHints()
+  const isCentered = !showAccount
 
   const themeOptions = [
     { value: 'light', label: 'Light', icon: Sun },
@@ -37,8 +38,8 @@ export const Header = ({
 
   return (
     <header className="relative mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 pt-10 pb-12">
-      <nav className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <nav className={`flex items-center ${isCentered ? 'justify-center' : 'justify-between'}`}>
+        <div className={`flex items-center gap-3 ${isCentered ? 'text-center' : ''}`}>
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-foreground text-background">
             SM
           </div>
@@ -47,7 +48,9 @@ export const Header = ({
             <p className="text-xs text-muted-foreground">Single-tenant vault</p>
           </div>
         </div>
-        <div className="hidden items-center gap-6 text-sm text-muted-foreground md:flex" />
+        {isCentered ? null : (
+          <div className="hidden items-center gap-6 text-sm text-muted-foreground md:flex" />
+        )}
         {showAccount ? (
           <div className="flex items-center gap-3">
             {user ? (

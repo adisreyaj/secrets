@@ -976,7 +976,7 @@ const SecretRow = memo(
     const isEditing = !!editingRow
     return (
       <TableRow className="text-sm text-muted-foreground">
-        <TableHead className="py-3 font-semibold text-foreground">
+        <TableHead className="py-3 font-semibold text-foreground" scope="row">
           {isEditing ? (
             <div className="space-y-1">
               <Input

@@ -33,7 +33,7 @@ export const AuditLog = ({
               <p className="text-sm font-semibold text-foreground">
                 {audit.action} · {audit.resourceType}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-foreground/70">
                 {audit.resourceId?.slice(0, 6) ?? '—'} ·{' '}
                 <time dateTime={audit.createdAt}>{formatDateTime(audit.createdAt)}</time>
               </p>
