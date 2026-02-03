@@ -1,0 +1,34 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --cream: #f8f4ef;
+    --ink: #1f2937;
+  }
+
+  body {
+    @apply antialiased;
+    background: var(--cream);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: "Fraunces", "Times New Roman", serif;
+  }
+
+  .bg-cream {
+    background: var(--cream);
+  }
+
+  .bg-hero {
+    background: radial-gradient(circle at top left, #ffffff 0%, #f8f4ef 38%, #f1ece4 100%);
+  }
+
+  .shadow-soft {
+    box-shadow: 0 20px 50px -35px rgba(15, 23, 42, 0.5);
+  }
+}

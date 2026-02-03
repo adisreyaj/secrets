@@ -1,0 +1,7 @@
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/.angular
+**/.cache
+**/.turbo
