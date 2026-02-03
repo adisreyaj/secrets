@@ -25,6 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from './ui/table'
+import { Tabs, TabsList, TabsTrigger } from './ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export const SecretsTable = ({
@@ -74,6 +75,10 @@ export const SecretsTable = ({
   className?: string
 }) => {
   const [form, setForm] = useState({ key: '', value: '' })
+  const [pasteLine, setPasteLine] = useState('')
+  const [pasteError, setPasteError] = useState<string | null>(null)
+  const [pasteHint, setPasteHint] = useState<string | null>(null)
+  const [addMode, setAddMode] = useState<'fields' | 'paste'>('fields')
   const [creating, setCreating] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [activeSecret, setActiveSecret] = useState<SecretDto | null>(null)
@@ -220,15 +225,70 @@ export const SecretsTable = ({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!form.key.trim() || !form.value.trim() || creating) return
+    if (
+      !form.key.trim() ||
+      !form.value.trim() ||
+      creating ||
+      (addMode === 'paste' && (!pasteLine.trim() || pasteError))
+    )
+      return
     setCreating(true)
     try {
       await onCreate({ key: form.key.trim(), value: form.value.trim() })
       setForm({ key: '', value: '' })
+      setPasteLine('')
+      setPasteError(null)
+      setPasteHint(null)
+      setAddMode('fields')
       setAddDialogOpen(false)
     } finally {
       setCreating(false)
     }
+  }
+
+  const parsePasteLine = (raw: string) => {
+    const trimmed = raw.trim()
+    if (!trimmed) {
+      return { key: '', value: '', error: null }
+    }
+
+    const lines = trimmed.split(/\r?\n/).filter((line) => line.trim().length > 0)
+    if (lines.length === 0) {
+      return { key: '', value: '', error: null }
+    }
+
+    let line = lines[0].trim()
+    const hint = lines.length > 1 ? 'Only the first line was used.' : null
+
+    if (line.startsWith('export ')) {
+      line = line.slice('export '.length).trim()
+    }
+
+    const equalsIndex = line.indexOf('=')
+    if (equalsIndex === -1) {
+      return { key: '', value: '', error: 'Use the format KEY=VALUE.' }
+    }
+
+    const key = line.slice(0, equalsIndex).trim()
+    let value = line.slice(equalsIndex + 1).trim()
+    if (!key || !value) {
+      return { key: '', value: '', error: 'Both key and value are required.' }
+    }
+
+    const firstChar = value[0]
+    const lastChar = value[value.length - 1]
+    if (
+      (firstChar === '"' && lastChar === '"') ||
+      (firstChar === "'" && lastChar === "'")
+    ) {
+      value = value.slice(1, -1)
+    }
+
+    if (!value.trim()) {
+      return { key: '', value: '', error: 'Both key and value are required.' }
+    }
+
+    return { key, value, error: null, hint }
   }
 
   const closeDialog = () => {
@@ -447,32 +507,102 @@ export const SecretsTable = ({
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4">
-                <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Secret key
-                  </span>
-                  <Input
-                    value={form.key}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, key: event.target.value }))
+                <Tabs
+                  value={addMode}
+                  onValueChange={(next) => {
+                    if (next === 'fields' || next === 'paste') {
+                      setAddMode(next)
+                      if (next === 'fields') {
+                        setPasteError(null)
+                        setPasteHint(null)
+                      }
                     }
-                    placeholder="SECRET_KEY"
-                    className="h-11 rounded-2xl bg-white px-4"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Secret value
-                  </span>
-                  <Input
-                    value={form.value}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, value: event.target.value }))
-                    }
-                    placeholder="secret-value"
-                    className="h-11 rounded-2xl bg-white px-4"
-                  />
-                </label>
+                  }}
+                  className="w-full"
+                >
+                  <TabsList className="w-max">
+                    <TabsTrigger value="fields" className="gap-2">
+                      Separate fields
+                    </TabsTrigger>
+                    <TabsTrigger value="paste" className="gap-2">
+                      Paste key=value
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+
+                {addMode === 'paste' ? (
+                  <label className="grid gap-2 text-sm">
+                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                      Paste key=value
+                    </span>
+                    <Input
+                      value={pasteLine}
+                      onChange={(event) => {
+                        const next = event.target.value
+                        setPasteLine(next)
+                        if (!next.trim()) {
+                          setPasteError(null)
+                          setPasteHint(null)
+                          return
+                        }
+                        const parsed = parsePasteLine(next)
+                        setPasteError(parsed.error ?? null)
+                        setPasteHint(parsed.hint ?? null)
+                        if (!parsed.error && parsed.key && parsed.value) {
+                          setForm({ key: parsed.key, value: parsed.value })
+                        }
+                      }}
+                      placeholder="SECRET_KEY=secret-value"
+                      className="h-11 rounded-2xl bg-white px-4"
+                    />
+                    {pasteError ? (
+                      <span className="text-xs text-rose-600">{pasteError}</span>
+                    ) : null}
+                    {!pasteError && pasteHint ? (
+                      <span className="text-xs text-muted-foreground">
+                        {pasteHint}
+                      </span>
+                    ) : null}
+                    <span className="text-xs text-muted-foreground">
+                      Switch to separate fields to edit key or value.
+                    </span>
+                  </label>
+                ) : (
+                  <>
+                    <label className="grid gap-2 text-sm">
+                      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Secret key
+                      </span>
+                      <Input
+                        value={form.key}
+                        onChange={(event) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            key: event.target.value,
+                          }))
+                        }
+                        placeholder="SECRET_KEY"
+                        className="h-11 rounded-2xl bg-white px-4"
+                      />
+                    </label>
+                    <label className="grid gap-2 text-sm">
+                      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Secret value
+                      </span>
+                      <Input
+                        value={form.value}
+                        onChange={(event) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            value: event.target.value,
+                          }))
+                        }
+                        placeholder="secret-value"
+                        className="h-11 rounded-2xl bg-white px-4"
+                      />
+                    </label>
+                  </>
+                )}
                 <DialogFooter>
                   <Button
                     type="button"
@@ -485,7 +615,12 @@ export const SecretsTable = ({
                   <Button
                     type="submit"
                     className="rounded-full bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
-                    disabled={creating || !form.key.trim() || !form.value.trim()}
+                    disabled={
+                      creating ||
+                      !form.key.trim() ||
+                      !form.value.trim() ||
+                      (addMode === 'paste' && (!pasteLine.trim() || !!pasteError))
+                    }
                   >
                     {creating ? 'Saving...' : 'Add secret'}
                   </Button>
