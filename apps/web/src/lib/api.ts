@@ -31,10 +31,22 @@ export class ApiError extends Error {
   }
 }
 
+const getCookie = (name: string) => {
+  if (typeof document === 'undefined') {
+    return undefined
+  }
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`))
+  return match ? decodeURIComponent(match[1]) : undefined
+}
+
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers)
   if (!headers.has('Content-Type') && options.body) {
     headers.set('Content-Type', 'application/json')
+  }
+  const csrfToken = getCookie('sm_csrf')
+  if (csrfToken && !headers.has('X-CSRF-Token')) {
+    headers.set('X-CSRF-Token', csrfToken)
   }
 
   const response = await fetch(`${API_BASE}${path}`, {

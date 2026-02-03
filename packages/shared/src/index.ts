@@ -51,6 +51,7 @@ export interface ApiTokenDto {
   readOnly?: boolean;
   createdAt: string;
   lastUsedAt?: string | null;
+  expiresAt?: string | null;
 }
 
 export interface AuthResponse {

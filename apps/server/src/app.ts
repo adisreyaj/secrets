@@ -1,5 +1,6 @@
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { Prisma, Role } from '@prisma/client';
 import Fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -11,6 +12,7 @@ import './types.js';
 import type { AuthContext } from './types.js';
 
 const SESSION_COOKIE_NAME = 'sm_session';
+const CSRF_COOKIE_NAME = 'sm_csrf';
 
 const ROLE_RANK: Record<Role, number> = {
   ADMIN: 3,
@@ -184,6 +186,15 @@ export async function buildApp(): Promise<FastifyInstance> {
   const masterKey = loadMasterKey();
 
   await app.register(cookie);
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    referrerPolicy: { policy: 'no-referrer' },
+  });
   await app.register(cors, {
     origin: config.appOrigin,
     credentials: true,
@@ -217,7 +228,10 @@ export async function buildApp(): Promise<FastifyInstance> {
       if (raw) {
         const tokenHash = hashToken(raw);
         const token = await prisma.apiToken.findFirst({
-          where: { tokenHash },
+          where: {
+            tokenHash,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+          },
           include: { creator: true },
         });
         if (token) {
@@ -248,6 +262,18 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   app.addHook('preHandler', async (request, reply) => {
+    const sessionToken = request.cookies[SESSION_COOKIE_NAME];
+    if (sessionToken && !request.cookies[CSRF_COOKIE_NAME]) {
+      const csrfToken = generateToken();
+      reply.setCookie(CSRF_COOKIE_NAME, csrfToken, {
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: config.cookieSecure,
+        path: '/',
+        maxAge: config.sessionTtlHours * 60 * 60,
+      });
+    }
+
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
       return;
     }
@@ -260,6 +286,14 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
+    if (sessionToken) {
+      const csrfCookie = request.cookies[CSRF_COOKIE_NAME];
+      const csrfHeader = request.headers['x-csrf-token'];
+      if (!csrfCookie || !csrfHeader || csrfHeader !== csrfCookie) {
+        return reply.code(403).send({ error: 'Invalid CSRF token' });
+      }
+    }
+
     const origin = request.headers.origin;
     if (!origin || origin !== config.appOrigin) {
       return reply.code(403).send({ error: 'Invalid origin' });
@@ -268,7 +302,10 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   app.get('/health', async () => ({ ok: true }));
 
-  app.post('/auth/register', async (request, reply) => {
+  app.post(
+    '/auth/register',
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    async (request, reply) => {
     const body = request.body as { email?: string; password?: string; name?: string } | undefined;
     if (!body?.email || !body?.password) {
       reply.code(400).send({ error: 'Email and password are required' });
@@ -295,6 +332,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       },
     });
 
+    const csrfToken = generateToken();
     reply.setCookie(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       sameSite: 'lax',
@@ -302,9 +340,17 @@ export async function buildApp(): Promise<FastifyInstance> {
       path: '/',
       maxAge: config.sessionTtlHours * 60 * 60,
     });
+    reply.setCookie(CSRF_COOKIE_NAME, csrfToken, {
+      httpOnly: false,
+      sameSite: 'lax',
+      secure: config.cookieSecure,
+      path: '/',
+      maxAge: config.sessionTtlHours * 60 * 60,
+    });
 
-    reply.code(201).send({ user: toUserDto(user) });
-  });
+      reply.code(201).send({ user: toUserDto(user) });
+    },
+  );
 
   app.post(
     '/auth/login',
@@ -337,8 +383,16 @@ export async function buildApp(): Promise<FastifyInstance> {
         },
       });
 
+      const csrfToken = generateToken();
       reply.setCookie(SESSION_COOKIE_NAME, token, {
         httpOnly: true,
+        sameSite: 'lax',
+        secure: config.cookieSecure,
+        path: '/',
+        maxAge: config.sessionTtlHours * 60 * 60,
+      });
+      reply.setCookie(CSRF_COOKIE_NAME, csrfToken, {
+        httpOnly: false,
         sameSite: 'lax',
         secure: config.cookieSecure,
         path: '/',
@@ -357,6 +411,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
     }
     reply.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
+    reply.clearCookie(CSRF_COOKIE_NAME, { path: '/' });
     reply.send({ ok: true });
   });
 
@@ -1441,6 +1496,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     const raw = generateToken();
+    const expiresAt =
+      config.apiTokenTtlDays > 0
+        ? new Date(Date.now() + config.apiTokenTtlDays * 24 * 60 * 60 * 1000)
+        : null;
     const token = await prisma.apiToken.create({
       data: {
         projectId,
@@ -1448,6 +1507,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         tokenHash: hashToken(raw),
         createdBy: auth.user.id,
         readOnly: body.readOnly === true,
+        expiresAt,
       },
     });
 
@@ -1468,6 +1528,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         readOnly: token.readOnly,
         createdAt: token.createdAt.toISOString(),
         lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+        expiresAt: token.expiresAt?.toISOString() ?? null,
       },
     });
   });
@@ -1497,6 +1558,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         readOnly: token.readOnly,
         createdAt: token.createdAt.toISOString(),
         lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+        expiresAt: token.expiresAt?.toISOString() ?? null,
       })),
     );
   });

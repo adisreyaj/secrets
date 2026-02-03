@@ -212,9 +212,9 @@ export const TokensPanel = ({
                 </span>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="destructive"
                   onClick={() => openDeleteDialog(token)}
-                  className="h-7 gap-2 rounded-full border-rose-200 bg-rose-50 px-3 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700"
+                  className="h-7"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Delete
