@@ -1,0 +1,18 @@
+{
+  "name": "secrets-manager",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:server": "pnpm -C apps/server dev",
+    "dev:web": "pnpm -C apps/web dev",
+    "build:server": "pnpm -C apps/server build",
+    "build:web": "pnpm -C apps/web build",
+    "test:server": "pnpm -C apps/server test",
+    "prisma:generate": "pnpm -C apps/server prisma:generate",
+    "prisma:migrate": "pnpm -C apps/server prisma:migrate"
+  }
+}
