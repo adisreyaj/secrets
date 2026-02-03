@@ -43,7 +43,7 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
 }
 
 const ShortcutList = ({ items }: { items: ShortcutItem[] }) => (
-  <div className="space-y-2">
+  <div className="grid gap-2 sm:grid-cols-2">
     {items.map((item) => (
       <div
         key={`${item.keys}-${item.label}`}

@@ -6,6 +6,7 @@ import { useAuth } from './lib/auth'
 import { useHashRouter } from './lib/router'
 import {
   ShortcutsProvider,
+  ShortcutHintsProvider,
   getLastEnvironmentId,
   getLastProjectId,
   setLastEnvironmentId,
@@ -186,7 +187,9 @@ const AppShell = () => {
 export default function App() {
   return (
     <ShortcutsProvider>
-      <AppShell />
+      <ShortcutHintsProvider>
+        <AppShell />
+      </ShortcutHintsProvider>
     </ShortcutsProvider>
   )
 }

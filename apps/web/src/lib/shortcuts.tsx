@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 type ShortcutHandler = () => void
 
@@ -30,7 +30,15 @@ type ShortcutsContextValue = {
 
 const ShortcutsContext = createContext<ShortcutsContextValue | null>(null)
 
+type ShortcutHintsContextValue = {
+  enabled: boolean
+  setEnabled: (next: boolean) => void
+}
+
+const ShortcutHintsContext = createContext<ShortcutHintsContextValue | null>(null)
+
 const LAST_PROJECT_KEY = 'secrets:lastProjectId'
+const SHORTCUT_HINTS_KEY = 'secrets:showShortcutHints'
 const lastEnvironmentKey = (projectId: string) =>
   `secrets:lastEnvironmentId:${projectId}`
 
@@ -159,6 +167,49 @@ export const ShortcutsProvider = ({ children }: { children: ReactNode }) => {
   const value = useMemo<ShortcutsContextValue>(() => ({ register }), [register])
 
   return <ShortcutsContext.Provider value={value}>{children}</ShortcutsContext.Provider>
+}
+
+export const getShortcutHintsEnabled = () => {
+  try {
+    const value = window.localStorage.getItem(SHORTCUT_HINTS_KEY)
+    if (value === null) return true
+    return value === 'true'
+  } catch {
+    return true
+  }
+}
+
+export const setShortcutHintsEnabled = (value: boolean) => {
+  try {
+    window.localStorage.setItem(SHORTCUT_HINTS_KEY, String(value))
+  } catch {
+    // no-op
+  }
+}
+
+export const ShortcutHintsProvider = ({ children }: { children: ReactNode }) => {
+  const [enabled, setEnabledState] = useState(getShortcutHintsEnabled)
+
+  const setEnabled = useCallback((next: boolean) => {
+    setEnabledState(next)
+    setShortcutHintsEnabled(next)
+  }, [])
+
+  const value = useMemo(() => ({ enabled, setEnabled }), [enabled, setEnabled])
+
+  return (
+    <ShortcutHintsContext.Provider value={value}>
+      {children}
+    </ShortcutHintsContext.Provider>
+  )
+}
+
+export const useShortcutHints = () => {
+  const context = useContext(ShortcutHintsContext)
+  if (!context) {
+    return { enabled: true, setEnabled: () => {} }
+  }
+  return context
 }
 
 export const useRegisterShortcut = (

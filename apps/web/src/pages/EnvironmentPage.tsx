@@ -594,9 +594,6 @@ export const EnvironmentPage = ({
                 </DialogHeader>
                 <div className="grid gap-4">
                   <div className="grid gap-2 text-sm">
-                    <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                      Import source
-                    </span>
                     <Textarea
                       value={importText}
                       onChange={(event) => {

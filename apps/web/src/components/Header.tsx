@@ -11,6 +11,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
+import { useShortcutHints } from '../lib/shortcuts'
 
 export const Header = ({
   user,
@@ -26,6 +27,7 @@ export const Header = ({
   showAccount?: boolean
 }) => {
   const { theme, setTheme } = useTheme()
+  const { enabled: hintsEnabled, setEnabled: setHintsEnabled } = useShortcutHints()
 
   const themeOptions = [
     { value: 'light', label: 'Light', icon: Sun },
@@ -72,7 +74,12 @@ export const Header = ({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={onOpenShortcuts}>
                     Keyboard shortcuts
-                    <DropdownMenuShortcut>?</DropdownMenuShortcut>
+                    <DropdownMenuShortcut className="ml-auto rounded-md border border-foreground/20 bg-gradient-to-b from-background via-muted/60 to-muted px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.08em] text-foreground/80 shadow-[0_1px_0_0_rgba(0,0,0,0.18),0_3px_0_0_rgba(0,0,0,0.08)] opacity-100">
+                      ?
+                    </DropdownMenuShortcut>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setHintsEnabled(!hintsEnabled)}>
+                    {hintsEnabled ? 'Hide keyboard hints' : 'Show keyboard hints'}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <div className="px-2 py-2">
