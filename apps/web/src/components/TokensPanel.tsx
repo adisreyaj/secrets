@@ -1,5 +1,5 @@
 import type { ApiTokenDto, CreateTokenResponse } from '@secrets/shared'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { KeyRound, Trash2, X } from 'lucide-react'
 import { formatDateTime } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
@@ -12,7 +12,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from './ui/dialog'
+import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 
 export const TokensPanel = ({
@@ -35,9 +37,22 @@ export const TokensPanel = ({
   const [name, setName] = useState('')
   const [readOnly, setReadOnly] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const [activeToken, setActiveToken] = useState<ApiTokenDto | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const nameInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (createOpen) {
+      const timeout = window.setTimeout(() => {
+        nameInputRef.current?.focus()
+        nameInputRef.current?.select()
+      }, 0)
+      return () => window.clearTimeout(timeout)
+    }
+    setName('')
+    setReadOnly(true)
+  }, [createOpen])
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -45,7 +60,7 @@ export const TokensPanel = ({
     setCreating(true)
     try {
       await onCreate(name.trim(), readOnly)
-      setName('')
+      setCreateOpen(false)
     } finally {
       setCreating(false)
     }
@@ -68,8 +83,7 @@ export const TokensPanel = ({
   }
 
   useRegisterShortcut('n', () => {
-    nameInputRef.current?.focus()
-    nameInputRef.current?.select()
+    setCreateOpen(true)
   })
 
   return (
@@ -78,32 +92,63 @@ export const TokensPanel = ({
         kicker="API tokens"
         title="Programmatic access"
         action={
-          <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-3">
-            <Input
-              ref={nameInputRef}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Token name"
-              className="w-[180px] rounded-full bg-background"
-            />
-            <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={readOnly}
-                onChange={(event) => setReadOnly(event.target.checked)}
-                className="h-4 w-4 rounded border-border text-foreground accent-foreground"
-              />
-              Read-only
-            </label>
-            <Button
-              type="submit"
-              variant="outline"
-              className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
-            >
-              <KeyRound className="h-4 w-4" />
-              {creating ? 'Creating...' : 'New token'}
-            </Button>
-          </form>
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+              >
+                <KeyRound className="h-4 w-4" />
+                New token
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="rounded-3xl border-white/70 bg-white/95">
+              <DialogHeader className="text-left">
+                <DialogTitle>Create API token</DialogTitle>
+                <DialogDescription>
+                  Tokens are shown once. Store them securely before closing.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="grid gap-4">
+                <label className="grid gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Token name
+                  </span>
+                  <Input
+                    ref={nameInputRef}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="e.g. CI deploy"
+                    className="h-11 rounded-2xl bg-white px-4"
+                  />
+                </label>
+                <label className="flex items-center gap-3 text-sm text-slate-600">
+                  <Checkbox
+                    checked={readOnly}
+                    onCheckedChange={(checked) => setReadOnly(Boolean(checked))}
+                  />
+                  Read-only token (recommended for CI)
+                </label>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="rounded-full px-4 text-sm"
+                    onClick={() => setCreateOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="rounded-full bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
+                    disabled={creating || !name.trim()}
+                  >
+                    {creating ? 'Creating...' : 'Create token'}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         }
       />
       {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
