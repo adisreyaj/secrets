@@ -205,7 +205,9 @@ export const TokensPanel = ({
               <div className="flex items-center gap-3">
                 <span className="text-xs text-muted-foreground">
                   Last used{' '}
-                  <time dateTime={token.lastUsedAt}>{formatDateTime(token.lastUsedAt)}</time>
+                  <time dateTime={token.lastUsedAt ?? undefined}>
+                    {formatDateTime(token.lastUsedAt)}
+                  </time>
                 </span>
                 <Button
                   size="sm"

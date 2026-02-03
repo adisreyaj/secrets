@@ -56,18 +56,10 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
     const handleChange = () => applyTheme('system')
 
-    if ('addEventListener' in media) {
-      media.addEventListener('change', handleChange)
-    } else {
-      media.addListener(handleChange)
-    }
+    media.addEventListener('change', handleChange)
 
     return () => {
-      if ('removeEventListener' in media) {
-        media.removeEventListener('change', handleChange)
-      } else {
-        media.removeListener(handleChange)
-      }
+      media.removeEventListener('change', handleChange)
     }
   }, [theme])
 

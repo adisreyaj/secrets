@@ -258,8 +258,9 @@ export const SecretsTable = ({
       .sort((a, b) => b.count - a.count)
   }, [environmentId, environments, missingKeysByEnvironment])
 
-  const activeMissingKeys =
-    (missingSourceEnvId && missingKeysByEnvironment[missingSourceEnvId]) ?? []
+  const activeMissingKeys = missingSourceEnvId
+    ? missingKeysByEnvironment[missingSourceEnvId] ?? []
+    : []
 
   const selectedKeyCount = selectedMissingKeys.length
   const totalKeyCount = activeMissingKeys.length

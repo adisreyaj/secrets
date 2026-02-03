@@ -136,7 +136,10 @@ export const ProjectPage = ({
     name: string
     copyFromEnvironmentId?: string | null
   }) => {
-    await api.createEnvironment(projectId, payload)
+    await api.createEnvironment(projectId, {
+      name: payload.name,
+      copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
+    })
     await loadEnvironments()
   }
 
