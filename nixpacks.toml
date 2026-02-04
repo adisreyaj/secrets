@@ -16,7 +16,10 @@ nixpkgsArchive = 'cf93ceb06388f5714302b702cccf2c77f6064442'
 [phases.install]
 dependsOn = ['setup']
 cmds = ['corepack enable pnpm', 'pnpm install -P false']
-cacheDirectories = ['/root/.local/share/pnpm/store', 'node_modules']
+# Only cache pnpm store; do not cache node_modules so the symlink layout
+# is recreated each build and Prisma CLI finds its module (avoids "Cannot find
+# module .../prisma/build/index.js" when using cache on Coolify/Nixpacks).
+cacheDirectories = ['/root/.local/share/pnpm/store']
 paths = ['/app/node_modules/.bin']
 
 [phases.build]
