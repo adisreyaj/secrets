@@ -19,7 +19,13 @@ import {
   DialogTrigger,
 } from './ui/dialog'
 import { Input } from './ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select'
 
 export type ProjectTemplate = 'starter' | 'full' | 'empty'
 
@@ -36,7 +42,10 @@ export const ProjectsSection = ({
   loading: boolean
   error: string | null
   onSelect: (projectId: string) => void
-  onCreate: (payload: { name: string; template: ProjectTemplate }) => Promise<void>
+  onCreate: (payload: {
+    name: string
+    template: ProjectTemplate
+  }) => Promise<void>
 }) => {
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
@@ -93,23 +102,24 @@ export const ProjectsSection = ({
             <DialogTrigger asChild>
               <Button
                 variant="outline"
-                className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+                className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
               >
                 <Plus className="h-4 w-4" />
                 New project
                 <ShortcutHint keys="n" />
               </Button>
             </DialogTrigger>
-            <DialogContent className="rounded-3xl border-border/70 bg-popover text-popover-foreground">
+            <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
               <DialogHeader className="text-left">
                 <DialogTitle>Create project</DialogTitle>
                 <DialogDescription>
-                  Give your workspace a name and pick a starting environment layout.
+                  Give your workspace a name and pick a starting environment
+                  layout.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4">
                 <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
                     Project name
                   </span>
                   <Input
@@ -119,10 +129,15 @@ export const ProjectsSection = ({
                   />
                 </label>
                 <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
                     Environment template
                   </span>
-                  <Select value={template} onValueChange={(value) => setTemplate(value as ProjectTemplate)}>
+                  <Select
+                    value={template}
+                    onValueChange={(value) =>
+                      setTemplate(value as ProjectTemplate)
+                    }
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a template" />
                     </SelectTrigger>
@@ -134,8 +149,9 @@ export const ProjectsSection = ({
                       ))}
                     </SelectContent>
                   </Select>
-                  <span className="text-xs text-muted-foreground">
-                    We&apos;ll pre-create the environments you pick so you can start immediately.
+                  <span className="text-muted-foreground text-xs">
+                    We&apos;ll pre-create the environments you pick so you can
+                    start immediately.
                   </span>
                 </label>
                 <DialogFooter>
@@ -149,7 +165,7 @@ export const ProjectsSection = ({
                   </Button>
                   <Button
                     type="submit"
-                    className="rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
+                    className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-6 text-sm font-semibold"
                     disabled={creating || !name.trim()}
                   >
                     {creating ? 'Creating...' : 'Create project'}
@@ -179,13 +195,13 @@ export const ProjectsSection = ({
                 <Button
                   onClick={() => onSelect(project.id)}
                   variant="ghost"
-                  className={`h-auto w-full flex-col items-start justify-start gap-3 rounded-2xl border p-4 text-left transition-transform hover:-translate-y-1 hover:shadow-lg motion-reduce:transform-none motion-reduce:hover:transform-none whitespace-normal ${
+                  className={`h-auto w-full flex-col items-start justify-start gap-3 rounded-2xl border p-4 text-left whitespace-normal transition-transform hover:-translate-y-1 hover:shadow-lg motion-reduce:transform-none motion-reduce:hover:transform-none ${
                     isSelected
                       ? 'border-foreground bg-foreground text-background hover:bg-foreground'
                       : 'border-border bg-card text-card-foreground hover:bg-card'
                   }`}
                 >
-                  <div className="flex w-full items-center justify-between text-xs uppercase tracking-[0.2em]">
+                  <div className="flex w-full items-center justify-between text-xs tracking-[0.2em] uppercase">
                     <time
                       className={
                         isSelected

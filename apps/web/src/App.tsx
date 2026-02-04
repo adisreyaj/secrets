@@ -33,7 +33,10 @@ const AppShell = () => {
   const { match, navigate } = useHashRouter()
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const shortcutsEnabled =
-    !!user && match.name !== 'login' && match.name !== 'cli-login' && match.name !== 'invite'
+    !!user &&
+    match.name !== 'login' &&
+    match.name !== 'cli-login' &&
+    match.name !== 'invite'
 
   useEffect(() => {
     const projectId = getProjectId(match)
@@ -46,8 +49,7 @@ const AppShell = () => {
     }
   }, [match])
 
-  const resolveProjectId = () =>
-    getProjectId(match) ?? getLastProjectId()
+  const resolveProjectId = () => getProjectId(match) ?? getLastProjectId()
 
   const resolveEnvironmentId = (projectId: string | null) => {
     if (!projectId) return null
@@ -84,7 +86,9 @@ const AppShell = () => {
     'g s',
     () => {
       const projectId = resolveProjectId()
-      navigate(projectId ? `/projects/${projectId}/service-accounts` : '/projects')
+      navigate(
+        projectId ? `/projects/${projectId}/service-accounts` : '/projects',
+      )
     },
     { enabled: shortcutsEnabled },
   )
@@ -145,10 +149,12 @@ const AppShell = () => {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="bg-background text-foreground min-h-screen flex flex-col">
+      <div className="bg-background text-foreground flex min-h-screen flex-col">
         <div className="relative overflow-hidden">
           <div className="absolute inset-0" aria-hidden="true" />
-          {match.name !== 'login' && match.name !== 'cli-login' && match.name !== 'invite' ? (
+          {match.name !== 'login' &&
+          match.name !== 'cli-login' &&
+          match.name !== 'invite' ? (
             <Header
               user={user}
               onLogout={logout}
@@ -190,11 +196,17 @@ const AppShell = () => {
           ) : match.name === 'approvals' ? (
             <ApprovalsPage projectId={match.projectId} navigate={navigate} />
           ) : match.name === 'approval-rules' ? (
-            <ApprovalRulesPage projectId={match.projectId} navigate={navigate} />
+            <ApprovalRulesPage
+              projectId={match.projectId}
+              navigate={navigate}
+            />
           ) : match.name === 'tokens' ? (
             <TokensPage projectId={match.projectId} navigate={navigate} />
           ) : match.name === 'service-accounts' ? (
-            <ServiceAccountsPage projectId={match.projectId} navigate={navigate} />
+            <ServiceAccountsPage
+              projectId={match.projectId}
+              navigate={navigate}
+            />
           ) : match.name === 'team' ? (
             <TeamPage projectId={match.projectId} navigate={navigate} />
           ) : (

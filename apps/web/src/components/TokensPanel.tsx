@@ -21,7 +21,10 @@ export const TokensPanel = ({
   tokens: ApiTokenDto[]
   loading: boolean
   error: string | null
-  onCreate: (name: string, readOnly: boolean) => Promise<CreateTokenResponse | null>
+  onCreate: (
+    name: string,
+    readOnly: boolean,
+  ) => Promise<CreateTokenResponse | null>
   onDelete: (tokenId: string) => Promise<void>
   lastCreated: CreateTokenResponse | null
   onClearLastCreated: () => void
@@ -63,7 +66,7 @@ export const TokensPanel = ({
         <aside className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-emerald-700">
+              <p className="text-xs tracking-[0.3em] text-emerald-700 uppercase">
                 Token created (copy once)
               </p>
               <p className="mt-2 font-mono text-sm">{lastCreated.token}</p>
@@ -98,7 +101,7 @@ export const TokensPanel = ({
           ))
         )}
       </ul>
-      <aside className="mt-6 rounded-2xl border border-dashed border-border bg-muted p-4 text-xs text-muted-foreground">
+      <aside className="border-border bg-muted text-muted-foreground mt-6 rounded-2xl border border-dashed p-4 text-xs">
         Tokens are visible once. Rotate frequently and scope by project.
       </aside>
 

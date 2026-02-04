@@ -67,15 +67,42 @@ export const EnvironmentsSection = ({
   }, [dialogOpen])
 
   useRegisterShortcut('n', () => setDialogOpen(true))
-  useRegisterShortcut('1', () => environments[0] && onSelect(environments[0].id))
-  useRegisterShortcut('2', () => environments[1] && onSelect(environments[1].id))
-  useRegisterShortcut('3', () => environments[2] && onSelect(environments[2].id))
-  useRegisterShortcut('4', () => environments[3] && onSelect(environments[3].id))
-  useRegisterShortcut('5', () => environments[4] && onSelect(environments[4].id))
-  useRegisterShortcut('6', () => environments[5] && onSelect(environments[5].id))
-  useRegisterShortcut('7', () => environments[6] && onSelect(environments[6].id))
-  useRegisterShortcut('8', () => environments[7] && onSelect(environments[7].id))
-  useRegisterShortcut('9', () => environments[8] && onSelect(environments[8].id))
+  useRegisterShortcut(
+    '1',
+    () => environments[0] && onSelect(environments[0].id),
+  )
+  useRegisterShortcut(
+    '2',
+    () => environments[1] && onSelect(environments[1].id),
+  )
+  useRegisterShortcut(
+    '3',
+    () => environments[2] && onSelect(environments[2].id),
+  )
+  useRegisterShortcut(
+    '4',
+    () => environments[3] && onSelect(environments[3].id),
+  )
+  useRegisterShortcut(
+    '5',
+    () => environments[4] && onSelect(environments[4].id),
+  )
+  useRegisterShortcut(
+    '6',
+    () => environments[5] && onSelect(environments[5].id),
+  )
+  useRegisterShortcut(
+    '7',
+    () => environments[6] && onSelect(environments[6].id),
+  )
+  useRegisterShortcut(
+    '8',
+    () => environments[7] && onSelect(environments[7].id),
+  )
+  useRegisterShortcut(
+    '9',
+    () => environments[8] && onSelect(environments[8].id),
+  )
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -103,14 +130,14 @@ export const EnvironmentsSection = ({
             <DialogTrigger asChild>
               <Button
                 variant="outline"
-                className="flex h-10 items-center gap-2 rounded-full border-border px-4 text-sm font-semibold text-foreground hover:border-foreground/40"
+                className="border-border text-foreground hover:border-foreground/40 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
               >
                 <Plus className="h-4 w-4" />
                 New environment
                 <ShortcutHint keys="n" />
               </Button>
             </DialogTrigger>
-            <DialogContent className="rounded-3xl border-border/70 bg-popover text-popover-foreground">
+            <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
               <DialogHeader className="text-left">
                 <DialogTitle>Create environment</DialogTitle>
                 <DialogDescription>
@@ -120,7 +147,7 @@ export const EnvironmentsSection = ({
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4">
                 <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
+                  <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
                     Environment name
                   </span>
                   <Input
@@ -130,7 +157,7 @@ export const EnvironmentsSection = ({
                   />
                 </label>
                 <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
+                  <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
                     Copy keys from
                   </span>
                   <Select
@@ -152,7 +179,7 @@ export const EnvironmentsSection = ({
                       ))}
                     </SelectContent>
                   </Select>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-muted-foreground text-xs">
                     Copies keys (and current values) into the new environment.
                   </span>
                 </label>
@@ -167,7 +194,7 @@ export const EnvironmentsSection = ({
                   </Button>
                   <Button
                     type="submit"
-                    className="rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
+                    className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-6 text-sm font-semibold"
                     disabled={creating || !name.trim()}
                   >
                     {creating ? 'Creating...' : 'Create environment'}
@@ -207,7 +234,9 @@ export const EnvironmentsSection = ({
                     <p className="font-semibold">{env.name}</p>
                     <p
                       className={`text-xs ${
-                        isSelected ? 'text-background/70' : 'text-muted-foreground'
+                        isSelected
+                          ? 'text-background/70'
+                          : 'text-muted-foreground'
                       }`}
                     >
                       Updated{' '}
@@ -244,7 +273,7 @@ export const EnvironmentsSection = ({
                         variant={isSelected ? 'default' : 'secondary'}
                         className={
                           isSelected
-                            ? 'bg-amber-400/20 text-background'
+                            ? 'text-background bg-amber-400/20'
                             : 'bg-amber-50 text-amber-700'
                         }
                       >
@@ -255,7 +284,7 @@ export const EnvironmentsSection = ({
                         variant={isSelected ? 'default' : 'secondary'}
                         className={
                           isSelected
-                            ? 'bg-emerald-400/20 text-background'
+                            ? 'text-background bg-emerald-400/20'
                             : 'bg-emerald-50 text-emerald-700'
                         }
                       >

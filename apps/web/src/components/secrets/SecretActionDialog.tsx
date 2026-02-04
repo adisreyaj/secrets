@@ -31,7 +31,11 @@ export const SecretActionDialog = ({
     payload: { targetEnvironmentIds: string[]; overwrite: boolean },
   ) => Promise<
     | { created: string[]; updated: string[]; skipped: string[] }
-    | { status: 'pending'; approvalRequestId?: string; approvalRequestIds?: string[] }
+    | {
+        status: 'pending'
+        approvalRequestId?: string
+        approvalRequestIds?: string[]
+      }
   >
   onRollback: (secretId: string) => Promise<void>
   onDelete: (secretId: string) => Promise<void>
@@ -106,34 +110,36 @@ export const SecretActionDialog = ({
             {mode === 'rollback'
               ? 'Rollback secret'
               : mode === 'copy'
-              ? 'Copy secret'
-              : 'Delete secret'}
+                ? 'Copy secret'
+                : 'Delete secret'}
           </DialogTitle>
           <DialogDescription>
             {mode === 'rollback'
               ? 'This will restore the previous version for the selected key.'
               : mode === 'copy'
-              ? 'Choose which environments should receive this key.'
-              : 'This action cannot be undone.'}
+                ? 'Choose which environments should receive this key.'
+                : 'This action cannot be undone.'}
           </DialogDescription>
         </DialogHeader>
         {mode === 'copy' ? (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-dashed border-border bg-muted p-3 text-xs text-muted-foreground">
+            <div className="border-border bg-muted text-muted-foreground rounded-2xl border border-dashed p-3 text-xs">
               Copying{' '}
-              <span className="font-semibold text-foreground">{secret?.key}</span>
+              <span className="text-foreground font-semibold">
+                {secret?.key}
+              </span>
             </div>
             {otherEnvironments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 No other environments available.
               </p>
             ) : (
               <>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
                   <Button
                     type="button"
                     variant="ghost"
-                    className="h-7 rounded-full px-3 text-xs font-semibold text-muted-foreground"
+                    className="text-muted-foreground h-7 rounded-full px-3 text-xs font-semibold"
                     onClick={() =>
                       setSelectedTargets(otherEnvironments.map((env) => env.id))
                     }
@@ -143,13 +149,14 @@ export const SecretActionDialog = ({
                   <Button
                     type="button"
                     variant="ghost"
-                    className="h-7 rounded-full px-3 text-xs font-semibold text-muted-foreground"
+                    className="text-muted-foreground h-7 rounded-full px-3 text-xs font-semibold"
                     onClick={() => setSelectedTargets([])}
                   >
                     Clear
                   </Button>
                   <span>
-                    Selected {selectedTargets.length} of {otherEnvironments.length}
+                    Selected {selectedTargets.length} of{' '}
+                    {otherEnvironments.length}
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -158,11 +165,13 @@ export const SecretActionDialog = ({
                     return (
                       <label
                         key={env.id}
-                        className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground"
+                        className="border-border text-muted-foreground flex items-center justify-between rounded-xl border px-3 py-2 text-sm"
                       >
                         <div>
-                          <p className="font-semibold text-foreground">{env.name}</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-foreground font-semibold">
+                            {env.name}
+                          </p>
+                          <p className="text-muted-foreground text-xs">
                             ID {env.id.slice(0, 6)}
                           </p>
                         </div>
@@ -178,18 +187,20 @@ export const SecretActionDialog = ({
                               )
                             }
                           }}
-                          className="h-4 w-4 rounded border-border text-foreground"
+                          className="border-border text-foreground h-4 w-4 rounded"
                         />
                       </label>
                     )
                   })}
                 </div>
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <label className="text-muted-foreground flex items-center gap-2 text-xs">
                   <input
                     type="checkbox"
                     checked={overwriteExisting}
-                    onChange={(event) => setOverwriteExisting(event.target.checked)}
-                    className="h-4 w-4 rounded border-border text-foreground"
+                    onChange={(event) =>
+                      setOverwriteExisting(event.target.checked)
+                    }
+                    className="border-border text-foreground h-4 w-4 rounded"
                   />
                   Overwrite existing values for this key
                 </label>
@@ -202,9 +213,9 @@ export const SecretActionDialog = ({
             )}
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-border bg-muted p-3 text-xs text-muted-foreground">
+          <div className="border-border bg-muted text-muted-foreground rounded-2xl border border-dashed p-3 text-xs">
             Selected key{' '}
-            <span className="font-semibold text-foreground">{secret?.key}</span>
+            <span className="text-foreground font-semibold">{secret?.key}</span>
           </div>
         )}
         <DialogFooter className="mt-6">
@@ -229,10 +240,10 @@ export const SecretActionDialog = ({
             {mode === 'rollback'
               ? 'Confirm rollback'
               : mode === 'copy'
-              ? copying
-                ? 'Copying...'
-                : 'Copy secret'
-              : 'Delete secret'}
+                ? copying
+                  ? 'Copying...'
+                  : 'Copy secret'
+                : 'Delete secret'}
           </Button>
         </DialogFooter>
       </DialogContent>

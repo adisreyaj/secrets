@@ -1,9 +1,15 @@
-export const StatCard = ({ label, value }: { label: string; value: string }) => (
-  <dl className="rounded-2xl border border-border/60 bg-card/90 p-4 shadow-soft">
-    <dt className="text-xs uppercase tracking-[0.25em] text-muted-foreground">
+export const StatCard = ({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) => (
+  <dl className="border-border/60 bg-card/90 shadow-soft rounded-2xl border p-4">
+    <dt className="text-muted-foreground text-xs tracking-[0.25em] uppercase">
       {label}
     </dt>
-    <dd className="mt-2 text-2xl font-semibold text-card-foreground">
+    <dd className="text-card-foreground mt-2 text-2xl font-semibold">
       {value}
     </dd>
   </dl>

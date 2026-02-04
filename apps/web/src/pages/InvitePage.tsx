@@ -16,7 +16,9 @@ export const InvitePage = ({
   navigate: (path: string) => void
 }) => {
   const { user, loading, error, login, register } = useAuth()
-  const [status, setStatus] = useState<'idle' | 'accepting' | 'accepted'>('idle')
+  const [status, setStatus] = useState<'idle' | 'accepting' | 'accepted'>(
+    'idle',
+  )
   const [acceptError, setAcceptError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -68,9 +70,9 @@ export const InvitePage = ({
         {acceptError ? (
           <ErrorBanner message={acceptError} />
         ) : status === 'accepting' ? (
-          <p className="text-sm text-muted-foreground">Accepting invite...</p>
+          <p className="text-muted-foreground text-sm">Accepting invite...</p>
         ) : (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Use the invite link provided by your team.
           </p>
         )}

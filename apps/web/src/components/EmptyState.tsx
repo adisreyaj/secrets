@@ -14,12 +14,14 @@ export const EmptyState = ({
 }) => (
   <div
     className={cn(
-      'rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm text-muted-foreground',
+      'border-border bg-card/70 text-muted-foreground rounded-2xl border border-dashed p-4 text-sm',
       className,
     )}
   >
     <p className="text-foreground text-sm font-semibold">{title}</p>
-    {description ? <p className="mt-1 text-xs text-muted-foreground">{description}</p> : null}
+    {description ? (
+      <p className="text-muted-foreground mt-1 text-xs">{description}</p>
+    ) : null}
     {action ? <div className="mt-3">{action}</div> : null}
   </div>
 )

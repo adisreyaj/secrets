@@ -66,7 +66,8 @@ export const EnvironmentPage = ({
     if (!query) return secrets
     return secrets.filter((secret) => {
       if (secret.key.toLowerCase().includes(query)) return true
-      if (valuesLoaded && secret.value?.toLowerCase().includes(query)) return true
+      if (valuesLoaded && secret.value?.toLowerCase().includes(query))
+        return true
       return false
     })
   }, [secrets, searchQuery, valuesLoaded])
@@ -126,9 +127,19 @@ export const EnvironmentPage = ({
         }
       />
 
-      {(projectsError || envError || secretsError || coverageError || approvalsError) && (
+      {(projectsError ||
+        envError ||
+        secretsError ||
+        coverageError ||
+        approvalsError) && (
         <ErrorBanner
-          message={projectsError || envError || secretsError || coverageError || approvalsError}
+          message={
+            projectsError ||
+            envError ||
+            secretsError ||
+            coverageError ||
+            approvalsError
+          }
         />
       )}
 

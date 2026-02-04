@@ -19,13 +19,9 @@ export const TokensPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const {
-    data: projectsData,
-    error: projectsError,
-  } = useAsyncResource<ProjectDto[]>(
-    async () => (user ? api.listProjects() : []),
-    [user],
-  )
+  const { data: projectsData, error: projectsError } = useAsyncResource<
+    ProjectDto[]
+  >(async () => (user ? api.listProjects() : []), [user])
   const {
     data: tokensData,
     loading: tokensLoading,
@@ -35,7 +31,9 @@ export const TokensPage = ({
     async () => (user ? api.listTokens(projectId) : []),
     [projectId, user],
   )
-  const [lastToken, setLastToken] = useState<Awaited<ReturnType<typeof api.createToken>> | null>(null)
+  const [lastToken, setLastToken] = useState<Awaited<
+    ReturnType<typeof api.createToken>
+  > | null>(null)
   const projects = projectsData ?? []
   const tokens = tokensData ?? []
 
@@ -46,17 +44,23 @@ export const TokensPage = ({
 
   useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
 
-  const handleCreateToken = useCallback(async (name: string, readOnly: boolean) => {
-    const data = await api.createToken(projectId, { name, readOnly })
-    setLastToken(data)
-    await loadTokens()
-    return data
-  }, [projectId, loadTokens])
+  const handleCreateToken = useCallback(
+    async (name: string, readOnly: boolean) => {
+      const data = await api.createToken(projectId, { name, readOnly })
+      setLastToken(data)
+      await loadTokens()
+      return data
+    },
+    [projectId, loadTokens],
+  )
 
-  const handleDeleteToken = useCallback(async (tokenId: string) => {
-    await api.deleteToken(projectId, tokenId)
-    await loadTokens()
-  }, [projectId, loadTokens])
+  const handleDeleteToken = useCallback(
+    async (tokenId: string) => {
+      await api.deleteToken(projectId, tokenId)
+      await loadTokens()
+    },
+    [projectId, loadTokens],
+  )
 
   return (
     <section className="flex flex-col gap-6">
@@ -66,7 +70,7 @@ export const TokensPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
             onClick={() => navigate(`/projects/${projectId}`)}
           >
             <ArrowLeft className="h-4 w-4" />

@@ -1,22 +1,21 @@
-import * as React from "react"
+import * as React from 'react'
 
-import { cn } from "../../lib/utils"
+import { cn } from '../../lib/utils'
 import {
   controlBaseClasses,
   controlSizeClasses,
   controlVariantClasses,
   type ControlSize,
   type ControlVariant,
-} from "./control-classes"
+} from './control-classes'
 
-export interface InputProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   size?: ControlSize
   variant?: ControlVariant
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, size = "md", variant = "default", ...props }, ref) => {
+  ({ className, type, size = 'md', variant = 'default', ...props }, ref) => {
     return (
       <input
         type={type}
@@ -24,7 +23,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           controlBaseClasses,
           controlSizeClasses[size],
           controlVariantClasses[variant],
-          "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
+          'file:text-foreground file:border-0 file:bg-transparent file:text-sm file:font-medium',
           className,
         )}
         ref={ref}
@@ -33,6 +32,6 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     )
   },
 )
-Input.displayName = "Input"
+Input.displayName = 'Input'
 
 export { Input }

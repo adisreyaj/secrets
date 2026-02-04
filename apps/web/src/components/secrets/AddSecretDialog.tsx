@@ -132,7 +132,7 @@ export const AddSecretDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Secret details
             </p>
             <Button
@@ -162,7 +162,7 @@ export const AddSecretDialog = ({
 
           {showPasteInput ? (
             <label className="grid gap-2 text-sm">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
                 Paste key=value
               </span>
               <Input
@@ -188,16 +188,18 @@ export const AddSecretDialog = ({
                 <span className="text-xs text-rose-600">{pasteError}</span>
               ) : null}
               {!pasteError && pasteHint ? (
-                <span className="text-xs text-muted-foreground">{pasteHint}</span>
+                <span className="text-muted-foreground text-xs">
+                  {pasteHint}
+                </span>
               ) : null}
-              <span className="text-xs text-muted-foreground">
+              <span className="text-muted-foreground text-xs">
                 We’ll split this into key and value automatically.
               </span>
             </label>
           ) : null}
 
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Secret key
             </span>
             <Input
@@ -212,7 +214,7 @@ export const AddSecretDialog = ({
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Secret value
             </span>
             <Input
@@ -225,7 +227,7 @@ export const AddSecretDialog = ({
               }
               placeholder="secret-value"
             />
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="text-muted-foreground flex items-center gap-2 text-xs">
               <span>Quick set:</span>
               <Button
                 type="button"

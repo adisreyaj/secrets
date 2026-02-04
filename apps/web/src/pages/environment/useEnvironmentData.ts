@@ -1,4 +1,9 @@
-import type { ApprovalRequestDto, EnvironmentDto, ProjectDto, SecretDto } from '@secrets/shared'
+import type {
+  ApprovalRequestDto,
+  EnvironmentDto,
+  ProjectDto,
+  SecretDto,
+} from '@secrets/shared'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../../lib/api'
 import { getErrorMessage } from '../../lib/errors'
@@ -21,13 +26,9 @@ export const useEnvironmentData = ({
   environmentId: string
   enabled: boolean
 }) => {
-  const {
-    data: projectsData,
-    error: projectsError,
-  } = useAsyncResource<ProjectDto[]>(
-    async () => (enabled ? api.listProjects() : []),
-    [enabled],
-  )
+  const { data: projectsData, error: projectsError } = useAsyncResource<
+    ProjectDto[]
+  >(async () => (enabled ? api.listProjects() : []), [enabled])
   const {
     data: environmentsData,
     loading: envLoading,
@@ -45,9 +46,9 @@ export const useEnvironmentData = ({
   const [secretsError, setSecretsError] = useState<string | null>(null)
   const [valuesVisible, setValuesVisible] = useState(false)
   const [valuesLoaded, setValuesLoaded] = useState(false)
-  const [secretKeyIndex, setSecretKeyIndex] = useState<Record<string, string[]>>(
-    {},
-  )
+  const [secretKeyIndex, setSecretKeyIndex] = useState<
+    Record<string, string[]>
+  >({})
   const [coverageLoading, setCoverageLoading] = useState(false)
   const [coverageError, setCoverageError] = useState<string | null>(null)
   const [approvals, setApprovals] = useState<ApprovalRequestDto[]>([])
@@ -154,7 +155,10 @@ export const useEnvironmentData = ({
     await loadEnvironments()
   }
 
-  const handleCreateSecret = async (payload: { key: string; value: string }) => {
+  const handleCreateSecret = async (payload: {
+    key: string
+    value: string
+  }) => {
     const result = await api.createSecret(environmentId, payload)
     if ('status' in result && result.status === 'pending') {
       await loadApprovals()
@@ -335,7 +339,7 @@ export const useEnvironmentData = ({
         : value
     const lines = ['key,value,updated_at']
     for (const secret of secrets) {
-      const value = valuesLoaded ? secret.value ?? '' : ''
+      const value = valuesLoaded ? (secret.value ?? '') : ''
       lines.push(
         `${escape(secret.key)},${escape(value)},${escape(secret.updatedAt)}`,
       )

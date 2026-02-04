@@ -19,13 +19,9 @@ export const EnvironmentsPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const {
-    data: projectsData,
-    error: projectsError,
-  } = useAsyncResource<ProjectDto[]>(
-    async () => (user ? api.listProjects() : []),
-    [user],
-  )
+  const { data: projectsData, error: projectsError } = useAsyncResource<
+    ProjectDto[]
+  >(async () => (user ? api.listProjects() : []), [user])
   const {
     data: environmentsData,
     loading: envLoading,
@@ -45,16 +41,19 @@ export const EnvironmentsPage = ({
 
   useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
 
-  const handleCreateEnvironment = useCallback(async (payload: {
-    name: string
-    copyFromEnvironmentId?: string | null
-  }) => {
-    await api.createEnvironment(projectId, {
-      name: payload.name,
-      copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
-    })
-    await loadEnvironments()
-  }, [projectId, loadEnvironments])
+  const handleCreateEnvironment = useCallback(
+    async (payload: {
+      name: string
+      copyFromEnvironmentId?: string | null
+    }) => {
+      await api.createEnvironment(projectId, {
+        name: payload.name,
+        copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
+      })
+      await loadEnvironments()
+    },
+    [projectId, loadEnvironments],
+  )
 
   return (
     <section className="flex flex-col gap-6">
@@ -64,7 +63,7 @@ export const EnvironmentsPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
             onClick={() => navigate(`/projects/${projectId}`)}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -85,7 +84,9 @@ export const EnvironmentsPage = ({
         error={envError}
         missingCounts={{}}
         coverageLoading={false}
-        onSelect={(envId) => navigate(`/projects/${projectId}/environments/${envId}`)}
+        onSelect={(envId) =>
+          navigate(`/projects/${projectId}/environments/${envId}`)
+        }
         onCreate={handleCreateEnvironment}
       />
     </section>

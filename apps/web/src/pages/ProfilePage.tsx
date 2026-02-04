@@ -6,13 +6,15 @@ import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { useAuth } from '../lib/auth'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ProfilePage = ({
   navigate,
 }: {
   navigate: (path: string) => void
 }) => {
-  const { user, loading, updateProfile } = useAuth()
+  const { updateProfile } = useAuth()
+  const { user, loading } = useRequireAuth(navigate)
   const [profileForm, setProfileForm] = useState({ name: '' })
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -24,12 +26,6 @@ export const ProfilePage = ({
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [profileSuccess, setProfileSuccess] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
 
   useEffect(() => {
     if (user) {
@@ -48,7 +44,9 @@ export const ProfilePage = ({
       })
       setProfileSuccess('Profile updated.')
     } catch (error) {
-      setProfileError(error instanceof Error ? error.message : 'Something went wrong.')
+      setProfileError(
+        error instanceof Error ? error.message : 'Something went wrong.',
+      )
     } finally {
       setProfileSaving(false)
     }
@@ -67,7 +65,9 @@ export const ProfilePage = ({
       setPasswordSuccess('Password updated.')
       setPasswordForm({ currentPassword: '', newPassword: '' })
     } catch (error) {
-      setPasswordError(error instanceof Error ? error.message : 'Something went wrong.')
+      setPasswordError(
+        error instanceof Error ? error.message : 'Something went wrong.',
+      )
     } finally {
       setPasswordSaving(false)
     }
@@ -81,7 +81,7 @@ export const ProfilePage = ({
         actions={
           <Button
             variant="outline"
-            className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+            className="border-border text-foreground hover:border-foreground/40 gap-2 rounded-full px-4 py-2 text-sm font-semibold"
             onClick={() => navigate('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -97,22 +97,25 @@ export const ProfilePage = ({
           className="grid items-start gap-4 md:grid-cols-2"
         >
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Full name
             </span>
             <Input
               value={profileForm.name}
               onChange={(event) =>
-                setProfileForm((prev) => ({ ...prev, name: event.target.value }))
+                setProfileForm((prev) => ({
+                  ...prev,
+                  name: event.target.value,
+                }))
               }
               placeholder="Your name"
             />
-            <span className="text-xs text-muted-foreground opacity-0 select-none">
+            <span className="text-muted-foreground text-xs opacity-0 select-none">
               Email updates are disabled for now.
             </span>
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Email
             </span>
             <Input
@@ -122,15 +125,15 @@ export const ProfilePage = ({
               readOnly
               variant="muted"
             />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               Email updates are disabled for now.
             </span>
           </label>
-          <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 md:col-span-2">
             <Button
               type="submit"
               disabled={profileSaving}
-              className="h-11 rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
+              className="bg-foreground text-background hover:bg-foreground/90 h-11 rounded-full px-6 text-sm font-semibold"
             >
               {profileSaving ? 'Saving...' : 'Save changes'}
             </Button>
@@ -146,9 +149,12 @@ export const ProfilePage = ({
 
       <SectionCard className="space-y-6">
         <SectionHeader kicker="Security" title="Password" />
-        <form onSubmit={handlePasswordSubmit} className="grid gap-4 md:grid-cols-2">
+        <form
+          onSubmit={handlePasswordSubmit}
+          className="grid gap-4 md:grid-cols-2"
+        >
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Current password
             </span>
             <Input
@@ -164,7 +170,7 @@ export const ProfilePage = ({
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               New password
             </span>
             <Input
@@ -179,11 +185,11 @@ export const ProfilePage = ({
               placeholder="New password"
             />
           </label>
-          <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 md:col-span-2">
             <Button
               type="submit"
               disabled={passwordSaving}
-              className="h-11 rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
+              className="bg-foreground text-background hover:bg-foreground/90 h-11 rounded-full px-6 text-sm font-semibold"
             >
               {passwordSaving ? 'Updating...' : 'Update password'}
             </Button>

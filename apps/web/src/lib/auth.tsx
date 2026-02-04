@@ -9,7 +9,11 @@ interface AuthContextValue {
   loading: boolean
   error: string | null
   login: (payload: { email: string; password: string }) => Promise<void>
-  register: (payload: { email: string; password: string; name?: string }) => Promise<void>
+  register: (payload: {
+    email: string
+    password: string
+    name?: string
+  }) => Promise<void>
   logout: () => Promise<void>
   updateProfile: (payload: {
     name?: string
@@ -61,7 +65,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
-  const register = async (payload: { email: string; password: string; name?: string }) => {
+  const register = async (payload: {
+    email: string
+    password: string
+    name?: string
+  }) => {
     setLoading(true)
     setError(null)
     try {
@@ -104,7 +112,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const value = useMemo(
-    () => ({ user, loading, error, login, register, logout, updateProfile, refresh }),
+    () => ({
+      user,
+      loading,
+      error,
+      login,
+      register,
+      logout,
+      updateProfile,
+      refresh,
+    }),
     [user, loading, error],
   )
 

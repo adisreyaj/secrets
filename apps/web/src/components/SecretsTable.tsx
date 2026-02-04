@@ -5,14 +5,7 @@ import type {
   SecretDto,
   SecretVersionDto,
 } from '@secrets/shared'
-import {
-  Copy,
-  History,
-  Pencil,
-  RotateCcw,
-  Trash2,
-  X,
-} from 'lucide-react'
+import { Copy, History, Pencil, RotateCcw, Trash2, X } from 'lucide-react'
 import { memo, useCallback, useMemo, useState } from 'react'
 import { formatDateTime, formatKeyPreview } from '../lib/format'
 import { ErrorBanner } from './ErrorBanner'
@@ -86,14 +79,22 @@ export const SecretsTable = ({
     payload: { targetEnvironmentIds: string[]; overwrite: boolean },
   ) => Promise<
     | { created: string[]; updated: string[]; skipped: string[] }
-    | { status: 'pending'; approvalRequestId?: string; approvalRequestIds?: string[] }
+    | {
+        status: 'pending'
+        approvalRequestId?: string
+        approvalRequestIds?: string[]
+      }
   >
   onCopyMissing: (
     sourceEnvironmentId: string,
     keys: string[],
   ) => Promise<
     | { created: string[]; updated: string[]; skipped: string[] }
-    | { status: 'pending'; approvalRequestId?: string; approvalRequestIds?: string[] }
+    | {
+        status: 'pending'
+        approvalRequestId?: string
+        approvalRequestIds?: string[]
+      }
   >
   searchValue?: string
   onSearchChange?: (value: string) => void

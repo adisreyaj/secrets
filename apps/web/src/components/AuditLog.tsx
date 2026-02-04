@@ -32,15 +32,17 @@ export const AuditLog = ({
           audits.slice(0, 6).map((audit) => (
             <li
               key={audit.id}
-              className="relative flex items-start gap-3 pl-6 before:absolute before:left-[2px] before:top-1 before:h-2.5 before:w-2.5 before:rounded-full before:bg-indicator before:ring-2 before:ring-background/80 after:absolute after:left-[6px] after:top-3 after:h-[calc(100%+1rem)] after:w-px after:bg-border/80 last:after:hidden"
+              className="before:bg-indicator before:ring-background/80 after:bg-border/80 relative flex items-start gap-3 pl-6 before:absolute before:top-1 before:left-[2px] before:h-2.5 before:w-2.5 before:rounded-full before:ring-2 after:absolute after:top-3 after:left-[6px] after:h-[calc(100%+1rem)] after:w-px last:after:hidden"
             >
               <article>
-                <p className="text-sm font-semibold text-foreground">
+                <p className="text-foreground text-sm font-semibold">
                   {audit.action} · {audit.resourceType}
                 </p>
-                <p className="text-xs text-foreground/70">
+                <p className="text-foreground/70 text-xs">
                   {audit.resourceId?.slice(0, 6) ?? '—'} ·{' '}
-                  <time dateTime={audit.createdAt}>{formatDateTime(audit.createdAt)}</time>
+                  <time dateTime={audit.createdAt}>
+                    {formatDateTime(audit.createdAt)}
+                  </time>
                 </p>
               </article>
             </li>

@@ -13,11 +13,16 @@ export const AuthPanel = ({
   loading: boolean
   error: string | null
   onLogin: (payload: { email: string; password: string }) => Promise<void>
-  onRegister: (payload: { email: string; password: string; name?: string }) => Promise<void>
+  onRegister: (payload: {
+    email: string
+    password: string
+    name?: string
+  }) => Promise<void>
 }) => {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [form, setForm] = useState({ name: '', email: '', password: '' })
-  const passwordAutoComplete = mode === 'login' ? 'current-password' : 'new-password'
+  const passwordAutoComplete =
+    mode === 'login' ? 'current-password' : 'new-password'
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -34,26 +39,28 @@ export const AuthPanel = ({
   }
 
   return (
-    <Card className="mx-auto w-full max-w-md rounded-3xl border-border/70 bg-card/90 p-8 shadow-soft">
+    <Card className="border-border/70 bg-card/90 shadow-soft mx-auto w-full max-w-md rounded-3xl p-8">
       <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-foreground text-background">
+        <div className="bg-foreground text-background flex h-10 w-10 items-center justify-center rounded-2xl">
           SM
         </div>
         <div>
           <p className="text-sm font-semibold">Secrets Manager</p>
-          <p className="text-xs text-muted-foreground">Single-tenant vault</p>
+          <p className="text-muted-foreground text-xs">Single-tenant vault</p>
         </div>
       </div>
-      <p className="mt-6 text-center text-xs uppercase tracking-[0.3em] text-muted-foreground">
+      <p className="text-muted-foreground mt-6 text-center text-xs tracking-[0.3em] uppercase">
         {mode === 'login' ? 'Welcome back' : 'Create account'}
       </p>
-      <h2 className="mt-3 text-center text-2xl font-semibold text-foreground">
-        {mode === 'login' ? 'Sign in to manage secrets' : 'Start your secure workspace'}
+      <h2 className="text-foreground mt-3 text-center text-2xl font-semibold">
+        {mode === 'login'
+          ? 'Sign in to manage secrets'
+          : 'Start your secure workspace'}
       </h2>
       <form onSubmit={handleSubmit} className="mt-6 space-y-3">
         {mode === 'register' ? (
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Full name
             </span>
             <Input
@@ -68,7 +75,7 @@ export const AuthPanel = ({
           </label>
         ) : null}
         <label className="grid gap-2 text-sm">
-          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
             Email
           </span>
           <Input
@@ -83,7 +90,7 @@ export const AuthPanel = ({
           />
         </label>
         <label className="grid gap-2 text-sm">
-          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
             Password
           </span>
           <Input
@@ -101,17 +108,23 @@ export const AuthPanel = ({
         <Button
           type="submit"
           disabled={loading}
-          className="h-11 w-full rounded-full bg-foreground text-sm font-semibold text-background hover:bg-foreground/90"
+          className="bg-foreground text-background hover:bg-foreground/90 h-11 w-full rounded-full text-sm font-semibold"
         >
-          {loading ? 'Loading...' : mode === 'login' ? 'Sign in' : 'Create account'}
+          {loading
+            ? 'Loading...'
+            : mode === 'login'
+              ? 'Sign in'
+              : 'Create account'}
         </Button>
       </form>
       <Button
         variant="ghost"
         onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-        className="mt-4 h-auto px-0 text-xs font-semibold text-muted-foreground hover:bg-transparent"
+        className="text-muted-foreground mt-4 h-auto px-0 text-xs font-semibold hover:bg-transparent"
       >
-        {mode === 'login' ? 'Need an account? Register' : 'Already have an account? Sign in'}
+        {mode === 'login'
+          ? 'Need an account? Register'
+          : 'Already have an account? Sign in'}
       </Button>
     </Card>
   )

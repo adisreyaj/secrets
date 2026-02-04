@@ -35,11 +35,13 @@ import { useAsyncResource } from '../lib/useAsyncResource'
 import { useRequireAuth } from '../lib/useRequireAuth'
 import { cn } from '../lib/utils'
 
+type AuditActorType = 'user' | 'service'
+
 type AuditFilterState = {
   action: string
   resourceType: string
   resourceId: string
-  actorType: 'user' | 'service'
+  actorType: AuditActorType
   actorId: string
   dateRange?: DateRange
 }
@@ -80,7 +82,6 @@ export const AuditPage = ({
   const [retentionError, setRetentionError] = useState<string | null>(null)
   const [allActions, setAllActions] = useState<string[]>([])
   const [allResourceTypes, setAllResourceTypes] = useState<string[]>([])
-
 
   const loadAudit = useCallback(
     async (activeFilters?: AuditLogFilters) => {
@@ -227,14 +228,16 @@ export const AuditPage = ({
       />
 
       {(projectsError || auditError) && (
-        <ErrorBanner message={projectsError || auditError} />
+        <ErrorBanner message={(projectsError || auditError) as string} />
       )}
 
       <SectionCard>
         <SectionHeader kicker="Retention" title="Retention policy" />
-        {retentionError ? <ErrorBanner message={retentionError} className="mt-3" /> : null}
+        {retentionError ? (
+          <ErrorBanner message={retentionError} className="mt-3" />
+        ) : null}
         <div className="mt-4 flex flex-wrap items-center gap-4">
-          <div className="min-w-[220px]">
+          <div className="min-w-55">
             <Select
               value={retentionValue}
               onValueChange={setRetentionValue}
@@ -271,7 +274,9 @@ export const AuditPage = ({
 
       <SectionCard>
         <SectionHeader kicker="Filters" title="Audit filters" />
-        {filterError ? <ErrorBanner message={filterError} className="mt-3" /> : null}
+        {filterError ? (
+          <ErrorBanner message={filterError} className="mt-3" />
+        ) : null}
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <div className="flex flex-col gap-2">
             <label className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
@@ -392,7 +397,10 @@ export const AuditPage = ({
             <Select
               value={filters.actorType}
               onValueChange={(value) =>
-                setFilters((prev) => ({ ...prev, actorType: value }))
+                setFilters((prev) => ({
+                  ...prev,
+                  actorType: value as AuditActorType,
+                }))
               }
             >
               <SelectTrigger>

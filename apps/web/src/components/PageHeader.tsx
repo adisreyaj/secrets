@@ -11,11 +11,11 @@ export const PageHeader = ({
 }) => (
   <header className="flex flex-wrap items-end justify-between gap-4">
     <div>
-      <h1 className="text-3xl font-semibold text-foreground sm:text-4xl">
+      <h1 className="text-foreground text-3xl font-semibold sm:text-4xl">
         {title}
       </h1>
       {subtitle ? (
-        <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p>
+        <p className="text-muted-foreground mt-2 text-sm">{subtitle}</p>
       ) : null}
     </div>
     {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}

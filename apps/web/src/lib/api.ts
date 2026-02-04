@@ -66,7 +66,10 @@ const getCookie = (name: string) => {
   return match ? decodeURIComponent(match[1]) : undefined
 }
 
-async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
   const headers = new Headers(options.headers)
   if (!headers.has('Content-Type') && options.body) {
     headers.set('Content-Type', 'application/json')
@@ -146,35 +149,50 @@ export const api = {
       `/environments/${environmentId}/secrets?includeValues=${includeValues}`,
     ),
   createSecret: (environmentId: string, payload: CreateSecretRequest) =>
-    apiFetch<{ id: string } | ApprovalRequestResponse>(`/environments/${environmentId}/secrets`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
+    apiFetch<{ id: string } | ApprovalRequestResponse>(
+      `/environments/${environmentId}/secrets`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
   bulkImportSecrets: (environmentId: string, payload: BulkImportRequest) =>
-    apiFetch<BulkImportResponse>(`/environments/${environmentId}/secrets/bulk`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
+    apiFetch<BulkImportResponse>(
+      `/environments/${environmentId}/secrets/bulk`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
   updateSecret: (secretId: string, payload: UpdateSecretRequest) =>
     apiFetch<{ ok: true } | ApprovalRequestResponse>(`/secrets/${secretId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
   rollbackSecret: (secretId: string, versionId?: string) =>
-    apiFetch<{ ok: true } | ApprovalRequestResponse>(`/secrets/${secretId}/rollback`, {
-      method: 'POST',
-      body: JSON.stringify({ versionId }),
-    }),
+    apiFetch<{ ok: true } | ApprovalRequestResponse>(
+      `/secrets/${secretId}/rollback`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ versionId }),
+      },
+    ),
   deleteSecret: (secretId: string) =>
     apiFetch<{ ok: true } | ApprovalRequestResponse>(`/secrets/${secretId}`, {
       method: 'DELETE',
     }),
   copySecret: (secretId: string, payload: CopySecretRequest) =>
-    apiFetch<CopySecretResponse | ApprovalRequestResponse>(`/secrets/${secretId}/copy`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  copySecretsFromEnvironment: (environmentId: string, payload: CopyEnvironmentSecretsRequest) =>
+    apiFetch<CopySecretResponse | ApprovalRequestResponse>(
+      `/secrets/${secretId}/copy`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
+  copySecretsFromEnvironment: (
+    environmentId: string,
+    payload: CopyEnvironmentSecretsRequest,
+  ) =>
     apiFetch<CopyEnvironmentSecretsResponse | ApprovalRequestResponse>(
       `/environments/${environmentId}/secrets/copy-from`,
       {
@@ -185,10 +203,15 @@ export const api = {
 
   searchProjectSecrets: (
     projectId: string,
-    payload: { query: string; environmentId?: string | null; includeValues?: boolean },
+    payload: {
+      query: string
+      environmentId?: string | null
+      includeValues?: boolean
+    },
   ) => {
     const params = new URLSearchParams({ q: payload.query })
-    if (payload.environmentId) params.set('environmentId', payload.environmentId)
+    if (payload.environmentId)
+      params.set('environmentId', payload.environmentId)
     if (payload.includeValues) params.set('includeValues', 'true')
     return apiFetch<SecretSearchResultDto[]>(
       `/projects/${projectId}/secrets/search?${params.toString()}`,
@@ -212,7 +235,10 @@ export const api = {
 
   listServiceAccounts: (projectId: string) =>
     apiFetch<ServiceAccountDto[]>(`/projects/${projectId}/service-accounts`),
-  createServiceAccount: (projectId: string, payload: CreateServiceAccountRequest) =>
+  createServiceAccount: (
+    projectId: string,
+    payload: CreateServiceAccountRequest,
+  ) =>
     apiFetch<ServiceAccountDto>(`/projects/${projectId}/service-accounts`, {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -268,7 +294,10 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  getSecretDiff: (secretId: string, versions?: { from?: string; to?: string }) => {
+  getSecretDiff: (
+    secretId: string,
+    versions?: { from?: string; to?: string },
+  ) => {
     const params = new URLSearchParams({ secretId })
     if (versions?.from) params.set('from', versions.from)
     if (versions?.to) params.set('to', versions.to)
@@ -302,7 +331,8 @@ export const api = {
   ) => {
     const params = new URLSearchParams()
     if (filters?.status) params.set('status', filters.status)
-    if (filters?.environmentId) params.set('environmentId', filters.environmentId)
+    if (filters?.environmentId)
+      params.set('environmentId', filters.environmentId)
     if (filters?.action) params.set('action', filters.action)
     if (filters?.requestedBy) params.set('requestedBy', filters.requestedBy)
     const query = params.toString()
@@ -313,11 +343,15 @@ export const api = {
   getApproval: (approvalId: string) =>
     apiFetch<ApprovalRequestDto>(`/approvals/${approvalId}`),
   approveRequest: (approvalId: string) =>
-    apiFetch<{ ok: true }>(`/approvals/${approvalId}/approve`, { method: 'POST' }),
+    apiFetch<{ ok: true }>(`/approvals/${approvalId}/approve`, {
+      method: 'POST',
+    }),
   denyRequest: (approvalId: string) =>
     apiFetch<{ ok: true }>(`/approvals/${approvalId}/deny`, { method: 'POST' }),
   cancelRequest: (approvalId: string) =>
-    apiFetch<{ ok: true }>(`/approvals/${approvalId}/cancel`, { method: 'POST' }),
+    apiFetch<{ ok: true }>(`/approvals/${approvalId}/cancel`, {
+      method: 'POST',
+    }),
 
   listAudit: (projectId: string, filters?: AuditLogFilters) => {
     const params = new URLSearchParams()
@@ -335,7 +369,10 @@ export const api = {
   },
   getAuditRetention: (projectId: string) =>
     apiFetch<AuditRetentionDto>(`/projects/${projectId}/audit-retention`),
-  updateAuditRetention: (projectId: string, payload: { auditRetentionDays: number | null }) =>
+  updateAuditRetention: (
+    projectId: string,
+    payload: { auditRetentionDays: number | null },
+  ) =>
     apiFetch<AuditRetentionDto>(`/projects/${projectId}/audit-retention`, {
       method: 'PUT',
       body: JSON.stringify(payload),

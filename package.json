@@ -13,6 +13,9 @@
     "build:web": "pnpm -C apps/web build",
     "build:cli": "pnpm -C packages/cli build",
     "build:sdk": "pnpm -C packages/sdk build",
+    "lint:web": "pnpm -C apps/web lint",
+    "format:web": "pnpm -C apps/web format",
+    "format:check:web": "pnpm -C apps/web format:check",
     "test:server": "pnpm -C apps/server test",
     "prisma:generate": "pnpm -C apps/server prisma:generate",
     "prisma:migrate": "pnpm -C apps/server prisma:migrate"

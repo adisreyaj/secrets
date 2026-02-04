@@ -48,13 +48,9 @@ export const TeamPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const {
-    data: projectsData,
-    error: projectsError,
-  } = useAsyncResource<ProjectDto[]>(
-    async () => (user ? api.listProjects() : []),
-    [user],
-  )
+  const { data: projectsData, error: projectsError } = useAsyncResource<
+    ProjectDto[]
+  >(async () => (user ? api.listProjects() : []), [user])
   const projects = projectsData ?? []
 
   const [members, setMembers] = useState<ProjectMemberDto[]>([])
@@ -240,7 +236,8 @@ export const TeamPage = ({
             <ErrorBanner message={invitesError} className="mt-3" />
           ) : invitesLoading ? (
             <EmptyState title="Loading invites..." className="mt-3" />
-          ) : invites.filter((invite) => invite.status === 'PENDING').length === 0 ? (
+          ) : invites.filter((invite) => invite.status === 'PENDING').length ===
+            0 ? (
             <EmptyState title="No invites yet." className="mt-3" />
           ) : (
             <div className="mt-3 space-y-2">
@@ -283,7 +280,6 @@ export const TeamPage = ({
             </div>
           )}
         </div>
-
       </SectionCard>
       <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
         <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">

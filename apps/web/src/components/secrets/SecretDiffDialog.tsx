@@ -1,6 +1,11 @@
-import type { SecretDiffResponse, SecretDto, SecretVersionDto } from '@secrets/shared'
+import type {
+  SecretDiffResponse,
+  SecretDto,
+  SecretVersionDto,
+} from '@secrets/shared'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDateTime } from '../../lib/format'
+import { ErrorBanner } from '../ErrorBanner'
 import {
   Dialog,
   DialogContent,
@@ -100,7 +105,9 @@ export const SecretDiffDialog = ({
       })
       .catch((error) => {
         if (cancelled) return
-        setError(error instanceof Error ? error.message : 'Unable to load diff.')
+        setError(
+          error instanceof Error ? error.message : 'Unable to load diff.',
+        )
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -197,7 +204,7 @@ export const SecretDiffDialog = ({
         ) : loading ? (
           <p className="text-muted-foreground text-sm">Loading diff...</p>
         ) : error ? (
-          <p className="text-sm text-rose-600">{error}</p>
+          <ErrorBanner message={error} />
         ) : diffData ? (
           <DiffViewer diff={diffData} />
         ) : null}

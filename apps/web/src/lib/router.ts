@@ -110,7 +110,9 @@ export const useHashRouter = () => {
   const match = useMemo(() => parseRoute(hash), [hash])
 
   const navigate = (path: string) => {
-    const normalized = path.startsWith('#') ? path : `#${path.startsWith('/') ? path : `/${path}`}`
+    const normalized = path.startsWith('#')
+      ? path
+      : `#${path.startsWith('/') ? path : `/${path}`}`
     if (window.location.hash !== normalized) {
       window.location.hash = normalized
     }

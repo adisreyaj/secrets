@@ -1,4 +1,9 @@
-import type { ApprovalRequestDto, ApprovalStatus, EnvironmentDto, ProjectDto } from '@secrets/shared'
+import type {
+  ApprovalRequestDto,
+  ApprovalStatus,
+  EnvironmentDto,
+  ProjectDto,
+} from '@secrets/shared'
 import { ArrowLeft, Check, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '../components/EmptyState'
@@ -6,8 +11,19 @@ import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { formatDateTime } from '../lib/format'
@@ -23,17 +39,12 @@ export const ApprovalsPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const {
-    data: projectsData,
-    error: projectsError,
-  } = useAsyncResource<ProjectDto[]>(
-    async () => (user ? api.listProjects() : []),
-    [user],
-  )
-  const {
-    data: environmentsData,
-    error: envError,
-  } = useAsyncResource<EnvironmentDto[]>(
+  const { data: projectsData, error: projectsError } = useAsyncResource<
+    ProjectDto[]
+  >(async () => (user ? api.listProjects() : []), [user])
+  const { data: environmentsData, error: envError } = useAsyncResource<
+    EnvironmentDto[]
+  >(
     async () => (user ? api.listEnvironments(projectId) : []),
     [projectId, user],
   )
@@ -122,7 +133,7 @@ export const ApprovalsPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
             onClick={() => navigate(`/projects/${projectId}`)}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -171,17 +182,19 @@ export const ApprovalsPage = ({
           approvals.map((approval) => (
             <div
               key={approval.id}
-              className="rounded-2xl border border-border/60 bg-card/80 p-5 shadow-soft"
+              className="border-border/60 bg-card/80 shadow-soft rounded-2xl border p-5"
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="text-sm font-semibold text-foreground">
+                  <p className="text-foreground text-sm font-semibold">
                     {approval.action} · {approval.key}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    Env: {envById.get(approval.environmentId) ?? approval.environmentId.slice(0, 6)}
+                  <p className="text-muted-foreground text-xs">
+                    Env:{' '}
+                    {envById.get(approval.environmentId) ??
+                      approval.environmentId.slice(0, 6)}
                   </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-muted-foreground text-xs">
                     Requested {formatDateTime(approval.createdAt)}
                   </p>
                 </div>
@@ -212,7 +225,8 @@ export const ApprovalsPage = ({
                       </Button>
                     </>
                   ) : null}
-                  {approval.status === 'PENDING' && approval.requestedBy === user?.id ? (
+                  {approval.status === 'PENDING' &&
+                  approval.requestedBy === user?.id ? (
                     <Button
                       variant="outline"
                       className="rounded-full"
@@ -228,13 +242,16 @@ export const ApprovalsPage = ({
         )}
       </div>
 
-      <Dialog open={Boolean(detailId)} onOpenChange={(open) => (!open ? closeDetail() : null)}>
+      <Dialog
+        open={Boolean(detailId)}
+        onOpenChange={(open) => (!open ? closeDetail() : null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Approval details</DialogTitle>
           </DialogHeader>
           {detailLoading ? (
-            <p className="text-sm text-muted-foreground">Loading details...</p>
+            <p className="text-muted-foreground text-sm">Loading details...</p>
           ) : detail ? (
             <div className="space-y-3 text-sm">
               <p>
@@ -249,27 +266,29 @@ export const ApprovalsPage = ({
               </p>
               {detail.currentValue !== undefined ? (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
                     Current value
                   </p>
-                  <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs">
+                  <pre className="bg-muted mt-2 rounded-lg p-3 text-xs whitespace-pre-wrap">
                     {detail.currentValue ?? '—'}
                   </pre>
                 </div>
               ) : null}
               {detail.proposedValue !== undefined ? (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
                     Proposed value
                   </p>
-                  <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs">
+                  <pre className="bg-muted mt-2 rounded-lg p-3 text-xs whitespace-pre-wrap">
                     {detail.proposedValue ?? '—'}
                   </pre>
                 </div>
               ) : null}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">No details available.</p>
+            <p className="text-muted-foreground text-sm">
+              No details available.
+            </p>
           )}
         </DialogContent>
       </Dialog>

@@ -14,7 +14,9 @@ export const ImportPreviewList = ({
   return (
     <div className="grid gap-2">
       <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-foreground font-semibold">{entries.length} keys</span>
+        <span className="text-foreground font-semibold">
+          {entries.length} keys
+        </span>
         <span>·</span>
         <span>{conflictKeys.size} conflicts</span>
         {duplicateKeys.length > 0 ? (
@@ -39,7 +41,9 @@ export const ImportPreviewList = ({
                 key={`${entry.key}-${entry.line}`}
                 className="hover:border-border/60 flex items-center justify-between gap-3 rounded-xl border border-transparent px-2 py-1"
               >
-                <span className="text-foreground font-semibold">{entry.key}</span>
+                <span className="text-foreground font-semibold">
+                  {entry.key}
+                </span>
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-[0.2em] uppercase ${
                     hasConflict

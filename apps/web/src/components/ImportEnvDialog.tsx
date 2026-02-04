@@ -1,9 +1,14 @@
 import type { EnvironmentDto, SecretDto } from '@secrets/shared'
-import type { ChangeEvent, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
-import { parseDotenv, type DotenvEntry, type DotenvInvalidLine } from '../lib/parseDotenv'
+import {
+  parseDotenv,
+  type DotenvEntry,
+  type DotenvInvalidLine,
+} from '../lib/parseDotenv'
+import { ErrorBanner } from './ErrorBanner'
 import { ImportDropzone } from './import/ImportDropzone'
 import { ImportPreviewList } from './import/ImportPreviewList'
 import { ImportSummaryBanner } from './import/ImportSummaryBanner'
@@ -76,24 +81,6 @@ export const ImportEnvDialog = ({
     () => importEntries.filter((entry) => secretByKey.has(entry.key)),
     [importEntries, secretByKey],
   )
-
-  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    setImportError(null)
-    setImportSummary(null)
-    setImportFileName(file.name)
-    try {
-      const content = await file.text()
-      setImportText(content)
-      setImportEntries([])
-      setImportInvalidLines([])
-      setImportDuplicateKeys([])
-      setImportPreviewed(false)
-    } catch (error) {
-      setImportError(getErrorMessage(error))
-    }
-  }
 
   const handleImportDrop = async (file: File) => {
     setImportError(null)
@@ -186,7 +173,7 @@ export const ImportEnvDialog = ({
             />
             <ImportDropzone
               fileName={importFileName}
-              onFileSelected={(file) => void handleImportDrop(file)}
+              onFileSelected={(file) => handleImportDrop(file)}
             />
           </div>
 
@@ -213,7 +200,7 @@ export const ImportEnvDialog = ({
           </label>
 
           {importError ? (
-            <p className="text-sm text-rose-600">{importError}</p>
+            <ErrorBanner message={importError} className="mt-3" />
           ) : null}
 
           {importSummary ? (

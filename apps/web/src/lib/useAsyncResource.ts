@@ -2,7 +2,10 @@ import type { DependencyList } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getErrorMessage } from './errors'
 
-export const useAsyncResource = <T>(loader: () => Promise<T>, deps: DependencyList) => {
+export const useAsyncResource = <T>(
+  loader: () => Promise<T>,
+  deps: DependencyList,
+) => {
   const loaderRef = useRef(loader)
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(false)

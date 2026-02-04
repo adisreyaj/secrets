@@ -102,7 +102,7 @@ export const CliLoginPage = ({
       <SectionCard>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Login code
             </span>
             <Input
@@ -112,13 +112,10 @@ export const CliLoginPage = ({
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Project
             </span>
-            <Select
-              value={selectedProject}
-              onValueChange={setSelectedProject}
-            >
+            <Select value={selectedProject} onValueChange={setSelectedProject}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a project" />
               </SelectTrigger>
@@ -132,7 +129,7 @@ export const CliLoginPage = ({
             </Select>
           </label>
           <label className="grid gap-2 text-sm md:col-span-2">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Token name
             </span>
             <Input
@@ -146,7 +143,9 @@ export const CliLoginPage = ({
           <Button
             className="rounded-full px-6 text-sm font-semibold"
             onClick={handleIssue}
-            disabled={issuing || !loginCode.trim() || selectedProject === 'none'}
+            disabled={
+              issuing || !loginCode.trim() || selectedProject === 'none'
+            }
           >
             {issuing ? 'Issuing...' : 'Issue CLI token'}
           </Button>

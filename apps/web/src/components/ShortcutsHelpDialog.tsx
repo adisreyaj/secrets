@@ -60,10 +60,10 @@ const ShortcutList = ({ items }: { items: ShortcutItem[] }) => (
     {items.map((item) => (
       <div
         key={`${item.keys}-${item.label}`}
-        className="flex items-center justify-between rounded-xl border border-border/70 bg-card/80 px-3 py-2 text-sm"
+        className="border-border/70 bg-card/80 flex items-center justify-between rounded-xl border px-3 py-2 text-sm"
       >
         <span className="text-muted-foreground">{item.label}</span>
-        <kbd className="rounded-lg border border-border bg-muted px-2 py-1 font-mono text-xs text-foreground">
+        <kbd className="border-border bg-muted text-foreground rounded-lg border px-2 py-1 font-mono text-xs">
           {item.keys}
         </kbd>
       </div>
@@ -84,20 +84,20 @@ export const ShortcutsHelpDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg rounded-3xl border-border/70 bg-popover text-popover-foreground">
+      <DialogContent className="border-border/70 bg-popover text-popover-foreground max-w-lg rounded-3xl">
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
         </DialogHeader>
         <div className="space-y-5 text-sm">
           <section className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Global
             </p>
             <ShortcutList items={globalShortcuts} />
           </section>
           {currentShortcuts.length > 0 ? (
             <section className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
                 This page
               </p>
               <ShortcutList items={currentShortcuts} />

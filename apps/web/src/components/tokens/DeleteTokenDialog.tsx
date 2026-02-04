@@ -24,16 +24,27 @@ export const DeleteTokenDialog = ({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Delete API token</DialogTitle>
-          <DialogDescription>This token will stop working immediately.</DialogDescription>
+          <DialogDescription>
+            This token will stop working immediately.
+          </DialogDescription>
         </DialogHeader>
-        <div className="rounded-2xl border border-dashed border-border bg-muted p-3 text-xs text-muted-foreground">
-          Selected token <span className="font-semibold text-foreground">{tokenName}</span>
+        <div className="border-border bg-muted text-muted-foreground rounded-2xl border border-dashed p-3 text-xs">
+          Selected token{' '}
+          <span className="text-foreground font-semibold">{tokenName}</span>
         </div>
         <DialogFooter className="mt-6">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} className="rounded-full">
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="rounded-full"
+          >
             Cancel
           </Button>
-          <Button variant="destructive" onClick={onConfirm} className="rounded-full">
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            className="rounded-full"
+          >
             Delete token
           </Button>
         </DialogFooter>

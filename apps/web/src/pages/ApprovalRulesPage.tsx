@@ -42,17 +42,12 @@ export const ApprovalRulesPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const {
-    data: projectsData,
-    error: projectsError,
-  } = useAsyncResource<ProjectDto[]>(
-    async () => (user ? api.listProjects() : []),
-    [user],
-  )
-  const {
-    data: environmentsData,
-    error: envError,
-  } = useAsyncResource<EnvironmentDto[]>(
+  const { data: projectsData, error: projectsError } = useAsyncResource<
+    ProjectDto[]
+  >(async () => (user ? api.listProjects() : []), [user])
+  const { data: environmentsData, error: envError } = useAsyncResource<
+    EnvironmentDto[]
+  >(
     async () => (user ? api.listEnvironments(projectId) : []),
     [projectId, user],
   )
@@ -161,7 +156,9 @@ export const ApprovalRulesPage = ({
       />
 
       {(projectsError || envError || rulesError) && (
-        <ErrorBanner message={projectsError || envError || rulesError} />
+        <ErrorBanner
+          message={(projectsError || envError || rulesError) as string}
+        />
       )}
 
       <section className="border-border/60 bg-card/70 shadow-soft rounded-3xl border p-6">

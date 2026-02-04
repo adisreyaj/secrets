@@ -57,14 +57,14 @@ export const CreateTokenDialog = ({
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+          className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
         >
           <KeyRound className="h-4 w-4" />
           New token
           <ShortcutHint keys="n" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="rounded-3xl border-border/70 bg-popover text-popover-foreground">
+      <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
         <DialogHeader className="text-left">
           <DialogTitle>Create API token</DialogTitle>
           <DialogDescription>
@@ -73,7 +73,7 @@ export const CreateTokenDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
               Token name
             </span>
             <Input
@@ -84,7 +84,7 @@ export const CreateTokenDialog = ({
               autoComplete="off"
             />
           </label>
-          <label className="flex items-center gap-3 text-sm text-muted-foreground">
+          <label className="text-muted-foreground flex items-center gap-3 text-sm">
             <Checkbox
               checked={readOnly}
               onCheckedChange={(checked) => setReadOnly(Boolean(checked))}
@@ -102,7 +102,7 @@ export const CreateTokenDialog = ({
             </Button>
             <Button
               type="submit"
-              className="rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
+              className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-6 text-sm font-semibold"
               disabled={creating || !name.trim()}
             >
               {creating ? 'Creating...' : 'Create token'}

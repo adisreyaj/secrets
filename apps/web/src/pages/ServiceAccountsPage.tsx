@@ -6,12 +6,11 @@ import type {
 } from '@secrets/shared'
 import { ArrowLeft, Copy, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { PageHeader } from '../components/PageHeader'
 import { ErrorBanner } from '../components/ErrorBanner'
+import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { Checkbox } from '../components/ui/checkbox'
 import {
   Dialog,
@@ -22,6 +21,11 @@ import {
   DialogTitle,
 } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '../components/ui/tooltip'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
@@ -37,17 +41,12 @@ export const ServiceAccountsPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const {
-    data: projectsData,
-    error: projectsError,
-  } = useAsyncResource<ProjectDto[]>(
-    async () => (user ? api.listProjects() : []),
-    [user],
-  )
-  const {
-    data: environmentsData,
-    error: envError,
-  } = useAsyncResource<EnvironmentDto[]>(
+  const { data: projectsData, error: projectsError } = useAsyncResource<
+    ProjectDto[]
+  >(async () => (user ? api.listProjects() : []), [user])
+  const { data: environmentsData, error: envError } = useAsyncResource<
+    EnvironmentDto[]
+  >(
     async () => (user ? api.listEnvironments(projectId) : []),
     [projectId, user],
   )
@@ -208,7 +207,9 @@ export const ServiceAccountsPage = ({
       />
 
       {(projectsError || envError || accountsError) && (
-        <ErrorBanner message={projectsError || envError || accountsError} />
+        <ErrorBanner
+          message={(projectsError || envError || accountsError) as string}
+        />
       )}
 
       <SectionCard>
@@ -286,8 +287,7 @@ export const ServiceAccountsPage = ({
                           </p>
                           <p>
                             {token.readOnly ? 'Read-only' : 'Read/write'} ·
-                            created{' '}
-                            {formatDate(token.createdAt)}
+                            created {formatDate(token.createdAt)}
                           </p>
                         </div>
                         <Button
@@ -360,7 +360,7 @@ export const ServiceAccountsPage = ({
               </div>
             </div>
             {tokenError ? (
-              <p className="text-sm text-rose-600">{tokenError}</p>
+              <ErrorBanner message={tokenError} className="mt-3" />
             ) : null}
             {lastIssuedToken ? (
               <div className="text-muted-foreground grid gap-2 text-xs">
@@ -498,7 +498,7 @@ export const ServiceAccountsPage = ({
               </div>
             </div>
             {createError ? (
-              <p className="text-sm text-rose-600">{createError}</p>
+              <ErrorBanner message={createError} className="mt-3" />
             ) : null}
           </div>
           <DialogFooter>

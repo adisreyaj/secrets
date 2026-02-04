@@ -1,7 +1,10 @@
 import type { ProjectDto } from '@secrets/shared'
 import { useCallback } from 'react'
 import { PageHeader } from '../components/PageHeader'
-import { ProjectsSection, type ProjectTemplate } from '../components/ProjectsSection'
+import {
+  ProjectsSection,
+  type ProjectTemplate,
+} from '../components/ProjectsSection'
 import { api } from '../lib/api'
 import { useAsyncResource } from '../lib/useAsyncResource'
 import { useRequireAuth } from '../lib/useRequireAuth'
@@ -23,24 +26,27 @@ export const ProjectsPage = ({
   )
   const projects = projectsData ?? []
 
-  const handleCreate = useCallback(async (payload: { name: string; template: ProjectTemplate }) => {
-    const project = await api.createProject({ name: payload.name })
-    const templates: Record<ProjectTemplate, string[]> = {
-      starter: ['development', 'prod'],
-      full: ['development', 'staging', 'prod'],
-      empty: [],
-    }
+  const handleCreate = useCallback(
+    async (payload: { name: string; template: ProjectTemplate }) => {
+      const project = await api.createProject({ name: payload.name })
+      const templates: Record<ProjectTemplate, string[]> = {
+        starter: ['development', 'prod'],
+        full: ['development', 'staging', 'prod'],
+        empty: [],
+      }
 
-    const environments = templates[payload.template] ?? []
-    if (environments.length > 0) {
-      await Promise.all(
-        environments.map((envName) =>
-          api.createEnvironment(project.id, { name: envName }),
-        ),
-      )
-    }
-    await loadProjects()
-  }, [loadProjects])
+      const environments = templates[payload.template] ?? []
+      if (environments.length > 0) {
+        await Promise.all(
+          environments.map((envName) =>
+            api.createEnvironment(project.id, { name: envName }),
+          ),
+        )
+      }
+      await loadProjects()
+    },
+    [loadProjects],
+  )
 
   return (
     <section className="flex flex-col gap-6">

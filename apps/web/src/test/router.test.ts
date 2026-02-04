@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { getEnvironmentId, getProjectId, isProjectScopedRoute, type RouteMatch } from '../lib/router'
+import {
+  getEnvironmentId,
+  getProjectId,
+  isProjectScopedRoute,
+  type RouteMatch,
+} from '../lib/router'
 
 describe('router helpers', () => {
   it('detects project scoped routes', () => {
@@ -10,7 +15,11 @@ describe('router helpers', () => {
   })
 
   it('detects environment route', () => {
-    const match: RouteMatch = { name: 'environment', projectId: 'p1', environmentId: 'e1' }
+    const match: RouteMatch = {
+      name: 'environment',
+      projectId: 'p1',
+      environmentId: 'e1',
+    }
     expect(getProjectId(match)).toBe('p1')
     expect(getEnvironmentId(match)).toBe('e1')
   })
