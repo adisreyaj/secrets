@@ -22,7 +22,6 @@ paths = ['/app/node_modules/.bin']
 [phases.build]
 dependsOn = ['install']
 cmds = ['pnpm run build:server']
-cacheDirectories = ['node_modules/.cache']
 
 [start]
 cmd = 'pnpm run start:server'
