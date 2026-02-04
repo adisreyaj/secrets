@@ -5,7 +5,6 @@ CI = 'true'
 NIXPACKS_METADATA = 'node'
 NIXPACKS_NODE_VERSION = '24'
 NODE_ENV = 'production'
-NPM_CONFIG_PRODUCTION = 'false'
 
 [phases.setup]
 nixPkgs = [
@@ -16,7 +15,7 @@ nixpkgsArchive = 'cf93ceb06388f5714302b702cccf2c77f6064442'
 
 [phases.install]
 dependsOn = ['setup']
-cmds = ['corepack enable pnpm', 'pnpm install --no-prod']
+cmds = ['corepack enable pnpm', 'pnpm install -P false']
 cacheDirectories = ['/root/.local/share/pnpm/store', 'node_modules']
 paths = ['/app/node_modules/.bin']
 
