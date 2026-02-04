@@ -269,7 +269,7 @@ async function getProjectRole(request: FastifyRequest, projectId: string): Promi
     where: {
       projectId_userId: {
         projectId,
-        userId: request.auth.user.id,
+        userId: request.auth.user!.id,
       },
     },
   });
@@ -369,7 +369,7 @@ async function createApprovalRequest(params: {
   secretId?: string | null;
   targetEnvironmentId?: string | null;
   expectedVersionId?: string | null;
-  payload?: { ciphertext: Buffer; iv: Buffer; tag: Buffer; keyVersion: string } | null;
+  payload?: { ciphertext: Uint8Array<ArrayBuffer>; iv: Uint8Array<ArrayBuffer>; tag: Uint8Array<ArrayBuffer>; keyVersion: string } | null;
   metadataJson?: Record<string, unknown> | null;
 }) {
   return prisma.approvalRequest.create({
@@ -721,6 +721,10 @@ export async function buildApp(): Promise<FastifyInstance> {
       reply.code(409).send({ error: 'CLI login token already issued' });
       return;
     }
+    if (!auth.user) {
+      reply.code(403).send({ error: 'CLI login requires a user session' });
+      return;
+    }
 
     const raw = generateToken();
     const token = await prisma.apiToken.create({
@@ -728,7 +732,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         projectId,
         name,
         tokenHash: hashToken(raw),
-        createdBy: auth.user?.id ?? null,
+        createdBy: auth.user.id,
         readOnly: false,
         expiresAt: new Date(Date.now() + config.apiTokenTtlDays * 24 * 60 * 60 * 1000),
       },
@@ -745,7 +749,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'token.create',
       resourceType: 'api_token',
@@ -876,7 +880,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     if (wantsPassword) {
       const userRecord = await prisma.user.findUnique({
-        where: { id: auth.user.id },
+        where: { id: auth.user!.id },
       });
       if (!userRecord) {
         reply.code(404).send({ error: 'User not found' });
@@ -898,7 +902,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     const updated = await prisma.user.update({
-      where: { id: auth.user.id },
+      where: { id: auth.user!.id },
       data,
     });
 
@@ -916,6 +920,10 @@ export async function buildApp(): Promise<FastifyInstance> {
       reply.code(400).send({ error: 'Name is required' });
       return;
     }
+    if (!auth.user) {
+      reply.code(403).send({ error: 'API token creation requires a user session' });
+      return;
+    }
 
     const slug = await ensureUniqueProjectSlug(body.name);
     const project = await prisma.project.create({
@@ -924,7 +932,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         slug,
         members: {
           create: {
-            userId: auth.user.id,
+            userId: auth.user!.id,
             role: Role.ADMIN,
           },
         },
@@ -933,7 +941,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: project.id,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'project.create',
       resourceType: 'project',
@@ -950,7 +958,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     const memberships = await prisma.projectMember.findMany({
-      where: { userId: auth.user.id },
+      where: { userId: auth.user!.id },
       include: { project: true },
     });
 
@@ -1016,7 +1024,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'project.audit_retention.update',
       resourceType: 'project',
@@ -1080,7 +1088,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'project.member.add',
       resourceType: 'project_member',
@@ -1165,6 +1173,10 @@ export async function buildApp(): Promise<FastifyInstance> {
       reply.code(409).send({ error: 'Active invite already exists for this email' });
       return;
     }
+    if (!auth.user) {
+      reply.code(403).send({ error: 'Invites require a user session' });
+      return;
+    }
 
     const token = generateToken();
     const invite = await prisma.projectInvite.create({
@@ -1174,14 +1186,14 @@ export async function buildApp(): Promise<FastifyInstance> {
         role: body.role,
         status: 'PENDING',
         tokenHash: hashToken(token),
-        createdBy: auth.user?.id ?? null,
+        createdBy: auth.user.id,
         expiresAt: new Date(Date.now() + config.inviteTtlDays * 24 * 60 * 60 * 1000),
       },
     });
 
     await logAudit({
       projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'invite.create',
       resourceType: 'project_invite',
@@ -1241,7 +1253,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'invite.revoke',
       resourceType: 'project_invite',
@@ -1283,6 +1295,10 @@ export async function buildApp(): Promise<FastifyInstance> {
       reply.code(410).send({ error: 'Invite has expired' });
       return;
     }
+    if (!auth.user) {
+      reply.code(403).send({ error: 'Invite acceptance requires a user session' });
+      return;
+    }
 
     if (auth.user.email.toLowerCase() !== invite.email.toLowerCase()) {
       reply.code(403).send({ error: 'Invite email does not match your account' });
@@ -1314,7 +1330,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: invite.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'invite.accept',
       resourceType: 'project_invite',
@@ -1379,6 +1395,10 @@ export async function buildApp(): Promise<FastifyInstance> {
         return;
       }
     }
+    if (!auth.user) {
+      reply.code(403).send({ error: 'Approval rules require a user session' });
+      return;
+    }
     const rule = await prisma.approvalRule.create({
       data: {
         projectId,
@@ -1387,12 +1407,12 @@ export async function buildApp(): Promise<FastifyInstance> {
         keyPattern: body.keyPattern.trim(),
         actionsJson: body.actions,
         isActive: body.isActive ?? true,
-        createdBy: auth.user?.id ?? null,
+        createdBy: auth.user.id,
       },
     });
     await logAudit({
       projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.rule.create',
       resourceType: 'approval_rule',
@@ -1448,7 +1468,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
     await logAudit({
       projectId: rule.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.rule.update',
       resourceType: 'approval_rule',
@@ -1475,7 +1495,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await prisma.approvalRule.delete({ where: { id } });
     await logAudit({
       projectId: rule.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.rule.delete',
       resourceType: 'approval_rule',
@@ -1597,7 +1617,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         where: { id },
         data: {
           status: ApprovalStatus.APPROVED,
-          approvedBy: auth.user.id,
+          approvedBy: auth.user!.id,
           approvedAt: new Date(),
         },
       });
@@ -1629,7 +1649,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: approval.payloadIv,
             tag: approval.payloadTag,
             keyVersion: approval.payloadKeyVersion ?? masterKeyVersion(),
-            createdBy: auth.user?.id ?? null,
+            createdBy: auth.user?.id,
             isActive: true,
           },
         });
@@ -1691,7 +1711,7 @@ export async function buildApp(): Promise<FastifyInstance> {
                 iv: payload.iv,
                 tag: payload.tag,
                 keyVersion: payload.keyVersion,
-                createdBy: auth.user?.id ?? null,
+                createdBy: auth.user?.id,
                 isActive: true,
               },
             }),
@@ -1828,7 +1848,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: payload.iv,
             tag: payload.tag,
             keyVersion,
-            createdBy: auth.user?.id ?? null,
+            createdBy: auth.user?.id,
             isActive: true,
           },
         });
@@ -1845,7 +1865,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: approval.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.approved',
       resourceType: 'approval_request',
@@ -1855,7 +1875,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (applied.auditAction) {
       await logAudit({
         projectId: approval.projectId,
-        actorUserId: auth.user?.id ?? null,
+        actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
         action: applied.auditAction,
         resourceType: 'secret',
@@ -1898,7 +1918,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
     await logAudit({
       projectId: approval.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.denied',
       resourceType: 'approval_request',
@@ -1923,7 +1943,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!role) {
       return;
     }
-    const isRequester = approval.requestedBy === auth.user.id;
+    const isRequester = approval.requestedBy === auth.user!.id;
     const isAdmin = role === Role.ADMIN;
     if (!isRequester && !isAdmin) {
       reply.code(403).send({ error: 'Forbidden' });
@@ -1939,7 +1959,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
     await logAudit({
       projectId: approval.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.canceled',
       resourceType: 'approval_request',
@@ -2041,7 +2061,7 @@ export async function buildApp(): Promise<FastifyInstance> {
                     iv: payload.iv,
                     tag: payload.tag,
                     keyVersion,
-                    createdBy: auth.user?.id ?? null,
+                    createdBy: auth.user?.id,
                     isActive: true,
                   },
                 },
@@ -2057,7 +2077,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'environment.create',
       resourceType: 'environment',
@@ -2145,15 +2165,10 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
-    const where: {
-      deletedAt: null;
-      environment: { projectId: string };
-      environmentId?: string;
-      key: { contains: string; mode?: 'insensitive' };
-    } = {
+    const where: Prisma.SecretWhereInput = {
       deletedAt: null,
       environment: { projectId },
-      key: { contains: q, mode: 'insensitive' },
+      key: { contains: q },
     };
 
     const scopedEnvIds = request.auth?.scopeEnvironmentIds;
@@ -2319,12 +2334,12 @@ export async function buildApp(): Promise<FastifyInstance> {
         environmentId: envId,
         action: ApprovalAction.CREATE,
         key: body.key,
-        requestedBy: auth.user.id,
+        requestedBy: auth.user!.id,
         payload: { ...payload, keyVersion },
       });
       await logAudit({
         projectId: env.projectId,
-        actorUserId: auth.user?.id ?? null,
+        actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
@@ -2365,7 +2380,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           iv: payload.iv,
           tag: payload.tag,
           keyVersion,
-          createdBy: auth.user?.id ?? null,
+          createdBy: auth.user?.id,
           isActive: true,
         },
       }),
@@ -2377,7 +2392,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: env.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.create',
       resourceType: 'secret',
@@ -2504,14 +2519,14 @@ export async function buildApp(): Promise<FastifyInstance> {
           environmentId: envId,
           action,
           key,
-          requestedBy: auth.user.id,
+          requestedBy: auth.user!.id,
           secretId: isCreate ? undefined : existing?.id,
           expectedVersionId: isCreate ? undefined : existing?.versions[0]?.id,
           payload: { ...encrypted, keyVersion },
         });
         await logAudit({
           projectId: env.projectId,
-          actorUserId: auth.user?.id ?? null,
+          actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
           action: 'approval.requested',
           resourceType: 'approval_request',
@@ -2554,7 +2569,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: payload.iv,
             tag: payload.tag,
             keyVersion,
-            createdBy: auth.user?.id ?? null,
+            createdBy: auth.user?.id,
             isActive: true,
           },
         }),
@@ -2566,7 +2581,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
       await logAudit({
         projectId: env.projectId,
-        actorUserId: auth.user?.id ?? null,
+        actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
         action: isCreate ? 'secret.create' : 'secret.update',
         resourceType: 'secret',
@@ -2661,7 +2676,9 @@ export async function buildApp(): Promise<FastifyInstance> {
         reply.code(202).send({ status: 'pending', approvalRequestId: existing.id });
         return;
       }
-      let payload: { ciphertext: Buffer; iv: Buffer; tag: Buffer; keyVersion: string } | null = null;
+      let payload:
+        | { ciphertext: Uint8Array<ArrayBuffer>; iv: Uint8Array<ArrayBuffer>; tag: Uint8Array<ArrayBuffer>; keyVersion: string }
+        | null = null;
       if (nextValue) {
         const encrypted = encryptSecret(nextValue, masterKey);
         payload = { ...encrypted, keyVersion: masterKeyVersion() };
@@ -2671,14 +2688,14 @@ export async function buildApp(): Promise<FastifyInstance> {
         environmentId: secret.environmentId,
         action: ApprovalAction.UPDATE,
         key: requestedKey,
-        requestedBy: auth.user.id,
+        requestedBy: auth.user!.id,
         secretId: secretId,
         expectedVersionId: activeVersion?.id,
         payload,
       });
       await logAudit({
         projectId: secret.environment.projectId,
-        actorUserId: auth.user?.id ?? null,
+        actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
@@ -2727,7 +2744,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: payload.iv,
             tag: payload.tag,
             keyVersion,
-            createdBy: auth.user?.id ?? null,
+            createdBy: auth.user?.id,
             isActive: true,
           },
         }),
@@ -2744,7 +2761,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: secret.environment.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.update',
       resourceType: 'secret',
@@ -2858,7 +2875,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         environmentId: targetEnv.id,
         action: ApprovalAction.COPY,
         key: secret.key,
-        requestedBy: auth.user.id,
+        requestedBy: auth.user!.id,
         secretId: secretId,
         targetEnvironmentId: targetEnv.id,
         expectedVersionId: activeVersion.id,
@@ -2866,7 +2883,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       approvalRequestIds.push(approval.id);
       await logAudit({
         projectId: secret.environment.projectId,
-        actorUserId: auth.user?.id ?? null,
+        actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
@@ -2930,7 +2947,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: payload.iv,
             tag: payload.tag,
             keyVersion,
-            createdBy: auth.user?.id ?? null,
+            createdBy: auth.user?.id,
             isActive: true,
           },
         });
@@ -2943,7 +2960,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: secret.environment.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.copy',
       resourceType: 'secret',
@@ -3068,7 +3085,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         environmentId: targetEnv.id,
         action: ApprovalAction.COPY_FROM,
         key: sourceSecret.key,
-        requestedBy: auth.user.id,
+        requestedBy: auth.user!.id,
         secretId: sourceSecret.id,
         targetEnvironmentId: targetEnv.id,
         expectedVersionId: version?.id,
@@ -3077,7 +3094,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       approvalRequestIds.push(approval.id);
       await logAudit({
         projectId: targetEnv.projectId,
-        actorUserId: auth.user?.id ?? null,
+        actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
@@ -3147,7 +3164,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: payload.iv,
             tag: payload.tag,
             keyVersion,
-            createdBy: auth.user?.id ?? null,
+            createdBy: auth.user?.id,
             isActive: true,
           },
         });
@@ -3160,7 +3177,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: targetEnv.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.copy.bulk',
       resourceType: 'secret',
@@ -3255,14 +3272,14 @@ export async function buildApp(): Promise<FastifyInstance> {
         environmentId: secret.environmentId,
         action: ApprovalAction.ROLLBACK,
         key: secret.key,
-        requestedBy: auth.user.id,
+        requestedBy: auth.user!.id,
         secretId: secretId,
         expectedVersionId: target.id,
         metadataJson: { versionId: target.id },
       });
       await logAudit({
         projectId: secret.environment.projectId,
-        actorUserId: auth.user?.id ?? null,
+        actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
@@ -3280,7 +3297,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: secret.environment.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.rollback',
       resourceType: 'secret',
@@ -3433,9 +3450,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     let versions: Array<{
       id: string;
-      ciphertext: string;
-      iv: string;
-      tag: string;
+      ciphertext: Uint8Array<ArrayBuffer>;
+      iv: Uint8Array<ArrayBuffer>;
+      tag: Uint8Array<ArrayBuffer>;
       createdAt: Date;
     }> = [];
 
@@ -3498,7 +3515,14 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     const { id: secretId } = request.params as { id: string };
     const secret = await prisma.secret.findUnique({
-      include: { environment: true },
+      include: {
+        environment: true,
+        versions: {
+          where: { isActive: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
       where: { id: secretId },
     });
     if (!secret) {
@@ -3543,13 +3567,13 @@ export async function buildApp(): Promise<FastifyInstance> {
         environmentId: secret.environmentId,
         action: ApprovalAction.DELETE,
         key: secret.key,
-        requestedBy: auth.user.id,
+        requestedBy: auth.user!.id,
         secretId: secretId,
         expectedVersionId: activeVersion?.id,
       });
       await logAudit({
         projectId: secret.environment.projectId,
-        actorUserId: auth.user?.id ?? null,
+        actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
@@ -3567,7 +3591,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: secret.environment.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.delete',
       resourceType: 'secret',
@@ -3724,7 +3748,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'service_account.create',
       resourceType: 'service_account',
@@ -3776,7 +3800,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'service_account.delete',
       resourceType: 'service_account',
@@ -3905,7 +3929,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: account.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'service_account.token.create',
       resourceType: 'service_account_token',
@@ -3970,7 +3994,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: account.projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'service_account.token.delete',
       resourceType: 'service_account_token',
@@ -4009,7 +4033,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         projectId,
         name: body.name,
         tokenHash: hashToken(raw),
-        createdBy: auth.user?.id ?? null,
+        createdBy: auth.user!.id,
         readOnly: body.readOnly === true,
         expiresAt,
       },
@@ -4017,7 +4041,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'token.create',
       resourceType: 'api_token',
@@ -4093,7 +4117,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user?.id ?? null,
+      actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'token.delete',
       resourceType: 'api_token',

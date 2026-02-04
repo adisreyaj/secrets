@@ -68,8 +68,20 @@ const AppShell = () => {
     match.name !== 'login' &&
     match.name !== 'cli-login' &&
     match.name !== 'invite'
+  const isPublicRoute =
+    match.name === 'login' ||
+    match.name === 'cli-login' ||
+    match.name === 'invite'
+  const shouldWaitForAuth = authLoading && !isPublicRoute
+  const shouldBlockProtectedRoute = !isPublicRoute && !user
   const isProjectScoped = isProjectScopedRoute(match)
   const isResolvingProject = isProjectScoped && !resolvedProjectId
+
+  useEffect(() => {
+    if (!authLoading && !user && !isPublicRoute) {
+      navigate('/login')
+    }
+  }, [authLoading, user, isPublicRoute, navigate])
 
   useEffect(() => {
     if (!user) return
@@ -411,7 +423,16 @@ const AppShell = () => {
           aria-hidden="true"
         />
         <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 pb-16">
-          {isResolvingProject ? (
+          {shouldWaitForAuth || shouldBlockProtectedRoute ? (
+            <section className="flex flex-1 flex-col items-center justify-center gap-2">
+              <p className="text-foreground text-base font-medium">
+                Checking your session
+              </p>
+              <p className="text-muted-foreground text-sm">
+                Redirecting to login...
+              </p>
+            </section>
+          ) : isResolvingProject ? (
             <div className="text-muted-foreground text-sm">
               Loading project...
             </div>
