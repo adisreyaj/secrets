@@ -41,9 +41,11 @@ export const AuthPanel = ({
   return (
     <Card className="border-border/70 bg-card/90 shadow-soft mx-auto w-full max-w-md rounded-3xl p-8">
       <div className="flex flex-col items-center gap-3 text-center">
-        <div className="bg-foreground text-background flex h-10 w-10 items-center justify-center rounded-2xl">
-          SM
-        </div>
+        <img
+          src="/logo.svg"
+          alt="Secrets"
+          className="h-10 w-10 rounded-2xl object-contain dark:invert"
+        />
         <div>
           <p className="text-sm font-semibold">Secrets</p>
           <p className="text-muted-foreground text-xs">Secure your secrets!</p>

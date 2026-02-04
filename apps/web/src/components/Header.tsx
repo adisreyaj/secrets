@@ -1,5 +1,6 @@
 import type { UserDto } from '@secrets/shared'
 import { Laptop, Moon, Sun } from 'lucide-react'
+import { useShortcutHints } from '../lib/shortcuts'
 import { useTheme } from '../lib/theme'
 import { Button } from './ui/button'
 import {
@@ -11,7 +12,6 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
-import { useShortcutHints } from '../lib/shortcuts'
 
 export const Header = ({
   user,
@@ -45,9 +45,11 @@ export const Header = ({
         <div
           className={`flex items-center gap-3 ${isCentered ? 'text-center' : ''}`}
         >
-          <div className="bg-foreground text-background flex h-10 w-10 items-center justify-center rounded-2xl">
-            SM
-          </div>
+          <img
+            src="/logo.svg"
+            alt="Secrets Manager"
+            className="h-10 w-10 rounded-2xl object-contain dark:invert"
+          />
           <div>
             <p className="text-sm font-semibold">Secrets Manager</p>
             <p className="text-muted-foreground text-xs">Single-tenant vault</p>
