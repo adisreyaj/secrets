@@ -116,7 +116,7 @@ export const AddSecretDialog = ({
         <Button
           variant="outline"
           size="sm"
-          className="flex items-center gap-2 rounded-full text-xs"
+          className="flex h-9 items-center gap-2 rounded-full text-xs"
         >
           <Plus className="h-3.5 w-3.5" />
           Add secret

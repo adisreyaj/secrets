@@ -49,6 +49,13 @@ Run any command with injected secrets (no setup required):
 SECRETS_TOKEN=... SECRETS_ENV=dev secrets run -- npm run dev
 ```
 
+First-time login and setup:
+
+```bash
+secrets login
+secrets init
+```
+
 Optional export:
 
 ```bash
@@ -90,3 +97,4 @@ CLI/SDK environment variables:
 - API tokens are shown only once on creation.
 - `.env` export is available for editors/admins.
 - Role enforcement: Admin, Editor, Viewer.
+- Roadmap and parity plan: see `docs/roadmap.md`.

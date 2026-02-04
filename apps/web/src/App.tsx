@@ -14,19 +14,23 @@ import {
   useRegisterShortcut,
 } from './lib/shortcuts'
 import { AuditPage } from './pages/AuditPage'
+import { CliLoginPage } from './pages/CliLoginPage'
 import { EnvironmentPage } from './pages/EnvironmentPage'
 import { EnvironmentsPage } from './pages/EnvironmentsPage'
+import { InvitePage } from './pages/InvitePage'
 import { LoginPage } from './pages/LoginPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { ProjectOverviewPage } from './pages/ProjectOverviewPage'
 import { ProjectsPage } from './pages/ProjectsPage'
+import { TeamPage } from './pages/TeamPage'
 import { TokensPage } from './pages/TokensPage'
 
 const AppShell = () => {
   const { user, logout } = useAuth()
   const { match, navigate } = useHashRouter()
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
-  const shortcutsEnabled = !!user && match.name !== 'login'
+  const shortcutsEnabled =
+    !!user && match.name !== 'login' && match.name !== 'cli-login' && match.name !== 'invite'
 
   useEffect(() => {
     if (match.name === 'project') {
@@ -42,6 +46,9 @@ const AppShell = () => {
     if (match.name === 'audit') {
       setLastProjectId(match.projectId)
     }
+    if (match.name === 'team') {
+      setLastProjectId(match.projectId)
+    }
     if (match.name === 'tokens') {
       setLastProjectId(match.projectId)
     }
@@ -52,6 +59,7 @@ const AppShell = () => {
     match.name === 'environments' ||
     match.name === 'environment' ||
     match.name === 'audit' ||
+    match.name === 'team' ||
     match.name === 'tokens'
       ? match.projectId
       : getLastProjectId()
@@ -126,12 +134,21 @@ const AppShell = () => {
     { enabled: shortcutsEnabled },
   )
 
+  useRegisterShortcut(
+    'g m',
+    () => {
+      const projectId = resolveProjectId()
+      navigate(projectId ? `/projects/${projectId}/team` : '/projects')
+    },
+    { enabled: shortcutsEnabled },
+  )
+
   return (
     <TooltipProvider delayDuration={150}>
       <div className="bg-background text-foreground min-h-screen flex flex-col">
         <div className="relative overflow-hidden">
           <div className="absolute inset-0" aria-hidden="true" />
-          {match.name !== 'login' ? (
+          {match.name !== 'login' && match.name !== 'cli-login' && match.name !== 'invite' ? (
             <Header
               user={user}
               onLogout={logout}
@@ -153,6 +170,10 @@ const AppShell = () => {
         <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 pb-16">
           {match.name === 'login' ? (
             <LoginPage navigate={navigate} />
+          ) : match.name === 'cli-login' ? (
+            <CliLoginPage code={match.code} navigate={navigate} />
+          ) : match.name === 'invite' ? (
+            <InvitePage token={match.token} navigate={navigate} />
           ) : match.name === 'profile' ? (
             <ProfilePage navigate={navigate} />
           ) : match.name === 'projects' ? (
@@ -168,6 +189,8 @@ const AppShell = () => {
             <AuditPage projectId={match.projectId} navigate={navigate} />
           ) : match.name === 'tokens' ? (
             <TokensPage projectId={match.projectId} navigate={navigate} />
+          ) : match.name === 'team' ? (
+            <TeamPage projectId={match.projectId} navigate={navigate} />
           ) : (
             <EnvironmentPage
               projectId={match.projectId}

@@ -13,6 +13,13 @@ enum Role {
   VIEWER
 }
 
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
 model User {
   id            String           @id @default(cuid())
   email         String           @unique
@@ -21,10 +28,12 @@ model User {
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
   sessions      UserSession[]
+  cliLoginSessions CliLoginSession[]
   memberships   ProjectMember[]
   createdTokens ApiToken[]       @relation("ApiTokenCreator")
   secretVersions SecretVersion[] @relation("SecretVersionCreator")
   auditLogs     AuditLog[]       @relation("AuditActor")
+  projectInvites ProjectInvite[] @relation("ProjectInviteCreator")
 
   @@map("users")
 }
@@ -43,6 +52,24 @@ model UserSession {
   @@map("user_sessions")
 }
 
+model CliLoginSession {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  token      String?  @map("token")
+  userId     String?  @map("user_id")
+  projectId  String?  @map("project_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  expiresAt  DateTime @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([code])
+  @@index([expiresAt])
+  @@map("cli_login_sessions")
+}
+
 model Project {
   id          String          @id @default(cuid())
   name        String
@@ -53,6 +80,7 @@ model Project {
   environments Environment[]
   tokens      ApiToken[]
   audits      AuditLog[]
+  invites     ProjectInvite[]
 
   @@map("projects")
 }
@@ -70,6 +98,28 @@ model ProjectMember {
   @@index([userId])
   @@index([projectId])
   @@map("project_members")
+}
+
+model ProjectInvite {
+  id         String       @id @default(cuid())
+  projectId  String       @map("project_id")
+  email      String
+  role       Role
+  status     InviteStatus @default(PENDING)
+  tokenHash  String       @map("token_hash")
+  createdBy  String       @map("created_by")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  expiresAt  DateTime     @map("expires_at")
+  acceptedAt DateTime?    @map("accepted_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creator User    @relation("ProjectInviteCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([email])
+  @@index([tokenHash])
+  @@index([status])
+  @@map("project_invites")
 }
 
 model Environment {

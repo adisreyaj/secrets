@@ -100,12 +100,39 @@ function toEnvironmentDto(env: {
   };
 }
 
+function toInviteDto(invite: {
+  id: string;
+  projectId: string;
+  email: string;
+  role: Role;
+  status: string;
+  createdAt: Date;
+  expiresAt: Date;
+  acceptedAt: Date | null;
+}) {
+  return {
+    id: invite.id,
+    projectId: invite.projectId,
+    email: invite.email,
+    role: invite.role,
+    status: invite.status,
+    createdAt: invite.createdAt.toISOString(),
+    expiresAt: invite.expiresAt.toISOString(),
+    acceptedAt: invite.acceptedAt?.toISOString() ?? null,
+  };
+}
+
 function formatDotenvValue(value: string): string {
   if (/\s|#|"|\\|\n/.test(value)) {
     const escaped = value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"');
     return `"${escaped}"`;
   }
   return value;
+}
+
+function buildCliLoginUrl(code: string): string {
+  const base = config.appOrigin.replace(/\/$/, '');
+  return `${base}/#/cli-login?code=${encodeURIComponent(code)}`;
 }
 
 async function logAudit(params: {
@@ -278,6 +305,14 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
+    const routePath =
+      (request.routeOptions && request.routeOptions.url) ||
+      (request as { routerPath?: string }).routerPath ||
+      request.url.split('?')[0];
+    if (routePath === '/auth/cli-login' || routePath === '/auth/cli-login/complete') {
+      return;
+    }
+
     if (request.auth?.viaToken && request.auth.readOnly) {
       return reply.code(403).send({ error: 'Read-only token cannot perform write actions' });
     }
@@ -402,6 +437,145 @@ export async function buildApp(): Promise<FastifyInstance> {
       reply.send({ user: toUserDto(user) });
     },
   );
+
+  app.post('/auth/cli-login', async (_request, reply) => {
+    const code = generateToken();
+    const expiresAt = new Date(Date.now() + config.cliLoginTtlMinutes * 60 * 1000);
+
+    await prisma.cliLoginSession.create({
+      data: {
+        code,
+        expiresAt,
+      },
+    });
+
+    reply.send({
+      code,
+      loginUrl: buildCliLoginUrl(code),
+      expiresAt: expiresAt.toISOString(),
+    });
+  });
+
+  app.post('/auth/cli-login/issue', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    if (auth.viaToken) {
+      reply.code(403).send({ error: 'Token sessions cannot issue CLI logins' });
+      return;
+    }
+
+    const body = request.body as { code?: string; projectId?: string; name?: string } | undefined;
+    const code = body?.code?.trim();
+    const projectId = body?.projectId?.trim();
+    const name = body?.name?.trim() ?? 'CLI login';
+
+    if (!code || !projectId) {
+      reply.code(400).send({ error: 'Code and projectId are required' });
+      return;
+    }
+
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const session = await prisma.cliLoginSession.findUnique({ where: { code } });
+    if (!session || session.expiresAt <= new Date()) {
+      reply.code(404).send({ error: 'CLI login session not found or expired' });
+      return;
+    }
+
+    if (session.consumedAt) {
+      reply.code(409).send({ error: 'CLI login session already completed' });
+      return;
+    }
+
+    if (session.token) {
+      reply.code(409).send({ error: 'CLI login token already issued' });
+      return;
+    }
+
+    const raw = generateToken();
+    const token = await prisma.apiToken.create({
+      data: {
+        projectId,
+        name,
+        tokenHash: hashToken(raw),
+        createdBy: auth.user.id,
+        readOnly: false,
+        expiresAt: new Date(Date.now() + config.apiTokenTtlDays * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    await prisma.cliLoginSession.update({
+      where: { id: session.id },
+      data: {
+        token: raw,
+        userId: auth.user.id,
+        projectId,
+      },
+    });
+
+    await logAudit({
+      projectId,
+      actorUserId: auth.user.id,
+      action: 'token.create',
+      resourceType: 'api_token',
+      resourceId: token.id,
+      metadataJson: { source: 'cli-login' },
+    });
+
+    reply.send({
+      token: raw,
+      tokenMeta: {
+        id: token.id,
+        projectId: token.projectId,
+        name: token.name,
+        readOnly: token.readOnly,
+        createdAt: token.createdAt.toISOString(),
+        lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+        expiresAt: token.expiresAt?.toISOString() ?? null,
+      },
+    });
+  });
+
+  app.post('/auth/cli-login/complete', async (request, reply) => {
+    const body = request.body as { code?: string } | undefined;
+    const code = body?.code?.trim();
+    if (!code) {
+      reply.code(400).send({ error: 'Code is required' });
+      return;
+    }
+
+    const session = await prisma.cliLoginSession.findUnique({ where: { code } });
+    if (!session || session.expiresAt <= new Date()) {
+      reply.code(404).send({ error: 'CLI login session not found or expired' });
+      return;
+    }
+
+    if (!session.token) {
+      reply.send({ status: 'pending' });
+      return;
+    }
+
+    const token = session.token;
+    await prisma.cliLoginSession.update({
+      where: { id: session.id },
+      data: {
+        token: null,
+        consumedAt: new Date(),
+      },
+    });
+
+    reply.send({
+      status: 'complete',
+      token,
+      projectId: session.projectId,
+    });
+  });
 
   app.post('/auth/logout', async (request, reply) => {
     const token = request.cookies[SESSION_COOKIE_NAME];
@@ -618,6 +792,236 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.code(201).send({ id: membership.id, userId: membership.userId, role: membership.role });
+  });
+
+  app.get('/projects/:id/members', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const members = await prisma.projectMember.findMany({
+      where: { projectId },
+      include: { user: true },
+    });
+
+    reply.send(
+      members.map((member) => ({
+        id: member.id,
+        projectId: member.projectId,
+        userId: member.userId,
+        email: member.user.email,
+        name: member.user.name,
+        role: member.role,
+      })),
+    );
+  });
+
+  app.post('/projects/:id/invites', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const body = request.body as { email?: string; role?: string } | undefined;
+    if (!body?.email || !body?.role || !isRole(body.role)) {
+      reply.code(400).send({ error: 'Email and role are required' });
+      return;
+    }
+
+    const normalizedEmail = body.email.trim().toLowerCase();
+    const existingMember = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: {
+        memberships: {
+          where: { projectId },
+          select: { id: true },
+        },
+      },
+    });
+    if (existingMember?.memberships.length) {
+      reply.code(409).send({ error: 'User is already a project member' });
+      return;
+    }
+
+    const existingInvite = await prisma.projectInvite.findFirst({
+      where: {
+        projectId,
+        email: normalizedEmail,
+        status: 'PENDING',
+        expiresAt: { gt: new Date() },
+      },
+    });
+    if (existingInvite) {
+      reply.code(409).send({ error: 'Active invite already exists for this email' });
+      return;
+    }
+
+    const token = generateToken();
+    const invite = await prisma.projectInvite.create({
+      data: {
+        projectId,
+        email: normalizedEmail,
+        role: body.role,
+        status: 'PENDING',
+        tokenHash: hashToken(token),
+        createdBy: auth.user.id,
+        expiresAt: new Date(Date.now() + config.inviteTtlDays * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    await logAudit({
+      projectId,
+      actorUserId: auth.user.id,
+      action: 'invite.create',
+      resourceType: 'project_invite',
+      resourceId: invite.id,
+      metadataJson: { email: normalizedEmail, role: body.role },
+    });
+
+    reply.code(201).send({
+      invite: toInviteDto(invite),
+      token,
+    });
+  });
+
+  app.get('/projects/:id/invites', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const invites = await prisma.projectInvite.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+    });
+    reply.send(invites.map(toInviteDto));
+  });
+
+  app.delete('/projects/:id/invites/:inviteId', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId, inviteId } = request.params as { id: string; inviteId: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const invite = await prisma.projectInvite.findFirst({
+      where: { id: inviteId, projectId },
+    });
+    if (!invite) {
+      reply.code(404).send({ error: 'Invite not found' });
+      return;
+    }
+
+    await prisma.projectInvite.update({
+      where: { id: inviteId },
+      data: { status: 'REVOKED' },
+    });
+
+    await logAudit({
+      projectId,
+      actorUserId: auth.user.id,
+      action: 'invite.revoke',
+      resourceType: 'project_invite',
+      resourceId: inviteId,
+    });
+
+    reply.send({ ok: true });
+  });
+
+  app.post('/invites/accept', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const body = request.body as { token?: string } | undefined;
+    const token = body?.token?.trim();
+    if (!token) {
+      reply.code(400).send({ error: 'Token is required' });
+      return;
+    }
+
+    const invite = await prisma.projectInvite.findFirst({
+      where: {
+        tokenHash: hashToken(token),
+        status: 'PENDING',
+      },
+    });
+    if (!invite) {
+      reply.code(404).send({ error: 'Invite not found or already used' });
+      return;
+    }
+
+    if (invite.expiresAt <= new Date()) {
+      await prisma.projectInvite.update({
+        where: { id: invite.id },
+        data: { status: 'EXPIRED' },
+      });
+      reply.code(410).send({ error: 'Invite has expired' });
+      return;
+    }
+
+    if (auth.user.email.toLowerCase() !== invite.email.toLowerCase()) {
+      reply.code(403).send({ error: 'Invite email does not match your account' });
+      return;
+    }
+
+    await prisma.$transaction([
+      prisma.projectMember.upsert({
+        where: {
+          projectId_userId: {
+            projectId: invite.projectId,
+            userId: auth.user.id,
+          },
+        },
+        create: {
+          projectId: invite.projectId,
+          userId: auth.user.id,
+          role: invite.role,
+        },
+        update: {
+          role: invite.role,
+        },
+      }),
+      prisma.projectInvite.update({
+        where: { id: invite.id },
+        data: { status: 'ACCEPTED', acceptedAt: new Date() },
+      }),
+    ]);
+
+    await logAudit({
+      projectId: invite.projectId,
+      actorUserId: auth.user.id,
+      action: 'invite.accept',
+      resourceType: 'project_invite',
+      resourceId: invite.id,
+    });
+
+    reply.send({ ok: true, projectId: invite.projectId });
   });
 
   app.post('/projects/:id/environments', async (request, reply) => {
@@ -1380,6 +1784,69 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.send({ ok: true });
+  });
+
+  app.get('/secrets/:id/diff', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: secretId } = request.params as { id: string };
+    const secret = await prisma.secret.findUnique({
+      include: { environment: true },
+      where: { id: secretId },
+    });
+    if (!secret) {
+      reply.code(404).send({ error: 'Secret not found' });
+      return;
+    }
+
+    const role = await requireProjectRole(
+      request,
+      reply,
+      secret.environment.projectId,
+      Role.EDITOR,
+    );
+    if (!role) {
+      return;
+    }
+
+    const versions = await prisma.secretVersion.findMany({
+      where: { secretId },
+      orderBy: { createdAt: 'desc' },
+      take: 2,
+    });
+
+    if (versions.length < 2) {
+      reply.code(400).send({ error: 'Not enough versions to diff' });
+      return;
+    }
+
+    const [current, previous] = versions;
+    const currentValue = decryptSecret(
+      { ciphertext: current.ciphertext, iv: current.iv, tag: current.tag },
+      masterKey,
+    );
+    const previousValue = decryptSecret(
+      { ciphertext: previous.ciphertext, iv: previous.iv, tag: previous.tag },
+      masterKey,
+    );
+
+    reply.send({
+      secretId,
+      key: secret.key,
+      current: {
+        versionId: current.id,
+        value: currentValue,
+        createdAt: current.createdAt.toISOString(),
+      },
+      previous: {
+        versionId: previous.id,
+        value: previousValue,
+        createdAt: previous.createdAt.toISOString(),
+      },
+    });
   });
 
   app.delete('/secrets/:id', async (request, reply) => {

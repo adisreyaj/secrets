@@ -8,6 +8,18 @@ Run any command with injected secrets (no setup required):
 SECRETS_TOKEN=... SECRETS_ENV=dev secrets run -- npm run dev
 ```
 
+First-time login:
+
+```bash
+secrets login
+```
+
+Initialize a project + environment and optionally import `.env`:
+
+```bash
+secrets init
+```
+
 Optional export:
 
 ```bash
@@ -25,6 +37,9 @@ SECRETS_TOKEN=... SECRETS_ENV=dev secrets export --format dotenv --out .env.loca
 
 - `secrets run -- <cmd>` injects secrets and runs the command
 - `secrets export --format dotenv [--out <file>]` writes dotenv output
+- `secrets export --dry-run` previews export output size
+- `secrets login` opens a browser-based login for CLI tokens
+- `secrets init` creates a project/environment and writes `.secretsrc.json`
 - `secrets list` prints secret keys
 - `secrets get <key>` prints a single secret value
 

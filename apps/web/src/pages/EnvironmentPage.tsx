@@ -5,7 +5,6 @@ import { useAuth } from '../lib/auth'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { EnvironmentHeaderActions } from './environment/EnvironmentHeaderActions'
 import { EnvironmentTabsCard } from './environment/EnvironmentTabsCard'
-import { SecretsSearchBar } from './environment/SecretsSearchBar'
 import { useEnvironmentData } from './environment/useEnvironmentData'
 
 export const EnvironmentPage = ({
@@ -146,8 +145,6 @@ export const EnvironmentPage = ({
           onCreateEnvironment={handleCreateEnvironment}
         />
 
-        <SecretsSearchBar value={searchQuery} onChange={setSearchQuery} />
-
         <SecretsTable
           secrets={filteredSecrets}
           environments={environments}
@@ -166,6 +163,8 @@ export const EnvironmentPage = ({
           onDelete={handleDeleteSecret}
           onCopy={handleCopySecret}
           onCopyMissing={handleCopyMissingSecrets}
+          searchValue={searchQuery}
+          onSearchChange={setSearchQuery}
           className="rounded-t-none border-t-0"
         />
       </section>

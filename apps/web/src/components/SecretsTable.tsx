@@ -1,16 +1,35 @@
-import type { EnvironmentDto, SecretDiffResponse, SecretDto } from '@secrets/shared'
+import type {
+  EnvironmentDto,
+  SecretDiffResponse,
+  SecretDto,
+} from '@secrets/shared'
+import {
+  Copy,
+  Eye,
+  EyeOff,
+  History,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { memo, useCallback, useMemo, useState } from 'react'
-import { Copy, Eye, EyeOff, History, Pencil, RotateCcw, Trash2, X } from 'lucide-react'
 import { formatDateTime, formatKeyPreview } from '../lib/format'
-import { SectionCard } from './SectionCard'
 import { AddSecretDialog } from './secrets/AddSecretDialog'
 import { MissingKeysCard } from './secrets/MissingKeysCard'
 import { MissingKeysDialog } from './secrets/MissingKeysDialog'
 import { SecretActionDialog } from './secrets/SecretActionDialog'
 import { useSecretsEditor } from './secrets/useSecretsEditor'
+import { SectionCard } from './SectionCard'
 import { ShortcutHint } from './ShortcutHint'
 import { Button } from './ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
 import { Input } from './ui/input'
 import {
   Table,
@@ -41,6 +60,8 @@ export const SecretsTable = ({
   onDelete,
   onCopy,
   onCopyMissing,
+  searchValue,
+  onSearchChange,
   className,
 }: {
   secrets: SecretDto[]
@@ -64,11 +85,16 @@ export const SecretsTable = ({
     secretId: string,
     payload: { targetEnvironmentIds: string[]; overwrite: boolean },
   ) => Promise<{ created: string[]; updated: string[]; skipped: string[] }>
-  onCopyMissing: (sourceEnvironmentId: string, keys: string[]) => Promise<{
+  onCopyMissing: (
+    sourceEnvironmentId: string,
+    keys: string[],
+  ) => Promise<{
     created: string[]
     updated: string[]
     skipped: string[]
   }>
+  searchValue?: string
+  onSearchChange?: (value: string) => void
   className?: string
 }) => {
   const [activeSecret, setActiveSecret] = useState<SecretDto | null>(null)
@@ -79,7 +105,9 @@ export const SecretsTable = ({
   const [diffError, setDiffError] = useState<string | null>(null)
   const [diffData, setDiffData] = useState<SecretDiffResponse | null>(null)
   const [missingDialogOpen, setMissingDialogOpen] = useState(false)
-  const [missingSourceEnvId, setMissingSourceEnvId] = useState<string | null>(null)
+  const [missingSourceEnvId, setMissingSourceEnvId] = useState<string | null>(
+    null,
+  )
   const [missingCopying, setMissingCopying] = useState(false)
   const [selectedMissingKeys, setSelectedMissingKeys] = useState<string[]>([])
 
@@ -93,13 +121,10 @@ export const SecretsTable = ({
     setDialogMode('delete')
   }, [])
 
-  const openCopyDialog = useCallback(
-    (secret: SecretDto) => {
-      setActiveSecret(secret)
-      setDialogMode('copy')
-    },
-    [],
-  )
+  const openCopyDialog = useCallback((secret: SecretDto) => {
+    setActiveSecret(secret)
+    setDialogMode('copy')
+  }, [])
 
   const openDiffDialog = useCallback(
     async (secret: SecretDto) => {
@@ -149,7 +174,7 @@ export const SecretsTable = ({
   }, [environmentId, environments, missingKeysByEnvironment])
 
   const activeMissingKeys = missingSourceEnvId
-    ? missingKeysByEnvironment[missingSourceEnvId] ?? []
+    ? (missingKeysByEnvironment[missingSourceEnvId] ?? [])
     : []
 
   const {
@@ -182,18 +207,29 @@ export const SecretsTable = ({
     }
   }
 
-  const otherEnvironments = environments.filter((env) => env.id !== environmentId)
+  const otherEnvironments = environments.filter(
+    (env) => env.id !== environmentId,
+  )
 
   return (
     <SectionCard className={className}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-lg font-semibold text-foreground">Key registry</h3>
-          <p className="text-xs text-muted-foreground">
-            Manage and audit secret keys for this environment.
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-55">
+          <h3 className="text-foreground text-lg font-semibold">
+            Key registry
+          </h3>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {typeof searchValue === 'string' && onSearchChange ? (
+          <div className="flex min-w-60 flex-1 items-center gap-3">
+            <Input
+              value={searchValue}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Filter by key or value..."
+              className="bg-background h-9 flex-1 rounded-2xl px-4"
+            />
+          </div>
+        ) : null}
+        <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
           {pendingChangesCount > 0 ? (
             <>
               <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
@@ -223,16 +259,22 @@ export const SecretsTable = ({
             variant="secondary"
             size="sm"
             onClick={() => onToggleValues(!includeValues)}
-            className="flex items-center gap-2 rounded-full bg-muted px-3 py-1 font-medium text-muted-foreground hover:bg-muted/80"
+            className="bg-muted text-muted-foreground hover:bg-muted/80 flex h-9 items-center gap-2 rounded-full px-3 py-0 font-medium"
           >
-            {includeValues ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            {includeValues ? (
+              <EyeOff className="h-3.5 w-3.5" />
+            ) : (
+              <Eye className="h-3.5 w-3.5" />
+            )}
             {includeValues ? 'Hide values' : 'Show values'}
             <ShortcutHint keys="v" />
           </Button>
         </div>
       </div>
       {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
-      {topError ? <p className="mt-3 text-sm text-rose-600">{topError}</p> : null}
+      {topError ? (
+        <p className="mt-3 text-sm text-rose-600">{topError}</p>
+      ) : null}
 
       <MissingKeysCard
         loading={coverageLoading}
@@ -242,7 +284,9 @@ export const SecretsTable = ({
           setMissingDialogOpen(true)
           const first = missingSources[0]?.env.id ?? null
           setMissingSourceEnvId(first)
-          setSelectedMissingKeys(first ? missingKeysByEnvironment[first] ?? [] : [])
+          setSelectedMissingKeys(
+            first ? (missingKeysByEnvironment[first] ?? []) : [],
+          )
         }}
       />
 
@@ -265,13 +309,13 @@ export const SecretsTable = ({
       />
 
       <div
-        className="group mt-5 overflow-x-auto rounded-2xl border border-border"
+        className="group border-border mt-5 overflow-x-auto rounded-2xl border"
         data-show-values={includeValues ? 'true' : 'false'}
       >
-        <Table className="min-w-[760px] border-separate border-spacing-0">
+        <Table className="min-w-190 border-separate border-spacing-0">
           <TableCaption className="sr-only">Secrets list</TableCaption>
           <TableHeader className="bg-muted">
-            <TableRow className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+            <TableRow className="text-muted-foreground text-xs tracking-[0.2em] uppercase">
               <TableHead>Key</TableHead>
               <TableHead>Value</TableHead>
               <TableHead>Version</TableHead>
@@ -324,40 +368,91 @@ export const SecretsTable = ({
             </DialogDescription>
           </DialogHeader>
           {diffLoading ? (
-            <p className="text-sm text-muted-foreground">Loading diff...</p>
+            <p className="text-muted-foreground text-sm">Loading diff...</p>
           ) : diffError ? (
             <p className="text-sm text-rose-600">{diffError}</p>
           ) : diffData ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-border bg-muted/40 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Previous
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Version {diffData.previous.versionId.slice(0, 6)} ·{' '}
-                  {formatDateTime(diffData.previous.createdAt)}
-                </p>
-                <pre className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-background p-3 text-xs text-foreground">
-                  {diffData.previous.value}
-                </pre>
-              </div>
-              <div className="rounded-2xl border border-border bg-muted/40 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Current
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Version {diffData.current.versionId.slice(0, 6)} ·{' '}
-                  {formatDateTime(diffData.current.createdAt)}
-                </p>
-                <pre className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-background p-3 text-xs text-foreground">
-                  {diffData.current.value}
-                </pre>
-              </div>
-            </div>
+            <DiffViewer diff={diffData} />
           ) : null}
         </DialogContent>
       </Dialog>
     </SectionCard>
+  )
+}
+
+const DiffViewer = ({ diff }: { diff: SecretDiffResponse }) => {
+  const previousLines = diff.previous.value.split(/\r?\n/)
+  const currentLines = diff.current.value.split(/\r?\n/)
+  const max = Math.max(previousLines.length, currentLines.length)
+  const rows = Array.from({ length: max }, (_, index) => {
+    const prev = previousLines[index] ?? ''
+    const curr = currentLines[index] ?? ''
+    const status =
+      prev === curr
+        ? 'same'
+        : prev && !curr
+          ? 'removed'
+          : !prev && curr
+            ? 'added'
+            : 'changed'
+    return { prev, curr, status, index }
+  })
+
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <div className="border-border bg-muted/40 rounded-2xl border p-3">
+        <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+          Previous
+        </p>
+        <p className="text-muted-foreground mt-1 text-xs">
+          Version {diff.previous.versionId.slice(0, 6)} ·{' '}
+          {formatDateTime(diff.previous.createdAt)}
+        </p>
+        <div className="mt-3 space-y-1">
+          {rows.map((row) => (
+            <div
+              key={`prev-${row.index}`}
+              className={`text-foreground rounded-lg px-2 py-1 text-xs ${
+                row.status === 'removed' || row.status === 'changed'
+                  ? 'bg-rose-50 text-rose-700'
+                  : 'bg-background'
+              }`}
+            >
+              <span className="text-muted-foreground mr-2 inline-block w-4 text-right text-[10px]">
+                {row.index + 1}
+              </span>
+              {row.prev}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="border-border bg-muted/40 rounded-2xl border p-3">
+        <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+          Current
+        </p>
+        <p className="text-muted-foreground mt-1 text-xs">
+          Version {diff.current.versionId.slice(0, 6)} ·{' '}
+          {formatDateTime(diff.current.createdAt)}
+        </p>
+        <div className="mt-3 space-y-1">
+          {rows.map((row) => (
+            <div
+              key={`curr-${row.index}`}
+              className={`text-foreground rounded-lg px-2 py-1 text-xs ${
+                row.status === 'added' || row.status === 'changed'
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'bg-background'
+              }`}
+            >
+              <span className="text-muted-foreground mr-2 inline-block w-4 text-right text-[10px]">
+                {row.index + 1}
+              </span>
+              {row.curr}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -400,13 +495,19 @@ const SecretsTableBody = memo(
       <TableBody>
         {loading ? (
           <TableRow>
-            <TableCell className="py-6 text-sm text-muted-foreground" colSpan={5}>
+            <TableCell
+              className="text-muted-foreground py-6 text-sm"
+              colSpan={5}
+            >
               Loading secrets...
             </TableCell>
           </TableRow>
         ) : secrets.length === 0 ? (
           <TableRow>
-            <TableCell className="py-6 text-sm text-muted-foreground" colSpan={5}>
+            <TableCell
+              className="text-muted-foreground py-6 text-sm"
+              colSpan={5}
+            >
               No secrets in this environment.
             </TableCell>
           </TableRow>
@@ -452,7 +553,12 @@ const SecretRow = memo(
     onRowValueChange,
   }: {
     secret: SecretDto
-    editingRow?: { key: string; value: string; dirtyKey: boolean; dirtyValue: boolean }
+    editingRow?: {
+      key: string
+      value: string
+      dirtyKey: boolean
+      dirtyValue: boolean
+    }
     rowError?: string
     includeValues: boolean
     canCopy: boolean
@@ -467,17 +573,21 @@ const SecretRow = memo(
   }) => {
     const isEditing = !!editingRow
     return (
-      <TableRow className="text-sm text-muted-foreground">
-        <TableHead className="py-3 font-semibold text-foreground" scope="row">
+      <TableRow className="text-muted-foreground text-sm">
+        <TableHead className="text-foreground py-3 font-semibold" scope="row">
           {isEditing ? (
             <div className="space-y-1">
               <Input
                 value={editingRow?.key ?? ''}
-                onChange={(event) => onRowKeyChange(secret.id, event.target.value)}
+                onChange={(event) =>
+                  onRowKeyChange(secret.id, event.target.value)
+                }
                 className="h-8 rounded-lg"
                 placeholder="SECRET_KEY"
               />
-              {rowError ? <p className="text-xs text-rose-600">{rowError}</p> : null}
+              {rowError ? (
+                <p className="text-xs text-rose-600">{rowError}</p>
+              ) : null}
             </div>
           ) : (
             <p>{secret.key}</p>
@@ -488,7 +598,9 @@ const SecretRow = memo(
             <div className="flex items-center gap-2">
               <Input
                 value={editingRow?.value ?? ''}
-                onChange={(event) => onRowValueChange(secret.id, event.target.value)}
+                onChange={(event) =>
+                  onRowValueChange(secret.id, event.target.value)
+                }
                 className="h-8 rounded-lg"
                 placeholder="New value"
               />
@@ -519,9 +631,13 @@ const SecretRow = memo(
             <span>*******</span>
           )}
         </TableCell>
-        <TableCell className="py-3">{secret.versionId?.slice(0, 6) ?? '—'}</TableCell>
         <TableCell className="py-3">
-          <time dateTime={secret.updatedAt}>{formatDateTime(secret.updatedAt)}</time>
+          {secret.versionId?.slice(0, 6) ?? '—'}
+        </TableCell>
+        <TableCell className="py-3">
+          <time dateTime={secret.updatedAt}>
+            {formatDateTime(secret.updatedAt)}
+          </time>
         </TableCell>
         <TableCell className="py-3 text-right">
           <div className="flex flex-wrap justify-end gap-2 text-xs">
@@ -538,7 +654,9 @@ const SecretRow = memo(
                   <Copy className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Copy this key to other environments</TooltipContent>
+              <TooltipContent>
+                Copy this key to other environments
+              </TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>

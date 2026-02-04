@@ -16,7 +16,7 @@ export const parseDotenv = (content: string) => {
         .replace(/\\t/g, '\t')
         .replace(/\\"/g, '\"')
     }
-    if (value.startsWith(\"'\") && value.endsWith(\"'\")) {
+    if (value.startsWith("'") && value.endsWith("'")) {
       return value.slice(1, -1)
     }
     const commentIndex = value.search(/\\s+#/)

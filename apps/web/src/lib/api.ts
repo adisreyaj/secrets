@@ -2,6 +2,10 @@ import type {
   ApiTokenDto,
   AuditLogDto,
   AuthResponse,
+  CliLoginIssueRequest,
+  CliLoginIssueResponse,
+  CreateInviteRequest,
+  CreateInviteResponse,
   CreateEnvironmentRequest,
   CreateProjectRequest,
   CreateSecretRequest,
@@ -14,8 +18,13 @@ import type {
   EnvironmentDto,
   LoginRequest,
   ProjectDto,
+  ProjectMemberDto,
+  ProjectInviteDto,
   RegisterRequest,
   SecretDto,
+  SecretDiffResponse,
+  AcceptInviteRequest,
+  AcceptInviteResponse,
   UpdateMeRequest,
   UpdateSecretRequest,
 } from '@secrets/shared'
@@ -160,6 +169,34 @@ export const api = {
     apiFetch<{ ok: true }>(`/projects/${projectId}/api-tokens/${tokenId}`, {
       method: 'DELETE',
     }),
+
+  listInvites: (projectId: string) =>
+    apiFetch<ProjectInviteDto[]>(`/projects/${projectId}/invites`),
+  listMembers: (projectId: string) =>
+    apiFetch<ProjectMemberDto[]>(`/projects/${projectId}/members`),
+  createInvite: (projectId: string, payload: CreateInviteRequest) =>
+    apiFetch<CreateInviteResponse>(`/projects/${projectId}/invites`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  revokeInvite: (projectId: string, inviteId: string) =>
+    apiFetch<{ ok: true }>(`/projects/${projectId}/invites/${inviteId}`, {
+      method: 'DELETE',
+    }),
+  acceptInvite: (payload: AcceptInviteRequest) =>
+    apiFetch<AcceptInviteResponse>('/invites/accept', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  issueCliLogin: (payload: CliLoginIssueRequest) =>
+    apiFetch<CliLoginIssueResponse>('/auth/cli-login/issue', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getSecretDiff: (secretId: string) =>
+    apiFetch<SecretDiffResponse>(`/secrets/${secretId}/diff`),
 
   listAudit: (projectId: string) =>
     apiFetch<AuditLogDto[]>(`/audit?projectId=${projectId}`),

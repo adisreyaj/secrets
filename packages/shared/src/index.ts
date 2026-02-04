@@ -54,6 +54,38 @@ export interface ApiTokenDto {
   expiresAt?: string | null;
 }
 
+export type InviteStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
+
+export interface ProjectInviteDto {
+  id: string;
+  projectId: string;
+  email: string;
+  role: Role;
+  status: InviteStatus;
+  createdAt: string;
+  expiresAt: string;
+  acceptedAt?: string | null;
+}
+
+export interface CreateInviteRequest {
+  email: string;
+  role: Role;
+}
+
+export interface CreateInviteResponse {
+  invite: ProjectInviteDto;
+  token: string;
+}
+
+export interface AcceptInviteRequest {
+  token: string;
+}
+
+export interface AcceptInviteResponse {
+  ok: true;
+  projectId: string;
+}
+
 export interface AuthResponse {
   user: UserDto;
 }
@@ -131,7 +163,59 @@ export interface CreateTokenResponse {
   tokenMeta: ApiTokenDto;
 }
 
+export interface CliLoginStartResponse {
+  code: string;
+  loginUrl: string;
+  expiresAt: string;
+}
+
+export interface CliLoginIssueRequest {
+  code: string;
+  projectId: string;
+  name?: string;
+}
+
+export interface CliLoginIssueResponse {
+  token: string;
+  tokenMeta: ApiTokenDto;
+}
+
+export interface CliLoginCompleteRequest {
+  code: string;
+}
+
+export interface CliLoginCompleteResponse {
+  status: 'pending' | 'complete';
+  token?: string;
+  projectId?: string | null;
+}
+
+export interface SecretDiffResponse {
+  secretId: string;
+  key: string;
+  current: {
+    versionId: string;
+    value: string;
+    createdAt: string;
+  };
+  previous: {
+    versionId: string;
+    value: string;
+    createdAt: string;
+  };
+}
+
 export interface AddMemberRequest {
   email: string;
   role: Role;
+}
+
+export interface ProjectMemberDto {
+  id: string;
+  projectId: string;
+  userId: string;
+  email: string;
+  name?: string | null;
+  role: Role;
+  createdAt?: string;
 }

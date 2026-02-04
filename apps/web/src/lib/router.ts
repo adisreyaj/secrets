@@ -2,19 +2,24 @@ import { useEffect, useMemo, useState } from 'react'
 
 export type RouteMatch =
   | { name: 'login' }
+  | { name: 'cli-login'; code?: string | null }
+  | { name: 'invite'; token?: string | null }
   | { name: 'projects' }
   | { name: 'profile' }
   | { name: 'project'; projectId: string }
   | { name: 'environments'; projectId: string }
   | { name: 'environment'; projectId: string; environmentId: string }
   | { name: 'audit'; projectId: string }
+  | { name: 'team'; projectId: string }
   | { name: 'tokens'; projectId: string }
 
 const normalize = (value: string) => value.replace(/^#/, '').trim()
 
 const parseRoute = (hash: string): RouteMatch => {
-  const path = normalize(hash) || '/'
+  const raw = normalize(hash) || '/'
+  const [path, query] = raw.split('?')
   const segments = path.replace(/^\//, '').split('/').filter(Boolean)
+  const queryParams = new URLSearchParams(query ?? '')
 
   if (segments.length === 0) {
     return { name: 'projects' }
@@ -22,6 +27,14 @@ const parseRoute = (hash: string): RouteMatch => {
 
   if (segments[0] === 'login') {
     return { name: 'login' }
+  }
+
+  if (segments[0] === 'cli-login') {
+    return { name: 'cli-login', code: queryParams.get('code') }
+  }
+
+  if (segments[0] === 'invite') {
+    return { name: 'invite', token: queryParams.get('token') }
   }
 
   if (segments[0] === 'profile') {
@@ -42,6 +55,9 @@ const parseRoute = (hash: string): RouteMatch => {
       }
       if (segments[2] === 'audit') {
         return { name: 'audit', projectId }
+      }
+      if (segments[2] === 'team') {
+        return { name: 'team', projectId }
       }
       if (segments[2] === 'tokens') {
         return { name: 'tokens', projectId }

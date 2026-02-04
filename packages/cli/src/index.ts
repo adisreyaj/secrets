@@ -17,6 +17,10 @@ type FlagOptions = {
   format?: string
   out?: string
   override?: boolean
+  dryRun?: boolean
+  force?: boolean
+  projectName?: string
+  envName?: string
 }
 
 function printHelp() {
@@ -27,6 +31,8 @@ function printHelp() {
     'Usage:',
     '  secrets run -- <command>',
     '  secrets export [--format dotenv] [--out <file>]',
+    '  secrets login',
+    '  secrets init',
     '  secrets list',
     '  secrets get <key>',
     '',
@@ -46,6 +52,10 @@ function printHelp() {
     '  --override            Override existing env vars (run only)',
     '  --format dotenv       Export format (export only)',
     '  --out <file>          Write export to file (export only)',
+    '  --dry-run             Show export output details without writing (export only)',
+    '  --force               Overwrite existing files (export/init)',
+    '  --project-name <value>  Project name (init only)',
+    '  --env-name <value>      Environment name (init only)',
     '',
   ]
 
@@ -65,6 +75,14 @@ function parseFlags(args: string[]): { flags: FlagOptions; rest: string[] } {
 
     if (arg === '--override') {
       flags.override = true
+      continue
+    }
+    if (arg === '--dry-run') {
+      flags.dryRun = true
+      continue
+    }
+    if (arg === '--force') {
+      flags.force = true
       continue
     }
 
@@ -93,6 +111,12 @@ function parseFlags(args: string[]): { flags: FlagOptions; rest: string[] } {
       case '--out':
         flags.out = value
         break
+      case '--project-name':
+        flags.projectName = value
+        break
+      case '--env-name':
+        flags.envName = value
+        break
       default:
         throw new Error(`Unknown flag: ${key}`)
     }
@@ -105,7 +129,7 @@ async function loadClient(flags: FlagOptions) {
   const config = await readConfigFile()
   const token = process.env.SECRETS_TOKEN
   if (!token) {
-    throw new Error('Missing SECRETS_TOKEN')
+    throw new Error('Missing SECRETS_TOKEN. Run `secrets login` or set the env var.')
   }
 
   const baseUrl =
@@ -124,7 +148,9 @@ async function loadClient(flags: FlagOptions) {
   )
 
   if (!envSelection.id && !envSelection.slug) {
-    throw new Error('Missing SECRETS_ENV (or environment in config)')
+    throw new Error(
+      'Missing SECRETS_ENV (or environment in config). Run `secrets init` or set SECRETS_ENV.',
+    )
   }
 
   return {
@@ -164,6 +190,241 @@ async function apiFetch<T>(baseUrl: string, token: string, path: string): Promis
     return (await response.json()) as T
   }
   return (await response.text()) as T
+}
+
+async function apiRequest<T>(
+  baseUrl: string,
+  token: string,
+  path: string,
+  options: RequestInit,
+): Promise<T> {
+  const headers = new Headers(options.headers)
+  headers.set('Authorization', `Bearer ${token}`)
+  if (options.body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...options,
+    headers,
+  })
+
+  if (!response.ok) {
+    let message = response.statusText
+    try {
+      const payload = await response.json()
+      if (payload?.error) {
+        message = payload.error
+      }
+    } catch {
+      // ignore
+    }
+    throw new Error(message)
+  }
+
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('application/json')) {
+    return (await response.json()) as T
+  }
+  return (await response.text()) as T
+}
+
+async function resolveBaseUrl(flags: FlagOptions) {
+  const config = await readConfigFile()
+  return flags.baseUrl ?? process.env.SECRETS_API_BASE_URL ?? config?.apiBaseUrl ?? DEFAULT_BASE_URL
+}
+
+async function promptInput(question: string, fallback: string) {
+  const readline = await import('node:readline/promises')
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  const answer = await rl.question(`${question} (${fallback}): `)
+  rl.close()
+  return answer.trim() || fallback
+}
+
+async function promptYesNo(question: string, defaultYes = false) {
+  const fallback = defaultYes ? 'Y/n' : 'y/N'
+  const readline = await import('node:readline/promises')
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  const answer = await rl.question(`${question} (${fallback}): `)
+  rl.close()
+  const normalized = answer.trim().toLowerCase()
+  if (!normalized) {
+    return defaultYes
+  }
+  return normalized === 'y' || normalized === 'yes'
+}
+
+function parseEnvFile(content: string): { key: string; value: string }[] {
+  const lines = content.split(/\r?\n/)
+  const items: { key: string; value: string }[] = []
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const index = trimmed.indexOf('=')
+    if (index <= 0) continue
+    const key = trimmed.slice(0, index).trim()
+    let value = trimmed.slice(index + 1).trim()
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1).replace(/\\"/g, '"')
+    }
+    items.push({ key, value })
+  }
+  return items
+}
+
+async function loginCommand(args: string[]) {
+  const { flags, rest } = parseFlags(args)
+  if (rest.length > 0) {
+    throw new Error('Unexpected arguments for login command')
+  }
+
+  const baseUrl = await resolveBaseUrl(flags)
+  const response = await fetch(`${baseUrl}/auth/cli-login`, { method: 'POST' })
+  if (!response.ok) {
+    throw new Error(`Unable to start CLI login (${response.status})`)
+  }
+  const payload = (await response.json()) as { code: string; loginUrl: string; expiresAt: string }
+
+  console.log('Open this URL to complete login:')
+  console.log(payload.loginUrl)
+  console.log(`Code: ${payload.code}`)
+
+  try {
+    const { exec } = await import('node:child_process')
+    const platform = process.platform
+    const openCommand =
+      platform === 'darwin'
+        ? `open "${payload.loginUrl}"`
+        : platform === 'win32'
+        ? `start "" "${payload.loginUrl}"`
+        : `xdg-open "${payload.loginUrl}"`
+    exec(openCommand)
+  } catch {
+    // Best effort only.
+  }
+
+  const expiresAt = new Date(payload.expiresAt).getTime()
+  while (Date.now() < expiresAt) {
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    const poll = await fetch(`${baseUrl}/auth/cli-login/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: payload.code }),
+    })
+    if (!poll.ok) {
+      continue
+    }
+    const data = (await poll.json()) as { status: string; token?: string; projectId?: string }
+    if (data.status === 'complete' && data.token) {
+      console.log('\nCLI token:')
+      console.log(data.token)
+      console.log('\nNext steps:')
+      console.log('  export SECRETS_TOKEN=<token>')
+      if (data.projectId) {
+        console.log(`  export SECRETS_PROJECT=${data.projectId}`)
+      }
+      console.log('  secrets init')
+      return
+    }
+  }
+
+  throw new Error('CLI login expired. Run `secrets login` again.')
+}
+
+async function initCommand(args: string[]) {
+  const { flags, rest } = parseFlags(args)
+  if (rest.length > 0) {
+    throw new Error('Unexpected arguments for init command')
+  }
+
+  const token = process.env.SECRETS_TOKEN
+  if (!token) {
+    throw new Error('Missing SECRETS_TOKEN. Run `secrets login` first.')
+  }
+
+  const baseUrl = await resolveBaseUrl(flags)
+  const fs = await import('node:fs/promises')
+  const path = await import('node:path')
+  const configPath = path.join(process.cwd(), CONFIG_FILENAME)
+
+  try {
+    await fs.access(configPath)
+    if (!flags.force) {
+      throw new Error(`Config file already exists at ${configPath}. Use --force to overwrite.`)
+    }
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException
+    if (err.code && err.code !== 'ENOENT') {
+      throw error
+    }
+  }
+
+  const cwdName = path.basename(process.cwd())
+  const projectName =
+    flags.projectName ?? (await promptInput('Project name', cwdName))
+  const envName = flags.envName ?? (await promptInput('Environment name', 'dev'))
+
+  const project = await apiRequest<{ id: string; slug?: string | null }>(baseUrl, token, `/projects`, {
+    method: 'POST',
+    body: JSON.stringify({ name: projectName }),
+  })
+  const environment = await apiRequest<{ id: string; slug?: string | null }>(
+    baseUrl,
+    token,
+    `/projects/${project.id}/environments`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ name: envName }),
+    },
+  )
+
+  const config = {
+    apiBaseUrl: baseUrl,
+    projectId: project.id,
+    environmentId: environment.id,
+  }
+
+  await fs.writeFile(configPath, JSON.stringify(config, null, 2))
+  console.log(`Created ${CONFIG_FILENAME}`)
+
+  const envPath = path.join(process.cwd(), '.env')
+  let envExists = false
+  try {
+    await fs.access(envPath)
+    envExists = true
+  } catch {
+    envExists = false
+  }
+
+  if (envExists) {
+    const gitignorePath = path.join(process.cwd(), '.gitignore')
+    let gitignore = ''
+    try {
+      gitignore = await fs.readFile(gitignorePath, 'utf-8')
+    } catch {
+      gitignore = ''
+    }
+    if (!gitignore.includes('.env')) {
+      console.warn('Warning: .env is not in .gitignore')
+    }
+
+    const shouldImport = await promptYesNo('Import .env into secrets?', true)
+    if (shouldImport) {
+      const raw = await fs.readFile(envPath, 'utf-8')
+      const entries = parseEnvFile(raw)
+      let created = 0
+      for (const entry of entries) {
+        await apiRequest(baseUrl, token, `/environments/${environment.id}/secrets`, {
+          method: 'POST',
+          body: JSON.stringify(entry),
+        })
+        created += 1
+      }
+      console.log(`Imported ${created} secrets from .env`)
+    }
+  } else {
+    console.log('No .env found in current directory.')
+  }
 }
 
 async function runCommand(args: string[]) {
@@ -218,10 +479,32 @@ async function exportEnv(args: string[]) {
   const output = await apiFetch<string>(baseUrl, token, `/environments/${envId}/export?format=dotenv`)
 
   if (flags.out) {
-    await import('node:fs/promises').then((fs) => fs.writeFile(flags.out!, output, 'utf-8'))
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    const resolved = path.resolve(flags.out)
+    if (!flags.force) {
+      try {
+        await fs.access(resolved)
+        throw new Error(`Output file exists: ${resolved}. Use --force to overwrite.`)
+      } catch (error) {
+        const err = error as NodeJS.ErrnoException
+        if (err.code && err.code !== 'ENOENT') {
+          throw error
+        }
+      }
+    }
+    if (flags.dryRun) {
+      console.log(`Dry run: would write ${output.length} bytes to ${resolved}`)
+      return
+    }
+    await fs.writeFile(resolved, output, 'utf-8')
     return
   }
 
+  if (flags.dryRun) {
+    console.log(`Dry run: would print ${output.length} bytes to stdout`)
+    return
+  }
   process.stdout.write(output)
 }
 
@@ -274,6 +557,12 @@ async function main() {
       break
     case 'export':
       await exportEnv(args.slice(1))
+      break
+    case 'login':
+      await loginCommand(args.slice(1))
+      break
+    case 'init':
+      await initCommand(args.slice(1))
       break
     case 'list':
       await listSecrets(args.slice(1))

@@ -10,15 +10,19 @@ const globalShortcuts: ShortcutItem[] = [
   { keys: 'g e', label: 'Environments list' },
   { keys: 'g s', label: 'Secrets' },
   { keys: 'g a', label: 'Audit log' },
+  { keys: 'g m', label: 'Team' },
   { keys: 'g t', label: 'API tokens' },
 ]
 
 const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
   login: [],
+  'cli-login': [],
+  invite: [],
   projects: [{ keys: 'n', label: 'New project' }],
   project: [
     { keys: 'e', label: 'Environments' },
     { keys: 'a', label: 'Audit log' },
+    { keys: 'm', label: 'Team' },
     { keys: 't', label: 'API tokens' },
     { keys: 'b', label: 'Back to projects' },
   ],
@@ -35,6 +39,7 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
     { keys: 'b', label: 'Back to environments' },
   ],
   audit: [{ keys: 'b', label: 'Back to overview' }],
+  team: [{ keys: 'b', label: 'Back to overview' }],
   tokens: [
     { keys: 'n', label: 'Focus token name' },
     { keys: 'b', label: 'Back to overview' },
