@@ -852,6 +852,27 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
   });
 
+  app.get('/auth/csrf', async (request, reply) => {
+    const sessionToken = request.cookies[SESSION_COOKIE_NAME];
+    if (!sessionToken) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const csrfToken = request.cookies[CSRF_COOKIE_NAME] ?? generateToken();
+    if (!request.cookies[CSRF_COOKIE_NAME]) {
+      reply.setCookie(CSRF_COOKIE_NAME, csrfToken, {
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: config.cookieSecure,
+        path: '/',
+        maxAge: config.sessionTtlHours * 60 * 60,
+      });
+    }
+
+    reply.send({ csrfToken });
+  });
+
   app.post('/auth/logout', async (request, reply) => {
     const token = request.cookies[SESSION_COOKIE_NAME];
     if (token) {
