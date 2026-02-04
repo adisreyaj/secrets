@@ -3,6 +3,7 @@ providers = ['node']
 [variables]
 CI = 'true'
 NIXPACKS_METADATA = 'node'
+NIXPACKS_NODE_VERSION = '24'
 NODE_ENV = 'production'
 NPM_CONFIG_PRODUCTION = 'false'
 
@@ -21,8 +22,8 @@ paths = ['/app/node_modules/.bin']
 
 [phases.build]
 dependsOn = ['install']
-cmds = ['pnpm run prisma:generate', 'pnpm run build:server']
+cmds = ['pnpm run build:server']
 cacheDirectories = ['node_modules/.cache']
 
 [start]
-cmd = 'pnpm -C apps/server start'
+cmd = 'pnpm run start:server'

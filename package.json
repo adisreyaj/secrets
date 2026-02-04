@@ -2,6 +2,9 @@
   "name": "secrets-manager",
   "private": true,
   "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.19"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -13,6 +16,8 @@
     "build:web": "pnpm -C apps/web build",
     "build:cli": "pnpm -C packages/cli build",
     "build:sdk": "pnpm -C packages/sdk build",
+    "start:server": "pnpm -C apps/server start",
+    "start:web": "pnpm -C apps/web start",
     "lint:web": "pnpm -C apps/web lint",
     "format:web": "pnpm -C apps/web format",
     "format:check:web": "pnpm -C apps/web format:check",
