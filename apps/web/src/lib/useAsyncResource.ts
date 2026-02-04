@@ -30,9 +30,20 @@ export const useAsyncResource = <T>(
     }
   }, [])
 
+  const triggerRef = useRef(-1)
+  const prevDepsRef = useRef(deps)
+  const depsChanged =
+    prevDepsRef.current.length !== deps.length ||
+    prevDepsRef.current.some((d, i) => d !== deps[i])
+  if (depsChanged || triggerRef.current === -1) {
+    prevDepsRef.current = deps
+    triggerRef.current += 1
+  }
+  const trigger = triggerRef.current
+
   useEffect(() => {
     void reload()
-  }, [reload, deps])
+  }, [reload, trigger])
 
   return { data, loading, error, reload, setData }
 }

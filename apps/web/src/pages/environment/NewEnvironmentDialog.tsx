@@ -1,5 +1,5 @@
+import { Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useRegisterShortcut } from '../../lib/shortcuts'
 import { ShortcutHint } from '../../components/ShortcutHint'
 import { Button } from '../../components/ui/button'
 import {
@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select'
+import { useRegisterShortcut } from '../../lib/shortcuts'
 
 export const NewEnvironmentDialog = ({
   environmentOptions,
@@ -67,6 +68,7 @@ export const NewEnvironmentDialog = ({
           variant="outline"
           className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 text-sm font-semibold"
         >
+          <Plus className="h-4 w-4" />
           New environment
           <ShortcutHint keys="Shift+n" />
         </Button>

@@ -5,17 +5,19 @@ import { TooltipProvider } from './components/ui/tooltip'
 import { useAuth } from './lib/auth'
 import { getEnvironmentId, getProjectId, useHashRouter } from './lib/router'
 import {
-  ShortcutsProvider,
   ShortcutHintsProvider,
+  ShortcutsProvider,
+  useRegisterShortcut,
+} from './lib/shortcuts'
+import {
   getLastEnvironmentId,
   getLastProjectId,
   setLastEnvironmentId,
   setLastProjectId,
-  useRegisterShortcut,
-} from './lib/shortcuts'
-import { AuditPage } from './pages/AuditPage'
-import { ApprovalsPage } from './pages/ApprovalsPage'
+} from './lib/shortcuts.utils'
 import { ApprovalRulesPage } from './pages/ApprovalRulesPage'
+import { ApprovalsPage } from './pages/ApprovalsPage'
+import { AuditPage } from './pages/AuditPage'
 import { CliLoginPage } from './pages/CliLoginPage'
 import { EnvironmentPage } from './pages/EnvironmentPage'
 import { EnvironmentsPage } from './pages/EnvironmentsPage'
@@ -24,9 +26,9 @@ import { LoginPage } from './pages/LoginPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { ProjectOverviewPage } from './pages/ProjectOverviewPage'
 import { ProjectsPage } from './pages/ProjectsPage'
+import { ServiceAccountsPage } from './pages/ServiceAccountsPage'
 import { TeamPage } from './pages/TeamPage'
 import { TokensPage } from './pages/TokensPage'
-import { ServiceAccountsPage } from './pages/ServiceAccountsPage'
 
 const AppShell = () => {
   const { user, logout } = useAuth()

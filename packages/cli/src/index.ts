@@ -7,6 +7,7 @@ import {
   normalizeConfigInput,
   readConfigFile,
 } from '@secrets/sdk'
+import { parseEnvFile, summarizeImportResults } from './env.js'
 
 const DEFAULT_BASE_URL = 'http://localhost:3001'
 
@@ -254,24 +255,6 @@ async function promptYesNo(question: string, defaultYes = false) {
   return normalized === 'y' || normalized === 'yes'
 }
 
-function parseEnvFile(content: string): { key: string; value: string }[] {
-  const lines = content.split(/\r?\n/)
-  const items: { key: string; value: string }[] = []
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const index = trimmed.indexOf('=')
-    if (index <= 0) continue
-    const key = trimmed.slice(0, index).trim()
-    let value = trimmed.slice(index + 1).trim()
-    if (value.startsWith('"') && value.endsWith('"')) {
-      value = value.slice(1, -1).replace(/\\"/g, '"')
-    }
-    items.push({ key, value })
-  }
-  return items
-}
-
 async function loginCommand(args: string[]) {
   const { flags, rest } = parseFlags(args)
   if (rest.length > 0) {
@@ -429,8 +412,7 @@ async function initCommand(args: string[]) {
     if (shouldImport) {
       const raw = await fs.readFile(envPath, 'utf-8')
       const entries = parseEnvFile(raw)
-      let created = 0
-      let pending = 0
+      const results: { status?: string }[] = []
       for (const entry of entries) {
         const result = await apiRequest<{ status?: string }>(
           baseUrl,
@@ -441,12 +423,9 @@ async function initCommand(args: string[]) {
           body: JSON.stringify(entry),
           },
         )
-        if (result?.status === 'pending') {
-          pending += 1
-        } else {
-          created += 1
-        }
+        results.push(result ?? {})
       }
+      const { created, pending } = summarizeImportResults(results)
       if (pending > 0) {
         console.log(`Imported ${created} secrets from .env (pending approval: ${pending})`)
       } else {
