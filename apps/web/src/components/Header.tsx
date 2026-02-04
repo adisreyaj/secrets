@@ -52,7 +52,9 @@ export const Header = ({
           />
           <div>
             <p className="text-sm font-semibold">Secrets Manager</p>
-            <p className="text-muted-foreground text-xs">Single-tenant vault</p>
+            <p className="text-muted-foreground text-xs">
+              Secure your secrets!
+            </p>
           </div>
         </div>
         {isCentered ? null : (
