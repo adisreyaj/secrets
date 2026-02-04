@@ -38,7 +38,7 @@ import { TeamPage } from './pages/TeamPage'
 import { TokensPage } from './pages/TokensPage'
 
 const AppShell = () => {
-  const { user, logout } = useAuth()
+  const { user, loading: authLoading, logout } = useAuth()
   const { match, navigate, path } = useBrowserRouter()
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [projectSlugById, setProjectSlugById] = useState(
@@ -108,7 +108,11 @@ const AppShell = () => {
     }
 
     if (!user) {
-      setResolvedProjectId(projectSegment)
+      if (authLoading) {
+        setResolvedProjectId(null)
+      } else {
+        setResolvedProjectId(projectSegment)
+      }
       return
     }
 
@@ -138,7 +142,7 @@ const AppShell = () => {
           current === projectSegment ? null : current,
         )
       })
-  }, [match, projectIdBySlug, loadingProjectSlug, user])
+  }, [match, projectIdBySlug, loadingProjectSlug, user, authLoading])
 
   useEffect(() => {
     if (match.name !== 'environment') {
