@@ -1,6 +1,6 @@
-import { useCallback, useMemo } from 'react'
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
+import { useCallback, useMemo } from 'react'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -31,7 +31,7 @@ export const EnvironmentsPage = ({
     async () => (user ? api.listEnvironments(projectId) : []),
     [projectId, user],
   )
-  const projects = projectsData ?? []
+  const projects = useMemo(() => projectsData ?? [], [projectsData])
   const environments = environmentsData ?? []
 
   const selectedProject = useMemo(

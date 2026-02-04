@@ -1,8 +1,8 @@
 import type {
-  EnvironmentDto,
-  ProjectDto,
-  ServiceAccountDto,
-  ServiceAccountTokenDto,
+    EnvironmentDto,
+    ProjectDto,
+    ServiceAccountDto,
+    ServiceAccountTokenDto,
 } from '@secrets/shared'
 import { ArrowLeft, Copy, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -13,18 +13,18 @@ import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { Checkbox } from '../components/ui/checkbox'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
 } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
 } from '../components/ui/tooltip'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
@@ -50,7 +50,7 @@ export const ServiceAccountsPage = ({
     async () => (user ? api.listEnvironments(projectId) : []),
     [projectId, user],
   )
-  const projects = projectsData ?? []
+  const projects = useMemo(() => projectsData ?? [], [projectsData])
   const environments = environmentsData ?? []
 
   const [accounts, setAccounts] = useState<ServiceAccountDto[]>([])

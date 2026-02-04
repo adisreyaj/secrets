@@ -38,8 +38,8 @@ export const useEnvironmentData = ({
     async () => (enabled ? api.listEnvironments(projectId) : []),
     [enabled, projectId],
   )
-  const projects = projectsData ?? []
-  const environments = environmentsData ?? []
+  const projects = useMemo(() => projectsData ?? [], [projectsData])
+  const environments = useMemo(() => environmentsData ?? [], [environmentsData])
 
   const [secrets, setSecrets] = useState<SecretDto[]>([])
   const [secretsLoading, setSecretsLoading] = useState(false)

@@ -11,22 +11,22 @@ import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { Calendar } from '../components/ui/calendar'
 import {
-  controlBaseClasses,
-  controlSizeClasses,
-  controlVariantClasses,
+    controlBaseClasses,
+    controlSizeClasses,
+    controlVariantClasses,
 } from '../components/ui/control-classes'
 import { Input } from '../components/ui/input'
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
 } from '../components/ui/popover'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
@@ -57,7 +57,7 @@ export const AuditPage = ({
   const { data: projectsData, error: projectsError } = useAsyncResource<
     ProjectDto[]
   >(async () => (user ? api.listProjects() : []), [user])
-  const projects = projectsData ?? []
+  const projects = useMemo(() => projectsData ?? [], [projectsData])
 
   const [auditLogs, setAuditLogs] = useState<AuditLogDto[]>([])
   const [auditLoading, setAuditLoading] = useState(false)

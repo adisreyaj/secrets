@@ -1,33 +1,33 @@
-import { useCallback, useDeferredValue, useEffect, useState } from 'react'
 import type {
-  ApiTokenDto,
-  AuditLogDto,
-  EnvironmentDto,
-  ProjectDto,
-  ProjectInviteDto,
-  Role,
-  SecretSearchResultDto,
+    ApiTokenDto,
+    AuditLogDto,
+    EnvironmentDto,
+    ProjectDto,
+    ProjectInviteDto,
+    Role,
+    SecretSearchResultDto,
 } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
+import { useCallback, useDeferredValue, useEffect, useState } from 'react'
 import { AuditLog } from '../components/AuditLog'
-import { ErrorBanner } from '../components/ErrorBanner'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { Hero } from '../components/Hero'
 import {
-  ProjectsSection,
-  type ProjectTemplate,
+    ProjectsSection,
+    type ProjectTemplate,
 } from '../components/ProjectsSection'
+import { SectionCard } from '../components/SectionCard'
 import { TokensPanel } from '../components/TokensPanel'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '../components/ui/select'
-import { SectionCard } from '../components/SectionCard'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate, formatDateTime } from '../lib/format'
@@ -60,8 +60,8 @@ export const ProjectPage = ({
     async () => (user ? api.listEnvironments(projectId) : []),
     [projectId, user],
   )
-  const projects = projectsData ?? []
-  const environments = environmentsData ?? []
+  const projects = useMemo(() => projectsData ?? [], [projectsData])
+  const environments = useMemo(() => environmentsData ?? [], [environmentsData])
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<
     string | null
   >(null)

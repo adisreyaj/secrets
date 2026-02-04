@@ -32,7 +32,7 @@ export const useAsyncResource = <T>(
 
   useEffect(() => {
     void reload()
-  }, [reload, ...deps])
+  }, [reload, deps])
 
   return { data, loading, error, reload, setData }
 }

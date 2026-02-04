@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react'
 import type { ApiTokenDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
@@ -34,7 +34,7 @@ export const TokensPage = ({
   const [lastToken, setLastToken] = useState<Awaited<
     ReturnType<typeof api.createToken>
   > | null>(null)
-  const projects = projectsData ?? []
+  const projects = useMemo(() => projectsData ?? [], [projectsData])
   const tokens = tokensData ?? []
 
   const selectedProject = useMemo(

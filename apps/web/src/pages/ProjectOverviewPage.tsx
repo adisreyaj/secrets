@@ -1,15 +1,15 @@
-import { useMemo } from 'react'
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
 import {
-  ArrowLeft,
-  Layers,
-  ShieldCheck,
-  KeyRound,
-  Users,
-  Shield,
-  CheckCircle,
-  Key,
+    ArrowLeft,
+    CheckCircle,
+    Key,
+    KeyRound,
+    Layers,
+    Shield,
+    ShieldCheck,
+    Users,
 } from 'lucide-react'
+import { useMemo } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
@@ -36,7 +36,7 @@ export const ProjectOverviewPage = ({
     async () => (user ? api.listEnvironments(projectId) : []),
     [projectId, user],
   )
-  const projects = projectsData ?? []
+  const projects = useMemo(() => projectsData ?? [], [projectsData])
   const environments = environmentsData ?? []
 
   const selectedProject = useMemo(

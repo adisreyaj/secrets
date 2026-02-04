@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
-import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
 import { ArrowLeft } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
 import { useAuth } from '../lib/auth'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
@@ -14,7 +14,7 @@ export const ProfilePage = ({
   navigate: (path: string) => void
 }) => {
   const { updateProfile } = useAuth()
-  const { user, loading } = useRequireAuth(navigate)
+  const { user } = useRequireAuth(navigate)
   const [profileForm, setProfileForm] = useState({ name: '' })
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',

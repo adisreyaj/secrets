@@ -1,8 +1,8 @@
 import type {
-  ApprovalRequestDto,
-  ApprovalStatus,
-  EnvironmentDto,
-  ProjectDto,
+    ApprovalRequestDto,
+    ApprovalStatus,
+    EnvironmentDto,
+    ProjectDto,
 } from '@secrets/shared'
 import { ArrowLeft, Check, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -12,17 +12,17 @@ import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
 } from '../components/ui/dialog'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
@@ -48,8 +48,8 @@ export const ApprovalsPage = ({
     async () => (user ? api.listEnvironments(projectId) : []),
     [projectId, user],
   )
-  const projects = projectsData ?? []
-  const environments = environmentsData ?? []
+  const projects = useMemo(() => projectsData ?? [], [projectsData])
+  const environments = useMemo(() => environmentsData ?? [], [environmentsData])
   const [approvals, setApprovals] = useState<ApprovalRequestDto[]>([])
   const [approvalsLoading, setApprovalsLoading] = useState(false)
   const [approvalsError, setApprovalsError] = useState<string | null>(null)

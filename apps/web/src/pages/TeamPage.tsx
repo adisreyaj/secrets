@@ -1,8 +1,8 @@
 import type {
-  ProjectDto,
-  ProjectInviteDto,
-  ProjectMemberDto,
-  Role,
+    ProjectDto,
+    ProjectInviteDto,
+    ProjectMemberDto,
+    Role,
 } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
@@ -13,25 +13,25 @@ import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
 } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '../components/ui/select'
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
 } from '../components/ui/tooltip'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
@@ -48,9 +48,10 @@ export const TeamPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const { data: projectsData, error: projectsError } = useAsyncResource<
-    ProjectDto[]
-  >(async () => (user ? api.listProjects() : []), [user])
+  const { data: projectsData } = useAsyncResource<ProjectDto[]>(
+    async () => (user ? api.listProjects() : []),
+    [user],
+  )
   const projects = projectsData ?? []
 
   const [members, setMembers] = useState<ProjectMemberDto[]>([])

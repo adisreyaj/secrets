@@ -1,8 +1,8 @@
 import type {
-  ApprovalAction,
-  ApprovalRuleDto,
-  EnvironmentDto,
-  ProjectDto,
+    ApprovalAction,
+    ApprovalRuleDto,
+    EnvironmentDto,
+    ProjectDto,
 } from '@secrets/shared'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -13,20 +13,20 @@ import { SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
 } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
@@ -51,8 +51,8 @@ export const ApprovalRulesPage = ({
     async () => (user ? api.listEnvironments(projectId) : []),
     [projectId, user],
   )
-  const projects = projectsData ?? []
-  const environments = environmentsData ?? []
+  const projects = useMemo(() => projectsData ?? [], [projectsData])
+  const environments = useMemo(() => environmentsData ?? [], [environmentsData])
   const [rules, setRules] = useState<ApprovalRuleDto[]>([])
   const [rulesLoading, setRulesLoading] = useState(false)
   const [rulesError, setRulesError] = useState<string | null>(null)
