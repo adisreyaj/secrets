@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AuditLogDto, AuditLogFilters, ProjectDto } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AuditLog } from '../components/AuditLog'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
@@ -37,21 +37,23 @@ export const AuditPage = ({
   const [auditError, setAuditError] = useState<string | null>(null)
   const [filterError, setFilterError] = useState<string | null>(null)
   const [filters, setFilters] = useState({
-    start: '',
-    end: '',
     action: '',
     resourceType: '',
     resourceId: '',
     actorType: 'user',
     actorId: '',
   })
-  const [appliedFilters, setAppliedFilters] = useState<AuditLogFilters | undefined>(undefined)
+  const [appliedFilters, setAppliedFilters] = useState<
+    AuditLogFilters | undefined
+  >(undefined)
 
   const [retentionValue, setRetentionValue] = useState('90')
   const [retentionInitial, setRetentionInitial] = useState('90')
   const [retentionLoading, setRetentionLoading] = useState(false)
   const [retentionSaving, setRetentionSaving] = useState(false)
   const [retentionError, setRetentionError] = useState<string | null>(null)
+  const [allActions, setAllActions] = useState<string[]>([])
+  const [allResourceTypes, setAllResourceTypes] = useState<string[]>([])
 
   useEffect(() => {
     if (!loading && !user) {
@@ -76,6 +78,16 @@ export const AuditPage = ({
       try {
         const data = await api.listAudit(projectId, activeFilters)
         setAuditLogs(data)
+        if (!activeFilters) {
+          const actions = Array.from(
+            new Set(data.map((log) => log.action).filter(Boolean)),
+          ).sort()
+          const resourceTypes = Array.from(
+            new Set(data.map((log) => log.resourceType).filter(Boolean)),
+          ).sort()
+          setAllActions(actions)
+          setAllResourceTypes(resourceTypes)
+        }
       } catch (error) {
         setAuditError(getErrorMessage(error))
       } finally {
@@ -90,7 +102,10 @@ export const AuditPage = ({
     setRetentionError(null)
     try {
       const data = await api.getAuditRetention(projectId)
-      const nextValue = data.auditRetentionDays === null ? 'forever' : `${data.auditRetentionDays}`
+      const nextValue =
+        data.auditRetentionDays === null
+          ? 'forever'
+          : `${data.auditRetentionDays}`
       setRetentionValue(nextValue)
       setRetentionInitial(nextValue)
     } catch (error) {
@@ -104,32 +119,11 @@ export const AuditPage = ({
     setFilterError(null)
     const nextFilters: AuditLogFilters = {}
 
-    if (filters.start) {
-      const date = new Date(filters.start)
-      if (Number.isNaN(date.getTime())) {
-        setFilterError('Start date is invalid.')
-        return
-      }
-      nextFilters.start = date.toISOString()
-    }
-
-    if (filters.end) {
-      const date = new Date(filters.end)
-      if (Number.isNaN(date.getTime())) {
-        setFilterError('End date is invalid.')
-        return
-      }
-      nextFilters.end = date.toISOString()
-    }
-
-    if (nextFilters.start && nextFilters.end && nextFilters.start > nextFilters.end) {
-      setFilterError('Start date must be before end date.')
-      return
-    }
-
     if (filters.action.trim()) nextFilters.action = filters.action.trim()
-    if (filters.resourceType.trim()) nextFilters.resourceType = filters.resourceType.trim()
-    if (filters.resourceId.trim()) nextFilters.resourceId = filters.resourceId.trim()
+    if (filters.resourceType.trim())
+      nextFilters.resourceType = filters.resourceType.trim()
+    if (filters.resourceId.trim())
+      nextFilters.resourceId = filters.resourceId.trim()
     if (filters.actorId.trim()) {
       if (filters.actorType === 'user') {
         nextFilters.actorUserId = filters.actorId.trim()
@@ -144,8 +138,6 @@ export const AuditPage = ({
 
   const handleClearFilters = () => {
     setFilters({
-      start: '',
-      end: '',
       action: '',
       resourceType: '',
       resourceId: '',
@@ -162,9 +154,15 @@ export const AuditPage = ({
     setRetentionSaving(true)
     setRetentionError(null)
     try {
-      const auditRetentionDays = retentionValue === 'forever' ? null : Number(retentionValue)
-      const data = await api.updateAuditRetention(projectId, { auditRetentionDays })
-      const nextValue = data.auditRetentionDays === null ? 'forever' : `${data.auditRetentionDays}`
+      const auditRetentionDays =
+        retentionValue === 'forever' ? null : Number(retentionValue)
+      const data = await api.updateAuditRetention(projectId, {
+        auditRetentionDays,
+      })
+      const nextValue =
+        data.auditRetentionDays === null
+          ? 'forever'
+          : `${data.auditRetentionDays}`
       setRetentionValue(nextValue)
       setRetentionInitial(nextValue)
     } catch (error) {
@@ -188,6 +186,8 @@ export const AuditPage = ({
   )
   const isAdmin = selectedProject?.role === 'ADMIN'
   const retentionDirty = retentionValue !== retentionInitial
+  const actionOptions = allActions
+  const resourceTypeOptions = allResourceTypes
 
   useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
 
@@ -199,7 +199,7 @@ export const AuditPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
             onClick={() => navigate(`/projects/${projectId}`)}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -241,13 +241,15 @@ export const AuditPage = ({
           </div>
           <Button
             onClick={handleSaveRetention}
-            disabled={!isAdmin || retentionLoading || retentionSaving || !retentionDirty}
+            disabled={
+              !isAdmin || retentionLoading || retentionSaving || !retentionDirty
+            }
             className="rounded-full px-4 py-2 text-sm"
           >
             {retentionSaving ? 'Saving...' : 'Save'}
           </Button>
           {!isAdmin ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               Only admins can update retention settings.
             </p>
           ) : null}
@@ -261,68 +263,81 @@ export const AuditPage = ({
         ) : null}
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Start
-            </label>
-            <Input
-              type="datetime-local"
-              value={filters.start}
-              onChange={(event) => setFilters((prev) => ({ ...prev, start: event.target.value }))}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              End
-            </label>
-            <Input
-              type="datetime-local"
-              value={filters.end}
-              onChange={(event) => setFilters((prev) => ({ ...prev, end: event.target.value }))}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <label className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
               Action
             </label>
-            <Input
-              placeholder="secret.update"
-              value={filters.action}
-              onChange={(event) =>
-                setFilters((prev) => ({ ...prev, action: event.target.value }))
+            <Select
+              value={filters.action || 'any'}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  action: value === 'any' ? '' : value,
+                }))
               }
-            />
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Any action" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any action</SelectItem>
+                {actionOptions.map((action) => (
+                  <SelectItem key={action} value={action}>
+                    {action}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <label className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
               Resource type
             </label>
-            <Input
-              placeholder="secret"
-              value={filters.resourceType}
-              onChange={(event) =>
-                setFilters((prev) => ({ ...prev, resourceType: event.target.value }))
+            <Select
+              value={filters.resourceType || 'any'}
+              onValueChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  resourceType: value === 'any' ? '' : value,
+                }))
               }
-            />
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Any resource" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="any">Any resource</SelectItem>
+                {resourceTypeOptions.map((resourceType) => (
+                  <SelectItem key={resourceType} value={resourceType}>
+                    {resourceType}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <label className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
               Resource ID
             </label>
             <Input
               placeholder="Resource ID"
               value={filters.resourceId}
               onChange={(event) =>
-                setFilters((prev) => ({ ...prev, resourceId: event.target.value }))
+                setFilters((prev) => ({
+                  ...prev,
+                  resourceId: event.target.value,
+                }))
               }
             />
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <label className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
               Actor type
             </label>
             <Select
               value={filters.actorType}
-              onValueChange={(value) => setFilters((prev) => ({ ...prev, actorType: value }))}
+              onValueChange={(value) =>
+                setFilters((prev) => ({ ...prev, actorType: value }))
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select actor type" />
@@ -334,7 +349,7 @@ export const AuditPage = ({
             </Select>
           </div>
           <div className="flex flex-col gap-2 lg:col-span-2">
-            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <label className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
               Actor ID
             </label>
             <Input
@@ -346,7 +361,10 @@ export const AuditPage = ({
             />
           </div>
           <div className="flex items-end gap-2">
-            <Button onClick={handleApplyFilters} className="rounded-full px-4 py-2 text-sm">
+            <Button
+              onClick={handleApplyFilters}
+              className="rounded-full px-4 py-2 text-sm"
+            >
               Apply
             </Button>
             <Button
@@ -358,8 +376,13 @@ export const AuditPage = ({
             </Button>
           </div>
         </div>
-        <div className="mt-6 border-t border-border/60 pt-6">
-          <AuditLog audits={auditLogs} loading={auditLoading} error={auditError} withCard={false} />
+        <div className="border-border/60 mt-6 border-t pt-6">
+          <AuditLog
+            audits={auditLogs}
+            loading={auditLoading}
+            error={auditError}
+            withCard={false}
+          />
         </div>
       </SectionCard>
     </section>
