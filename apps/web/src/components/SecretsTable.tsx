@@ -25,7 +25,6 @@ import {
   TableHeader,
   TableRow,
 } from './ui/table'
-import { Tabs, TabsList, TabsTrigger } from './ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export const SecretsTable = ({
@@ -78,7 +77,7 @@ export const SecretsTable = ({
   const [pasteLine, setPasteLine] = useState('')
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [pasteHint, setPasteHint] = useState<string | null>(null)
-  const [addMode, setAddMode] = useState<'fields' | 'paste'>('fields')
+  const [showPasteInput, setShowPasteInput] = useState(false)
   const [creating, setCreating] = useState(false)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [activeSecret, setActiveSecret] = useState<SecretDto | null>(null)
@@ -225,13 +224,7 @@ export const SecretsTable = ({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (
-      !form.key.trim() ||
-      !form.value.trim() ||
-      creating ||
-      (addMode === 'paste' && (!pasteLine.trim() || pasteError))
-    )
-      return
+    if (!form.key.trim() || !form.value.trim() || creating) return
     setCreating(true)
     try {
       await onCreate({ key: form.key.trim(), value: form.value.trim() })
@@ -239,7 +232,7 @@ export const SecretsTable = ({
       setPasteLine('')
       setPasteError(null)
       setPasteHint(null)
-      setAddMode('fields')
+      setShowPasteInput(false)
       setAddDialogOpen(false)
     } finally {
       setCreating(false)
@@ -507,30 +500,36 @@ export const SecretsTable = ({
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4">
-                <Tabs
-                  value={addMode}
-                  onValueChange={(next) => {
-                    if (next === 'fields' || next === 'paste') {
-                      setAddMode(next)
-                      if (next === 'fields') {
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Secret details
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-full px-3 text-xs"
+                    onClick={() => {
+                      setShowPasteInput((prev) => !prev)
+                      if (showPasteInput) {
+                        setPasteLine('')
                         setPasteError(null)
                         setPasteHint(null)
                       }
-                    }
-                  }}
-                  className="w-full"
-                >
-                  <TabsList className="w-max">
-                    <TabsTrigger value="fields" className="gap-2">
-                      Separate fields
-                    </TabsTrigger>
-                    <TabsTrigger value="paste" className="gap-2">
-                      Paste key=value
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
+                    }}
+                  >
+                    {showPasteInput ? (
+                      <>
+                        <X className="mr-1 h-3.5 w-3.5" />
+                        Hide paste
+                      </>
+                    ) : (
+                      'Paste .env line'
+                    )}
+                  </Button>
+                </div>
 
-                {addMode === 'paste' ? (
+                {showPasteInput ? (
                   <label className="grid gap-2 text-sm">
                     <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                       Paste key=value
@@ -564,45 +563,43 @@ export const SecretsTable = ({
                       </span>
                     ) : null}
                     <span className="text-xs text-muted-foreground">
-                      Switch to separate fields to edit key or value.
+                      We’ll split this into key and value automatically.
                     </span>
                   </label>
-                ) : (
-                  <>
-                    <label className="grid gap-2 text-sm">
-                      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                        Secret key
-                      </span>
-                      <Input
-                        value={form.key}
-                        onChange={(event) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            key: event.target.value,
-                          }))
-                        }
-                        placeholder="SECRET_KEY"
-                        className="h-11 rounded-2xl bg-white px-4"
-                      />
-                    </label>
-                    <label className="grid gap-2 text-sm">
-                      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                        Secret value
-                      </span>
-                      <Input
-                        value={form.value}
-                        onChange={(event) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            value: event.target.value,
-                          }))
-                        }
-                        placeholder="secret-value"
-                        className="h-11 rounded-2xl bg-white px-4"
-                      />
-                    </label>
-                  </>
-                )}
+                ) : null}
+
+                <label className="grid gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Secret key
+                  </span>
+                  <Input
+                    value={form.key}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        key: event.target.value,
+                      }))
+                    }
+                    placeholder="SECRET_KEY"
+                    className="h-11 rounded-2xl bg-white px-4"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Secret value
+                  </span>
+                  <Input
+                    value={form.value}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        value: event.target.value,
+                      }))
+                    }
+                    placeholder="secret-value"
+                    className="h-11 rounded-2xl bg-white px-4"
+                  />
+                </label>
                 <DialogFooter>
                   <Button
                     type="button"
@@ -616,10 +613,7 @@ export const SecretsTable = ({
                     type="submit"
                     className="rounded-full bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
                     disabled={
-                      creating ||
-                      !form.key.trim() ||
-                      !form.value.trim() ||
-                      (addMode === 'paste' && (!pasteLine.trim() || !!pasteError))
+                      creating || !form.key.trim() || !form.value.trim()
                     }
                   >
                     {creating ? 'Saving...' : 'Add secret'}

@@ -58,6 +58,15 @@ export const ProjectsSection = ({
   }, [dialogOpen])
 
   useRegisterShortcut('n', () => setDialogOpen(true))
+  useRegisterShortcut('1', () => projects[0] && onSelect(projects[0].id))
+  useRegisterShortcut('2', () => projects[1] && onSelect(projects[1].id))
+  useRegisterShortcut('3', () => projects[2] && onSelect(projects[2].id))
+  useRegisterShortcut('4', () => projects[3] && onSelect(projects[3].id))
+  useRegisterShortcut('5', () => projects[4] && onSelect(projects[4].id))
+  useRegisterShortcut('6', () => projects[5] && onSelect(projects[5].id))
+  useRegisterShortcut('7', () => projects[6] && onSelect(projects[6].id))
+  useRegisterShortcut('8', () => projects[7] && onSelect(projects[7].id))
+  useRegisterShortcut('9', () => projects[8] && onSelect(projects[8].id))
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -161,8 +170,9 @@ export const ProjectsSection = ({
             No projects yet. Create one to get started.
           </li>
         ) : (
-          projects.map((project) => {
+          projects.map((project, index) => {
             const isSelected = project.id === selectedProjectId
+            const shortcutKey = index < 9 ? `${index + 1}` : null
             return (
               <li key={project.id}>
                 <Button
@@ -185,16 +195,19 @@ export const ProjectsSection = ({
                     >
                       {formatShortDate(project.updatedAt)}
                     </time>
-                    <Badge
-                      variant={isSelected ? 'default' : 'secondary'}
-                      className={`px-2 py-1 text-[10px] font-semibold ${
-                        isSelected
-                          ? 'bg-background/20 text-background'
-                          : 'bg-muted text-muted-foreground'
-                      }`}
-                    >
-                      {project.role ?? 'Member'}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      {shortcutKey ? <ShortcutHint keys={shortcutKey} /> : null}
+                      <Badge
+                        variant={isSelected ? 'default' : 'secondary'}
+                        className={`px-2 py-1 text-[10px] font-semibold ${
+                          isSelected
+                            ? 'bg-background/20 text-background'
+                            : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        {project.role ?? 'Member'}
+                      </Badge>
+                    </div>
                   </div>
                   <h3 className="mt-3 text-lg font-semibold">{project.name}</h3>
                   <p
