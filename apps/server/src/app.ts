@@ -225,6 +225,35 @@ function buildCliLoginUrl(code: string): string {
   return `${base}/cli-login?code=${encodeURIComponent(code)}`;
 }
 
+function parseHeaderValue(header?: string | string[]): string | null {
+  if (!header) return null;
+  return Array.isArray(header) ? header[0] ?? null : header;
+}
+
+function toOrigin(value: string): string | null {
+  try {
+    return new URL(value).origin.replace(/\/$/, '');
+  } catch {
+    return null;
+  }
+}
+
+function getRequestOrigin(request: FastifyRequest): string | null {
+  const originHeader = parseHeaderValue(request.headers.origin);
+  if (originHeader) {
+    const origin = toOrigin(originHeader);
+    if (origin) return origin;
+  }
+
+  const refererHeader = parseHeaderValue(request.headers.referer);
+  if (refererHeader) {
+    const refererOrigin = toOrigin(refererHeader);
+    if (refererOrigin) return refererOrigin;
+  }
+
+  return null;
+}
+
 function parseDateInput(value?: string): Date | null {
   if (!value) return null;
   const parsed = new Date(value);
@@ -416,7 +445,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     referrerPolicy: { policy: 'no-referrer' },
   });
   await app.register(cors, {
-    origin: config.appOrigin,
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      callback(null, config.appOrigins.includes(origin.replace(/\/$/, '')));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
@@ -549,15 +584,14 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
-    const origin = request.headers.origin;
-    if (!origin || origin !== config.appOrigin) {
+    const origin = getRequestOrigin(request);
+    if (!origin || !config.appOrigins.includes(origin)) {
       return reply.code(403).send({ error: 'Invalid origin' });
     }
 
     if (sessionToken) {
       const csrfCookie = request.cookies[CSRF_COOKIE_NAME];
-      const rawCsrfHeader = request.headers['x-csrf-token'];
-      const csrfHeader = Array.isArray(rawCsrfHeader) ? rawCsrfHeader[0] : rawCsrfHeader;
+      const csrfHeader = parseHeaderValue(request.headers['x-csrf-token']);
 
       // Bootstrap token for existing sessions that are missing the CSRF cookie in prod.
       if (!csrfCookie) {

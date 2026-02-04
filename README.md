@@ -72,7 +72,7 @@ Required in `apps/server/.env`:
 - `DATABASE_URL` MySQL connection string
 - `MASTER_KEY` 32-byte key (64 hex chars or 32-byte base64)
 - `MASTER_KEY_VERSION` optional key version (default `v1`)
-- `APP_ORIGIN` the Angular app origin (default `http://localhost:4200`)
+- `APP_ORIGIN` app origin (or comma-separated origins) allowed for browser writes, e.g. `https://app.example.com,https://www.app.example.com`
 - `SESSION_TTL_HOURS` session lifespan
 - `COOKIE_SECURE` set to `true` in production
 - `PORT` API port (default `3001`)
