@@ -1,12 +1,25 @@
 import type { AuditLogDto, AuditLogFilters, ProjectDto } from '@secrets/shared'
-import { ArrowLeft } from 'lucide-react'
+import { endOfDay, format, startOfDay } from 'date-fns'
+import { ArrowLeft, CalendarIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { DateRange } from 'react-day-picker'
 import { AuditLog } from '../components/AuditLog'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
+import { Calendar } from '../components/ui/calendar'
+import {
+  controlBaseClasses,
+  controlSizeClasses,
+  controlVariantClasses,
+} from '../components/ui/control-classes'
 import { Input } from '../components/ui/input'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -17,9 +30,19 @@ import {
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { cn } from '../lib/utils'
 
 const getErrorMessage = (error: unknown) =>
   error instanceof ApiError ? error.message : 'Something went wrong.'
+
+type AuditFilterState = {
+  action: string
+  resourceType: string
+  resourceId: string
+  actorType: 'user' | 'service'
+  actorId: string
+  dateRange?: DateRange
+}
 
 export const AuditPage = ({
   projectId,
@@ -36,12 +59,13 @@ export const AuditPage = ({
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditError, setAuditError] = useState<string | null>(null)
   const [filterError, setFilterError] = useState<string | null>(null)
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<AuditFilterState>({
     action: '',
     resourceType: '',
     resourceId: '',
     actorType: 'user',
     actorId: '',
+    dateRange: undefined,
   })
   const [appliedFilters, setAppliedFilters] = useState<
     AuditLogFilters | undefined
@@ -119,6 +143,12 @@ export const AuditPage = ({
     setFilterError(null)
     const nextFilters: AuditLogFilters = {}
 
+    if (filters.dateRange?.from) {
+      nextFilters.start = startOfDay(filters.dateRange.from).toISOString()
+    }
+    if (filters.dateRange?.to) {
+      nextFilters.end = endOfDay(filters.dateRange.to).toISOString()
+    }
     if (filters.action.trim()) nextFilters.action = filters.action.trim()
     if (filters.resourceType.trim())
       nextFilters.resourceType = filters.resourceType.trim()
@@ -143,6 +173,7 @@ export const AuditPage = ({
       resourceId: '',
       actorType: 'user',
       actorId: '',
+      dateRange: undefined,
     })
     setAppliedFilters(undefined)
     setFilterError(null)
@@ -331,6 +362,51 @@ export const AuditPage = ({
           </div>
           <div className="flex flex-col gap-2">
             <label className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+              Date range
+            </label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    controlBaseClasses,
+                    controlSizeClasses.md,
+                    controlVariantClasses.default,
+                    'items-center justify-start gap-2 text-left font-medium',
+                    !filters.dateRange?.from && 'text-muted-foreground',
+                  )}
+                >
+                  <CalendarIcon className="h-4 w-4" />
+                  {filters.dateRange?.from ? (
+                    filters.dateRange.to ? (
+                      <>
+                        {format(filters.dateRange.from, 'LLL dd, y')} -{' '}
+                        {format(filters.dateRange.to, 'LLL dd, y')}
+                      </>
+                    ) : (
+                      format(filters.dateRange.from, 'LLL dd, y')
+                    )
+                  ) : (
+                    'Pick a date range'
+                  )}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  initialFocus
+                  mode="range"
+                  defaultMonth={filters.dateRange?.from}
+                  selected={filters.dateRange}
+                  onSelect={(range) =>
+                    setFilters((prev) => ({ ...prev, dateRange: range }))
+                  }
+                  numberOfMonths={2}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
               Actor type
             </label>
             <Select
@@ -348,7 +424,7 @@ export const AuditPage = ({
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-2 lg:col-span-2">
+          <div className="flex flex-col gap-2">
             <label className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
               Actor ID
             </label>
@@ -360,7 +436,7 @@ export const AuditPage = ({
               }
             />
           </div>
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-2 lg:col-span-3">
             <Button
               onClick={handleApplyFilters}
               className="rounded-full px-4 py-2 text-sm"
