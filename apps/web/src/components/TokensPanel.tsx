@@ -1,22 +1,11 @@
 import type { ApiTokenDto, CreateTokenResponse } from '@secrets/shared'
-import { useEffect, useRef, useState } from 'react'
-import { KeyRound, Trash2, X } from 'lucide-react'
-import { formatDateTime } from '../lib/format'
-import { useRegisterShortcut } from '../lib/shortcuts'
-import { ShortcutHint } from './ShortcutHint'
+import { useState } from 'react'
+import { X } from 'lucide-react'
 import { SectionCard, SectionHeader } from './SectionCard'
 import { Button } from './ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from './ui/dialog'
-import { Checkbox } from './ui/checkbox'
-import { Input } from './ui/input'
+import { CreateTokenDialog } from './tokens/CreateTokenDialog'
+import { DeleteTokenDialog } from './tokens/DeleteTokenDialog'
+import { TokenListItem } from './tokens/TokenListItem'
 
 export const TokensPanel = ({
   tokens,
@@ -35,37 +24,8 @@ export const TokensPanel = ({
   lastCreated: CreateTokenResponse | null
   onClearLastCreated: () => void
 }) => {
-  const [name, setName] = useState('')
-  const [readOnly, setReadOnly] = useState(true)
-  const [creating, setCreating] = useState(false)
-  const [createOpen, setCreateOpen] = useState(false)
   const [activeToken, setActiveToken] = useState<ApiTokenDto | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const nameInputRef = useRef<HTMLInputElement | null>(null)
-
-  useEffect(() => {
-    if (createOpen) {
-      const timeout = window.setTimeout(() => {
-        nameInputRef.current?.focus()
-        nameInputRef.current?.select()
-      }, 0)
-      return () => window.clearTimeout(timeout)
-    }
-    setName('')
-    setReadOnly(true)
-  }, [createOpen])
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!name.trim() || creating) return
-    setCreating(true)
-    try {
-      await onCreate(name.trim(), readOnly)
-      setCreateOpen(false)
-    } finally {
-      setCreating(false)
-    }
-  }
 
   const openDeleteDialog = (token: ApiTokenDto) => {
     setActiveToken(token)
@@ -83,75 +43,17 @@ export const TokensPanel = ({
     closeDeleteDialog()
   }
 
-  useRegisterShortcut('n', () => {
-    setCreateOpen(true)
-  })
-
   return (
     <SectionCard>
       <SectionHeader
         kicker="API tokens"
         title="Programmatic access"
         action={
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
-              >
-                <KeyRound className="h-4 w-4" />
-                New token
-                <ShortcutHint keys="n" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="rounded-3xl border-border/70 bg-popover text-popover-foreground">
-              <DialogHeader className="text-left">
-                <DialogTitle>Create API token</DialogTitle>
-                <DialogDescription>
-                  Tokens are shown once. Store them securely before closing.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="grid gap-4">
-                <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Token name
-                  </span>
-                  <Input
-                    ref={nameInputRef}
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    placeholder="e.g. CI deploy"
-                    autoComplete="off"
-                    className="h-11 rounded-2xl bg-background px-4"
-                  />
-                </label>
-                <label className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <Checkbox
-                    checked={readOnly}
-                    onCheckedChange={(checked) => setReadOnly(Boolean(checked))}
-                  />
-                  Read-only token (recommended for CI)
-                </label>
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="rounded-full px-4 text-sm"
-                    onClick={() => setCreateOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
-                    disabled={creating || !name.trim()}
-                  >
-                    {creating ? 'Creating...' : 'Create token'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <CreateTokenDialog
+            onCreate={async (name, readOnly) => {
+              await onCreate(name, readOnly)
+            }}
+          />
         }
       />
       {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
@@ -186,41 +88,11 @@ export const TokensPanel = ({
           </li>
         ) : (
           tokens.map((token) => (
-            <li
+            <TokenListItem
               key={token.id}
-              className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3"
-            >
-              <article>
-                <div className="flex items-center gap-2">
-                  <p className="font-semibold text-foreground">{token.name}</p>
-                  {token.readOnly ? (
-                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
-                      Read-only
-                    </span>
-                  ) : null}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Created <time dateTime={token.createdAt}>{formatDateTime(token.createdAt)}</time>
-                </p>
-              </article>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground">
-                  Last used{' '}
-                  <time dateTime={token.lastUsedAt ?? undefined}>
-                    {formatDateTime(token.lastUsedAt)}
-                  </time>
-                </span>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => openDeleteDialog(token)}
-                  className="h-7"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete
-                </Button>
-              </div>
-            </li>
+              token={token}
+              onDelete={openDeleteDialog}
+            />
           ))
         )}
       </ul>
@@ -228,31 +100,14 @@ export const TokensPanel = ({
         Tokens are visible once. Rotate frequently and scope by project.
       </aside>
 
-      <Dialog
+      <DeleteTokenDialog
         open={deleteOpen}
+        tokenName={activeToken?.name ?? null}
         onOpenChange={(open) => {
           if (!open) closeDeleteDialog()
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete API token</DialogTitle>
-            <DialogDescription>This token will stop working immediately.</DialogDescription>
-          </DialogHeader>
-          <div className="rounded-2xl border border-dashed border-border bg-muted p-3 text-xs text-muted-foreground">
-            Selected token{' '}
-            <span className="font-semibold text-foreground">{activeToken?.name}</span>
-          </div>
-          <DialogFooter className="mt-6">
-            <Button variant="ghost" onClick={closeDeleteDialog} className="rounded-full">
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} className="rounded-full">
-              Delete token
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onConfirm={handleDelete}
+      />
     </SectionCard>
   )
 }
