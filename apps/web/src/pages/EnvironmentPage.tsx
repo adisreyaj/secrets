@@ -1,44 +1,12 @@
-import type { EnvironmentDto, ProjectDto, SecretDto } from '@secrets/shared'
-import { ArrowLeft, FileDown, FileUp } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ImportEnvDialog } from '../components/ImportEnvDialog'
+import { useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { SecretsTable } from '../components/SecretsTable'
-import { SectionCard } from '../components/SectionCard'
-import { ShortcutHint } from '../components/ShortcutHint'
-import { Button } from '../components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '../components/ui/dialog'
-import { Input } from '../components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select'
-import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs'
-import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { useRegisterShortcut } from '../lib/shortcuts'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
-
-const toSlug = (value: string) =>
-  value
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
+import { EnvironmentHeaderActions } from './environment/EnvironmentHeaderActions'
+import { EnvironmentTabsCard } from './environment/EnvironmentTabsCard'
+import { SecretsSearchBar } from './environment/SecretsSearchBar'
+import { useEnvironmentData } from './environment/useEnvironmentData'
 
 export const EnvironmentPage = ({
   projectId,
@@ -50,29 +18,8 @@ export const EnvironmentPage = ({
   navigate: (path: string) => void
 }) => {
   const { user, loading } = useAuth()
-
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
-
-  const [environments, setEnvironments] = useState<EnvironmentDto[]>([])
-  const [envLoading, setEnvLoading] = useState(false)
-  const [envError, setEnvError] = useState<string | null>(null)
-
-  const [secrets, setSecrets] = useState<SecretDto[]>([])
-  const [secretsLoading, setSecretsLoading] = useState(false)
-  const [secretsError, setSecretsError] = useState<string | null>(null)
-  const [valuesVisible, setValuesVisible] = useState(false)
-  const [valuesLoaded, setValuesLoaded] = useState(false)
-  const [secretKeyIndex, setSecretKeyIndex] = useState<
-    Record<string, string[]>
-  >({})
-  const [coverageLoading, setCoverageLoading] = useState(false)
-  const [coverageError, setCoverageError] = useState<string | null>(null)
-  const [name, setName] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [copyFromId, setCopyFromId] = useState<string>('none')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     if (!loading && !user) {
@@ -80,233 +27,52 @@ export const EnvironmentPage = ({
     }
   }, [user, loading, navigate])
 
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    }
-  }, [])
+  const {
+    projectsError,
+    environments,
+    envLoading,
+    envError,
+    secrets,
+    secretsLoading,
+    secretsError,
+    valuesVisible,
+    valuesLoaded,
+    coverageLoading,
+    coverageError,
+    missingKeys,
+    missingKeysByEnvironment,
+    secretByKey,
+    selectedEnvironment,
+    selectedProject,
+    environmentOptions,
+    handleToggleValues,
+    handleCreateEnvironment,
+    handleCreateSecret,
+    handleUpdateSecrets,
+    handleRollbackSecret,
+    handleDeleteSecret,
+    handleDiffSecret,
+    handleCopySecret,
+    handleCopyMissingSecrets,
+    handleExportEnv,
+    handleExportCsv,
+    loadSecrets,
+    loadSecretCoverage,
+  } = useEnvironmentData({
+    projectId,
+    environmentId,
+    enabled: Boolean(user),
+  })
 
-  const loadEnvironments = useCallback(async () => {
-    setEnvLoading(true)
-    setEnvError(null)
-    try {
-      const data = await api.listEnvironments(projectId)
-      setEnvironments(data)
-    } catch (error) {
-      setEnvError(getErrorMessage(error))
-    } finally {
-      setEnvLoading(false)
-    }
-  }, [projectId])
-
-  const loadSecrets = useCallback(
-    async (include: boolean) => {
-      setSecretsLoading(true)
-      setSecretsError(null)
-      try {
-        const data = await api.listSecrets(environmentId, include)
-        setSecrets(data)
-        return true
-      } catch (error) {
-        setSecretsError(getErrorMessage(error))
-        return false
-      } finally {
-        setSecretsLoading(false)
-      }
-    },
-    [environmentId],
-  )
-
-  const loadSecretCoverage = useCallback(async () => {
-    if (environments.length === 0) {
-      setSecretKeyIndex({})
-      return
-    }
-
-    setCoverageLoading(true)
-    setCoverageError(null)
-    try {
-      const entries = await Promise.all(
-        environments.map(async (env) => {
-          const data = await api.listSecrets(env.id, false)
-          return [env.id, data.map((secret) => secret.key)] as const
-        }),
-      )
-      const next: Record<string, string[]> = {}
-      for (const [envId, keys] of entries) {
-        next[envId] = keys
-      }
-      setSecretKeyIndex(next)
-    } catch (error) {
-      setCoverageError(getErrorMessage(error))
-    } finally {
-      setCoverageLoading(false)
-    }
-  }, [environments])
-
-  useEffect(() => {
-    if (user) {
-      void loadProjects()
-      void loadEnvironments()
-    }
-  }, [user, loadProjects, loadEnvironments])
-
-  useEffect(() => {
-    if (user) {
-      void loadSecrets(valuesLoaded)
-    }
-  }, [user, valuesLoaded, loadSecrets])
-
-  useEffect(() => {
-    if (user && environments.length > 0) {
-      void loadSecretCoverage()
-    }
-  }, [user, environments, loadSecretCoverage])
-
-  useEffect(() => {
-    if (!dialogOpen) {
-      setName('')
-      setCopyFromId('none')
-    }
-  }, [dialogOpen])
-
-  const allSecretKeys = useMemo(() => {
-    const keys = new Set<string>()
-    for (const list of Object.values(secretKeyIndex)) {
-      for (const key of list) {
-        keys.add(key)
-      }
-    }
-    return keys
-  }, [secretKeyIndex])
-
-  const missingKeys = useMemo(() => {
-    const currentKeys = new Set(secretKeyIndex[environmentId] ?? [])
-    const missing: string[] = []
-    for (const key of allSecretKeys) {
-      if (!currentKeys.has(key)) {
-        missing.push(key)
-      }
-    }
-    missing.sort((a, b) => a.localeCompare(b))
-    return missing
-  }, [allSecretKeys, environmentId, secretKeyIndex])
-
-  const missingKeysByEnvironment = useMemo(() => {
-    const currentKeys = new Set(secretKeyIndex[environmentId] ?? [])
-    const map: Record<string, string[]> = {}
-    for (const env of environments) {
-      if (env.id === environmentId) continue
-      const keys = secretKeyIndex[env.id] ?? []
-      const candidates = keys.filter((key) => !currentKeys.has(key))
-      if (candidates.length > 0) {
-        map[env.id] = candidates.sort((a, b) => a.localeCompare(b))
-      }
-    }
-    return map
-  }, [environmentId, environments, secretKeyIndex])
-
-  const secretByKey = useMemo(() => {
-    const map = new Map<string, SecretDto>()
-    for (const secret of secrets) {
-      map.set(secret.key, secret)
-    }
-    return map
-  }, [secrets])
-
-  const handleToggleValues = async (nextVisible: boolean) => {
-    if (nextVisible && !valuesLoaded) {
-      const loaded = await loadSecrets(true)
-      if (loaded) {
-        setValuesLoaded(true)
-      }
-    }
-    setValuesVisible(nextVisible)
-  }
-
-  const handleCreateEnvironment = async (payload: {
-    name: string
-    copyFromEnvironmentId?: string | null
-  }) => {
-    await api.createEnvironment(projectId, {
-      name: payload.name,
-      copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
+  const filteredSecrets = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return secrets
+    return secrets.filter((secret) => {
+      if (secret.key.toLowerCase().includes(query)) return true
+      if (valuesLoaded && secret.value?.toLowerCase().includes(query)) return true
+      return false
     })
-    await loadEnvironments()
-  }
-
-  const handleCreateSecret = async (payload: {
-    key: string
-    value: string
-  }) => {
-    await api.createSecret(environmentId, payload)
-    await loadSecrets(valuesLoaded)
-  }
-
-  const handleUpdateSecrets = async (
-    changes: { id: string; key?: string; value?: string }[],
-  ) => {
-    let keyUpdated = false
-    for (const change of changes) {
-      if (change.key !== undefined) {
-        keyUpdated = true
-      }
-      await api.updateSecret(change.id, {
-        key: change.key,
-        value: change.value,
-      })
-    }
-    await loadSecrets(valuesLoaded)
-    if (keyUpdated) {
-      await loadSecretCoverage()
-    }
-  }
-
-  const handleRollbackSecret = async (secretId: string) => {
-    await api.rollbackSecret(secretId)
-    await loadSecrets(valuesLoaded)
-  }
-
-  const handleDeleteSecret = async (secretId: string) => {
-    await api.deleteSecret(secretId)
-    await loadSecrets(valuesLoaded)
-  }
-
-  const handleCopySecret = async (
-    secretId: string,
-    payload: { targetEnvironmentIds: string[]; overwrite: boolean },
-  ) => {
-    const result = await api.copySecret(secretId, payload)
-    await loadSecretCoverage()
-    return result
-  }
-
-  const handleCopyMissingSecrets = async (
-    sourceEnvironmentId: string,
-    keys: string[],
-  ) => {
-    const result = await api.copySecretsFromEnvironment(environmentId, {
-      sourceEnvironmentId,
-      keys,
-      overwrite: false,
-    })
-    await loadSecretCoverage()
-    await loadSecrets(valuesLoaded)
-    return result
-  }
-
-  const selectedEnvironment =
-    environments.find((env) => env.id === environmentId) ?? null
-  const selectedProject =
-    projects.find((project) => project.id === projectId) ?? null
-  const environmentOptions = useMemo(
-    () => environments.map((env) => ({ id: env.id, name: env.name })),
-    [environments],
-  )
+  }, [secrets, searchQuery, valuesLoaded])
 
   useEffect(() => {
     const selectByIndex = (index: number) => {
@@ -334,48 +100,12 @@ export const EnvironmentPage = ({
     return () => window.removeEventListener('keydown', handler)
   }, [environments, navigate, projectId])
 
-  const handleCreateEnvironmentSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    const trimmedName = name.trim()
-    if (!trimmedName || creating) return
-    setCreating(true)
-    try {
-      await handleCreateEnvironment({
-        name: trimmedName,
-        copyFromEnvironmentId: copyFromId !== 'none' ? copyFromId : undefined,
-      })
-      setDialogOpen(false)
-    } finally {
-      setCreating(false)
-    }
-  }
-
-  const handleExportEnv = async () => {
-    if (!selectedEnvironment) return
-    const content = await api.exportEnv(selectedEnvironment.id)
-    const projectSlug =
-      toSlug(selectedProject?.name ?? projectId.slice(0, 6)) ||
-      projectId.slice(0, 6)
-    const environmentSlug =
-      toSlug(selectedEnvironment.name) || selectedEnvironment.id.slice(0, 6)
-    const filename = `${projectSlug}-${environmentSlug}.env`
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = filename
-    anchor.click()
-    URL.revokeObjectURL(url)
-  }
-
-
   useRegisterShortcut('b', () =>
     navigate(`/projects/${projectId}/environments`),
   )
   useRegisterShortcut('v', () => handleToggleValues(!valuesVisible))
   useRegisterShortcut('d', () => handleExportEnv())
   useRegisterShortcut('i', () => setImportDialogOpen(true))
-  useRegisterShortcut('shift+n', () => setDialogOpen(true))
 
   return (
     <section className="flex flex-col gap-6">
@@ -383,46 +113,18 @@ export const EnvironmentPage = ({
         title="Secrets"
         subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
         actions={
-          <>
-            <ImportEnvDialog
-              open={importDialogOpen}
-              onOpenChange={setImportDialogOpen}
-              environment={selectedEnvironment}
-              secretByKey={secretByKey}
-              valuesLoaded={valuesLoaded}
-              loadSecrets={loadSecrets}
-              loadSecretCoverage={loadSecretCoverage}
-            >
-              <Button
-                variant="outline"
-                className="border-border bg-muted/40 text-foreground hover:bg-muted flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
-                disabled={!selectedEnvironment}
-              >
-                <FileUp className="h-4 w-4" />
-                Import .env
-                <ShortcutHint keys="i" />
-              </Button>
-            </ImportEnvDialog>
-            <Button
-              variant="outline"
-              className="border-border bg-muted/40 text-foreground hover:bg-muted flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
-              onClick={handleExportEnv}
-              disabled={!selectedEnvironment}
-            >
-              <FileDown className="h-4 w-4" />
-              Download .env
-              <ShortcutHint keys="d" />
-            </Button>
-            <Button
-              variant="outline"
-              className="border-border text-foreground hover:border-foreground/40 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold transition"
-              onClick={() => navigate(`/projects/${projectId}/environments`)}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to environments
-              <ShortcutHint keys="b" />
-            </Button>
-          </>
+          <EnvironmentHeaderActions
+            importDialogOpen={importDialogOpen}
+            onImportOpenChange={setImportDialogOpen}
+            selectedEnvironment={selectedEnvironment}
+            secretByKey={secretByKey}
+            valuesLoaded={valuesLoaded}
+            loadSecrets={loadSecrets}
+            loadSecretCoverage={loadSecretCoverage}
+            onExport={handleExportEnv}
+            onExportCsv={handleExportCsv}
+            onBack={() => navigate(`/projects/${projectId}/environments`)}
+          />
         }
       />
 
@@ -433,129 +135,21 @@ export const EnvironmentPage = ({
       )}
 
       <section className="flex flex-col gap-0">
-        <SectionCard className="-mb-px rounded-b-none border-b-0 p-4">
-          <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-            Environments
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <div className="min-w-0 flex-1">
-              {envLoading ? (
-                <div className="border-border bg-card/70 text-muted-foreground rounded-full border border-dashed px-4 py-2 text-sm">
-                  Loading environments...
-                </div>
-              ) : environments.length === 0 ? (
-                <div className="border-border bg-card/70 text-muted-foreground rounded-full border border-dashed px-4 py-2 text-sm">
-                  Create your first environment.
-                </div>
-              ) : (
-                <Tabs
-                  value={environmentId}
-                  onValueChange={(envId) =>
-                    navigate(`/projects/${projectId}/environments/${envId}`)
-                  }
-                  className="w-full"
-                >
-                  <div className="overflow-x-auto pb-1">
-                    <TabsList className="w-max">
-                      {environments.map((env) => (
-                        <TabsTrigger
-                          key={env.id}
-                          value={env.id}
-                          className="gap-2"
-                        >
-                          <span className="font-semibold">{env.name}</span>
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                  </div>
-                </Tabs>
-              )}
-            </div>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 text-sm font-semibold"
-                >
-                  New environment
-                  <ShortcutHint keys="Shift+n" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
-                <DialogHeader className="text-left">
-                  <DialogTitle>Create environment</DialogTitle>
-                  <DialogDescription>
-                    Spin up a new environment and optionally duplicate keys from
-                    an existing one.
-                  </DialogDescription>
-                </DialogHeader>
-                <form
-                  onSubmit={handleCreateEnvironmentSubmit}
-                  className="grid gap-4"
-                >
-                  <label className="grid gap-2 text-sm">
-                    <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                      Environment name
-                    </span>
-                    <Input
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                      placeholder="e.g. staging"
-                      className="bg-background h-11 rounded-2xl px-4"
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm">
-                    <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                      Copy keys from
-                    </span>
-                    <Select
-                      value={copyFromId}
-                      onValueChange={setCopyFromId}
-                      disabled={environmentOptions.length === 0}
-                    >
-                      <SelectTrigger className="h-11 px-4">
-                        <SelectValue placeholder="Don't copy anything" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">
-                          Don&apos;t copy anything
-                        </SelectItem>
-                        {environmentOptions.map((env) => (
-                          <SelectItem key={env.id} value={env.id}>
-                            {env.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <span className="text-muted-foreground text-xs">
-                      Copies keys (and current values) into the new environment.
-                    </span>
-                  </label>
-                  <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="rounded-full px-4 text-sm"
-                      onClick={() => setDialogOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-6 text-sm font-semibold"
-                      disabled={creating || !name.trim()}
-                    >
-                      {creating ? 'Creating...' : 'Create environment'}
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </SectionCard>
+        <EnvironmentTabsCard
+          environments={environments}
+          envLoading={envLoading}
+          environmentId={environmentId}
+          onSelectEnvironment={(envId) =>
+            navigate(`/projects/${projectId}/environments/${envId}`)
+          }
+          environmentOptions={environmentOptions}
+          onCreateEnvironment={handleCreateEnvironment}
+        />
+
+        <SecretsSearchBar value={searchQuery} onChange={setSearchQuery} />
 
         <SecretsTable
-          secrets={secrets}
+          secrets={filteredSecrets}
           environments={environments}
           environmentId={environmentId}
           includeValues={valuesVisible}
@@ -568,6 +162,7 @@ export const EnvironmentPage = ({
           onCreate={handleCreateSecret}
           onUpdateMany={handleUpdateSecrets}
           onRollback={handleRollbackSecret}
+          onDiff={handleDiffSecret}
           onDelete={handleDeleteSecret}
           onCopy={handleCopySecret}
           onCopyMissing={handleCopyMissingSecrets}

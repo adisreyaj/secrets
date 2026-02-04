@@ -1,0 +1,140 @@
+import { useEffect, useState } from 'react'
+import { useRegisterShortcut } from '../../lib/shortcuts'
+import { ShortcutHint } from '../../components/ShortcutHint'
+import { Button } from '../../components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../../components/ui/dialog'
+import { Input } from '../../components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select'
+
+export const NewEnvironmentDialog = ({
+  environmentOptions,
+  onCreateEnvironment,
+}: {
+  environmentOptions: { id: string; name: string }[]
+  onCreateEnvironment: (payload: {
+    name: string
+    copyFromEnvironmentId?: string | null
+  }) => Promise<void>
+}) => {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [copyFromId, setCopyFromId] = useState<string>('none')
+
+  useRegisterShortcut('shift+n', () => setOpen(true))
+
+  useEffect(() => {
+    if (!open) {
+      setName('')
+      setCopyFromId('none')
+    }
+  }, [open])
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    const trimmedName = name.trim()
+    if (!trimmedName || creating) return
+    setCreating(true)
+    try {
+      await onCreateEnvironment({
+        name: trimmedName,
+        copyFromEnvironmentId: copyFromId !== 'none' ? copyFromId : undefined,
+      })
+      setOpen(false)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="outline"
+          className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 text-sm font-semibold"
+        >
+          New environment
+          <ShortcutHint keys="Shift+n" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
+        <DialogHeader className="text-left">
+          <DialogTitle>Create environment</DialogTitle>
+          <DialogDescription>
+            Spin up a new environment and optionally duplicate keys from an
+            existing one.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <label className="grid gap-2 text-sm">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+              Environment name
+            </span>
+            <Input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="e.g. staging"
+              className="bg-background h-11 rounded-2xl px-4"
+            />
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+              Copy keys from
+            </span>
+            <Select
+              value={copyFromId}
+              onValueChange={setCopyFromId}
+              disabled={environmentOptions.length === 0}
+            >
+              <SelectTrigger className="h-11 px-4">
+                <SelectValue placeholder="Don't copy anything" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Don&apos;t copy anything</SelectItem>
+                {environmentOptions.map((env) => (
+                  <SelectItem key={env.id} value={env.id}>
+                    {env.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-muted-foreground text-xs">
+              Copies keys (and current values) into the new environment.
+            </span>
+          </label>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-full px-4 text-sm"
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-6 text-sm font-semibold"
+              disabled={creating || !name.trim()}
+            >
+              {creating ? 'Creating...' : 'Create environment'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
