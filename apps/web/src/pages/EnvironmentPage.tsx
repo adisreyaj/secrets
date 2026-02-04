@@ -38,6 +38,8 @@ export const EnvironmentPage = ({
     valuesLoaded,
     coverageLoading,
     coverageError,
+    approvalsError,
+    pendingBySecretId,
     missingKeys,
     missingKeysByEnvironment,
     secretByKey,
@@ -128,9 +130,9 @@ export const EnvironmentPage = ({
         }
       />
 
-      {(projectsError || envError || secretsError || coverageError) && (
+      {(projectsError || envError || secretsError || coverageError || approvalsError) && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || envError || secretsError || coverageError}
+          {projectsError || envError || secretsError || coverageError || approvalsError}
         </div>
       )}
 
@@ -156,6 +158,7 @@ export const EnvironmentPage = ({
           error={secretsError}
           missingKeys={missingKeys}
           missingKeysByEnvironment={missingKeysByEnvironment}
+          pendingBySecretId={pendingBySecretId}
           onToggleValues={handleToggleValues}
           onCreate={handleCreateSecret}
           onUpdateMany={handleUpdateSecrets}

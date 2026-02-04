@@ -1,4 +1,6 @@
 export type Role = 'ADMIN' | 'EDITOR' | 'VIEWER';
+export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'DENIED' | 'CANCELED';
+export type ApprovalAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'ROLLBACK' | 'COPY' | 'COPY_FROM';
 
 export interface UserDto {
   id: string;
@@ -31,6 +33,41 @@ export interface SecretDto {
   updatedAt: string;
   versionId?: string;
   value?: string;
+}
+
+export interface ApprovalRuleDto {
+  id: string;
+  projectId: string;
+  name: string;
+  environmentId?: string | null;
+  keyPattern: string;
+  actions: ApprovalAction[];
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApprovalRequestDto {
+  id: string;
+  projectId: string;
+  environmentId: string;
+  secretId?: string | null;
+  action: ApprovalAction;
+  status: ApprovalStatus;
+  requestedBy: string;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  deniedAt?: string | null;
+  canceledAt?: string | null;
+  key: string;
+  targetEnvironmentId?: string | null;
+  expectedVersionId?: string | null;
+  metadataJson?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  proposedValue?: string | null;
+  currentValue?: string | null;
 }
 
 export interface AuditLogDto {
@@ -151,6 +188,28 @@ export interface CopyEnvironmentSecretsResponse {
   created: string[];
   updated: string[];
   skipped: string[];
+}
+
+export interface ApprovalRequestResponse {
+  status: 'pending';
+  approvalRequestId?: string;
+  approvalRequestIds?: string[];
+}
+
+export interface CreateApprovalRuleRequest {
+  name: string;
+  environmentId?: string | null;
+  keyPattern: string;
+  actions: ApprovalAction[];
+  isActive?: boolean;
+}
+
+export interface UpdateApprovalRuleRequest {
+  name?: string;
+  environmentId?: string | null;
+  keyPattern?: string;
+  actions?: ApprovalAction[];
+  isActive?: boolean;
 }
 
 export interface CreateTokenRequest {

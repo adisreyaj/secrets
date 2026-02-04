@@ -413,14 +413,28 @@ async function initCommand(args: string[]) {
       const raw = await fs.readFile(envPath, 'utf-8')
       const entries = parseEnvFile(raw)
       let created = 0
+      let pending = 0
       for (const entry of entries) {
-        await apiRequest(baseUrl, token, `/environments/${environment.id}/secrets`, {
+        const result = await apiRequest<{ status?: string }>(
+          baseUrl,
+          token,
+          `/environments/${environment.id}/secrets`,
+          {
           method: 'POST',
           body: JSON.stringify(entry),
-        })
-        created += 1
+          },
+        )
+        if (result?.status === 'pending') {
+          pending += 1
+        } else {
+          created += 1
+        }
       }
-      console.log(`Imported ${created} secrets from .env`)
+      if (pending > 0) {
+        console.log(`Imported ${created} secrets from .env (pending approval: ${pending})`)
+      } else {
+        console.log(`Imported ${created} secrets from .env`)
+      }
     }
   } else {
     console.log('No .env found in current directory.')

@@ -1,4 +1,5 @@
 import type {
+  ApprovalRequestDto,
   EnvironmentDto,
   SecretDiffResponse,
   SecretDto,
@@ -52,6 +53,7 @@ export const SecretsTable = ({
   error,
   missingKeys,
   missingKeysByEnvironment,
+  pendingBySecretId,
   onToggleValues,
   onCreate,
   onUpdateMany,
@@ -73,6 +75,7 @@ export const SecretsTable = ({
   error: string | null
   missingKeys: string[]
   missingKeysByEnvironment: Record<string, string[]>
+  pendingBySecretId?: Map<string, ApprovalRequestDto>
   onToggleValues: (next: boolean) => void
   onCreate: (payload: { key: string; value: string }) => Promise<void>
   onUpdateMany: (
@@ -84,15 +87,17 @@ export const SecretsTable = ({
   onCopy: (
     secretId: string,
     payload: { targetEnvironmentIds: string[]; overwrite: boolean },
-  ) => Promise<{ created: string[]; updated: string[]; skipped: string[] }>
+  ) => Promise<
+    | { created: string[]; updated: string[]; skipped: string[] }
+    | { status: 'pending'; approvalRequestId?: string; approvalRequestIds?: string[] }
+  >
   onCopyMissing: (
     sourceEnvironmentId: string,
     keys: string[],
-  ) => Promise<{
-    created: string[]
-    updated: string[]
-    skipped: string[]
-  }>
+  ) => Promise<
+    | { created: string[]; updated: string[]; skipped: string[] }
+    | { status: 'pending'; approvalRequestId?: string; approvalRequestIds?: string[] }
+  >
   searchValue?: string
   onSearchChange?: (value: string) => void
   className?: string
@@ -327,6 +332,7 @@ export const SecretsTable = ({
             secrets={secrets}
             loading={loading}
             canCopy={otherEnvironments.length > 0}
+            pendingBySecretId={pendingBySecretId}
             onOpenDelete={openDeleteDialog}
             onOpenRollback={openRollbackDialog}
             onOpenDiff={openDiffDialog}
@@ -466,6 +472,7 @@ const SecretsTableBody = memo(
     onOpenDelete,
     onOpenCopy,
     canCopy,
+    pendingBySecretId,
     editingRows,
     rowErrors,
     includeValues,
@@ -481,6 +488,7 @@ const SecretsTableBody = memo(
     onOpenDelete: (secret: SecretDto) => void
     onOpenCopy: (secret: SecretDto) => void
     canCopy: boolean
+    pendingBySecretId?: Map<string, ApprovalRequestDto>
     editingRows: Record<
       string,
       { key: string; value: string; dirtyKey: boolean; dirtyValue: boolean }
@@ -520,6 +528,7 @@ const SecretsTableBody = memo(
               rowError={rowErrors[secret.id]}
               includeValues={includeValues}
               canCopy={canCopy}
+              pendingRequest={pendingBySecretId?.get(secret.id)}
               onOpenCopy={onOpenCopy}
               onStartEdit={onStartEdit}
               onCancelRow={onCancelRow}
@@ -543,6 +552,7 @@ const SecretRow = memo(
     rowError,
     includeValues,
     canCopy,
+    pendingRequest,
     onOpenCopy,
     onStartEdit,
     onCancelRow,
@@ -562,6 +572,7 @@ const SecretRow = memo(
     rowError?: string
     includeValues: boolean
     canCopy: boolean
+    pendingRequest?: ApprovalRequestDto
     onOpenCopy: (secret: SecretDto) => void
     onStartEdit: (secret: SecretDto) => void
     onCancelRow: (secretId: string) => void
@@ -572,6 +583,7 @@ const SecretRow = memo(
     onRowValueChange: (secretId: string, value: string) => void
   }) => {
     const isEditing = !!editingRow
+    const isPending = !!pendingRequest
     return (
       <TableRow className="text-muted-foreground text-sm">
         <TableHead className="text-foreground py-3 font-semibold" scope="row">
@@ -590,7 +602,14 @@ const SecretRow = memo(
               ) : null}
             </div>
           ) : (
-            <p>{secret.key}</p>
+            <div className="flex items-center gap-2">
+              <p>{secret.key}</p>
+              {isPending ? (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-700">
+                  Pending
+                </span>
+              ) : null}
+            </div>
           )}
         </TableHead>
         <TableCell className="py-3">
@@ -648,7 +667,7 @@ const SecretRow = memo(
                   variant="outline"
                   onClick={() => onOpenCopy(secret)}
                   className="h-8 w-8 rounded-full"
-                  disabled={!canCopy || isEditing}
+                  disabled={!canCopy || isEditing || isPending}
                   aria-label="Copy secret"
                 >
                   <Copy className="h-4 w-4" />
@@ -665,7 +684,7 @@ const SecretRow = memo(
                   variant="outline"
                   onClick={() => onStartEdit(secret)}
                   className="h-8 w-8 rounded-full"
-                  disabled={isEditing}
+                  disabled={isEditing || isPending}
                   aria-label="Edit secret"
                 >
                   <Pencil className="h-4 w-4" />
@@ -696,7 +715,7 @@ const SecretRow = memo(
                   variant="outline"
                   onClick={() => onOpenRollback(secret)}
                   className="h-8 w-8 rounded-full"
-                  disabled={isEditing}
+                  disabled={isEditing || isPending}
                   aria-label="Rollback secret"
                 >
                   <RotateCcw className="h-4 w-4" />
@@ -726,7 +745,7 @@ const SecretRow = memo(
                   variant="outline"
                   onClick={() => onOpenDelete(secret)}
                   className="h-8 w-8 rounded-full border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700"
-                  disabled={isEditing}
+                  disabled={isEditing || isPending}
                   aria-label="Delete secret"
                 >
                   <Trash2 className="h-4 w-4" />

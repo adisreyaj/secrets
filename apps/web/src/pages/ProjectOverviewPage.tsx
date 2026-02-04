@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
-import { ArrowLeft, Layers, ShieldCheck, KeyRound, Users } from 'lucide-react'
+import { ArrowLeft, Layers, ShieldCheck, KeyRound, Users, Shield, CheckCircle } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
@@ -50,10 +50,12 @@ export const ProjectOverviewPage = ({
     }
   }, [projectId])
 
+
   useEffect(() => {
     if (user) {
       void loadProjects()
       void loadEnvironments()
+      // approvals and rules are on their own pages
     }
   }, [user, loadProjects, loadEnvironments])
 
@@ -61,9 +63,10 @@ export const ProjectOverviewPage = ({
     () => projects.find((project) => project.id === projectId) ?? null,
     [projects, projectId],
   )
-
   useRegisterShortcut('e', () => navigate(`/projects/${projectId}/environments`))
   useRegisterShortcut('a', () => navigate(`/projects/${projectId}/audit`))
+  useRegisterShortcut('p', () => navigate(`/projects/${projectId}/approvals`))
+  useRegisterShortcut('r', () => navigate(`/projects/${projectId}/approval-rules`))
   useRegisterShortcut('m', () => navigate(`/projects/${projectId}/team`))
   useRegisterShortcut('t', () => navigate(`/projects/${projectId}/tokens`))
   useRegisterShortcut('b', () => navigate('/projects'))
@@ -166,6 +169,42 @@ export const ProjectOverviewPage = ({
                 <p className="mt-1 text-xs text-muted-foreground">Members and invites</p>
               </div>
               <ShortcutHint keys="m" />
+            </div>
+          </Button>
+        </li>
+        <li>
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/projects/${projectId}/approvals`)}
+            className="h-auto w-full flex-col items-start justify-start rounded-2xl border-border bg-card p-5 text-left shadow-soft hover:border-foreground/30 whitespace-normal"
+          >
+            <div className="flex w-full items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                  Approvals
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">Review pending changes</p>
+              </div>
+              <ShortcutHint keys="p" />
+            </div>
+          </Button>
+        </li>
+        <li>
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/projects/${projectId}/approval-rules`)}
+            className="h-auto w-full flex-col items-start justify-start rounded-2xl border-border bg-card p-5 text-left shadow-soft hover:border-foreground/30 whitespace-normal"
+          >
+            <div className="flex w-full items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Shield className="h-4 w-4 text-muted-foreground" />
+                  Approval rules
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">Configure approvals</p>
+              </div>
+              <ShortcutHint keys="r" />
             </div>
           </Button>
         </li>

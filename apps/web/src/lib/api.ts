@@ -27,6 +27,13 @@ import type {
   AcceptInviteResponse,
   UpdateMeRequest,
   UpdateSecretRequest,
+  ApprovalRuleDto,
+  ApprovalRequestDto,
+  ApprovalRequestResponse,
+  CreateApprovalRuleRequest,
+  UpdateApprovalRuleRequest,
+  ApprovalStatus,
+  ApprovalAction,
 } from '@secrets/shared'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
@@ -128,32 +135,37 @@ export const api = {
       `/environments/${environmentId}/secrets?includeValues=${includeValues}`,
     ),
   createSecret: (environmentId: string, payload: CreateSecretRequest) =>
-    apiFetch<{ id: string }>(`/environments/${environmentId}/secrets`, {
+    apiFetch<{ id: string } | ApprovalRequestResponse>(`/environments/${environmentId}/secrets`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
   updateSecret: (secretId: string, payload: UpdateSecretRequest) =>
-    apiFetch<{ ok: true }>(`/secrets/${secretId}`, {
+    apiFetch<{ ok: true } | ApprovalRequestResponse>(`/secrets/${secretId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
   rollbackSecret: (secretId: string, versionId?: string) =>
-    apiFetch<{ ok: true }>(`/secrets/${secretId}/rollback`, {
+    apiFetch<{ ok: true } | ApprovalRequestResponse>(`/secrets/${secretId}/rollback`, {
       method: 'POST',
       body: JSON.stringify({ versionId }),
     }),
   deleteSecret: (secretId: string) =>
-    apiFetch<{ ok: true }>(`/secrets/${secretId}`, { method: 'DELETE' }),
+    apiFetch<{ ok: true } | ApprovalRequestResponse>(`/secrets/${secretId}`, {
+      method: 'DELETE',
+    }),
   copySecret: (secretId: string, payload: CopySecretRequest) =>
-    apiFetch<CopySecretResponse>(`/secrets/${secretId}/copy`, {
+    apiFetch<CopySecretResponse | ApprovalRequestResponse>(`/secrets/${secretId}/copy`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
   copySecretsFromEnvironment: (environmentId: string, payload: CopyEnvironmentSecretsRequest) =>
-    apiFetch<CopyEnvironmentSecretsResponse>(`/environments/${environmentId}/secrets/copy-from`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
+    apiFetch<CopyEnvironmentSecretsResponse | ApprovalRequestResponse>(
+      `/environments/${environmentId}/secrets/copy-from`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
 
   exportEnv: (environmentId: string) =>
     apiFetch<string>(`/environments/${environmentId}/export?format=dotenv`),
@@ -197,6 +209,48 @@ export const api = {
 
   getSecretDiff: (secretId: string) =>
     apiFetch<SecretDiffResponse>(`/secrets/${secretId}/diff`),
+
+  listApprovalRules: (projectId: string) =>
+    apiFetch<ApprovalRuleDto[]>(`/projects/${projectId}/approval-rules`),
+  createApprovalRule: (projectId: string, payload: CreateApprovalRuleRequest) =>
+    apiFetch<ApprovalRuleDto>(`/projects/${projectId}/approval-rules`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateApprovalRule: (ruleId: string, payload: UpdateApprovalRuleRequest) =>
+    apiFetch<ApprovalRuleDto>(`/approval-rules/${ruleId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteApprovalRule: (ruleId: string) =>
+    apiFetch<{ ok: true }>(`/approval-rules/${ruleId}`, { method: 'DELETE' }),
+  listApprovals: (
+    projectId: string,
+    filters?: {
+      status?: ApprovalStatus
+      environmentId?: string
+      action?: ApprovalAction
+      requestedBy?: string
+    },
+  ) => {
+    const params = new URLSearchParams()
+    if (filters?.status) params.set('status', filters.status)
+    if (filters?.environmentId) params.set('environmentId', filters.environmentId)
+    if (filters?.action) params.set('action', filters.action)
+    if (filters?.requestedBy) params.set('requestedBy', filters.requestedBy)
+    const query = params.toString()
+    return apiFetch<ApprovalRequestDto[]>(
+      `/projects/${projectId}/approvals${query ? `?${query}` : ''}`,
+    )
+  },
+  getApproval: (approvalId: string) =>
+    apiFetch<ApprovalRequestDto>(`/approvals/${approvalId}`),
+  approveRequest: (approvalId: string) =>
+    apiFetch<{ ok: true }>(`/approvals/${approvalId}/approve`, { method: 'POST' }),
+  denyRequest: (approvalId: string) =>
+    apiFetch<{ ok: true }>(`/approvals/${approvalId}/deny`, { method: 'POST' }),
+  cancelRequest: (approvalId: string) =>
+    apiFetch<{ ok: true }>(`/approvals/${approvalId}/cancel`, { method: 'POST' }),
 
   listAudit: (projectId: string) =>
     apiFetch<AuditLogDto[]>(`/audit?projectId=${projectId}`),

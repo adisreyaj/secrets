@@ -2,7 +2,7 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
-import { Prisma, Role } from '@prisma/client';
+import { ApprovalAction, ApprovalStatus, Prisma, Role } from '@prisma/client';
 import Fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { generateToken, hashPassword, hashToken, verifyPassword } from './auth.js';
 import { config } from './config.js';
@@ -122,6 +122,88 @@ function toInviteDto(invite: {
   };
 }
 
+function toApprovalRuleDto(rule: {
+  id: string;
+  projectId: string;
+  name: string;
+  environmentId: string | null;
+  keyPattern: string;
+  actionsJson: Prisma.JsonValue;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  const actions = Array.isArray(rule.actionsJson) ? rule.actionsJson : [];
+  return {
+    id: rule.id,
+    projectId: rule.projectId,
+    name: rule.name,
+    environmentId: rule.environmentId,
+    keyPattern: rule.keyPattern,
+    actions,
+    isActive: rule.isActive,
+    createdBy: rule.createdBy,
+    createdAt: rule.createdAt.toISOString(),
+    updatedAt: rule.updatedAt.toISOString(),
+  };
+}
+
+function toApprovalRequestDto(request: {
+  id: string;
+  projectId: string;
+  environmentId: string;
+  secretId: string | null;
+  action: ApprovalAction;
+  status: ApprovalStatus;
+  requestedBy: string;
+  approvedBy: string | null;
+  approvedAt: Date | null;
+  deniedAt: Date | null;
+  canceledAt: Date | null;
+  key: string;
+  targetEnvironmentId: string | null;
+  expectedVersionId: string | null;
+  metadataJson: Prisma.JsonValue | null;
+  createdAt: Date;
+  updatedAt: Date;
+  proposedValue?: string | null;
+  currentValue?: string | null;
+}) {
+  return {
+    id: request.id,
+    projectId: request.projectId,
+    environmentId: request.environmentId,
+    secretId: request.secretId,
+    action: request.action,
+    status: request.status,
+    requestedBy: request.requestedBy,
+    approvedBy: request.approvedBy,
+    approvedAt: request.approvedAt?.toISOString() ?? null,
+    deniedAt: request.deniedAt?.toISOString() ?? null,
+    canceledAt: request.canceledAt?.toISOString() ?? null,
+    key: request.key,
+    targetEnvironmentId: request.targetEnvironmentId,
+    expectedVersionId: request.expectedVersionId,
+    metadataJson: request.metadataJson as Record<string, unknown> | null,
+    createdAt: request.createdAt.toISOString(),
+    updatedAt: request.updatedAt.toISOString(),
+    proposedValue: request.proposedValue ?? undefined,
+    currentValue: request.currentValue ?? undefined,
+  };
+}
+
+function globToRegExp(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  const regex = `^${escaped.replace(/\*/g, '.*').replace(/\?/g, '.')}$`;
+  return new RegExp(regex, 'i');
+}
+
+function actionsMatch(actionsJson: Prisma.JsonValue, action: ApprovalAction): boolean {
+  if (!Array.isArray(actionsJson)) return false;
+  return actionsJson.includes(action);
+}
+
 function formatDotenvValue(value: string): string {
   if (/\s|#|"|\\|\n/.test(value)) {
     const escaped = value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"');
@@ -197,6 +279,80 @@ async function requireProjectRole(
   }
 
   return role;
+}
+
+async function findMatchingApprovalRules(params: {
+  projectId: string;
+  environmentId: string;
+  action: ApprovalAction;
+  key: string;
+}) {
+  const rules = await prisma.approvalRule.findMany({
+    where: {
+      projectId: params.projectId,
+      isActive: true,
+      OR: [{ environmentId: null }, { environmentId: params.environmentId }],
+    },
+  });
+
+  return rules.filter((rule) => {
+    if (!actionsMatch(rule.actionsJson, params.action)) return false;
+    const matcher = globToRegExp(rule.keyPattern);
+    return matcher.test(params.key);
+  });
+}
+
+async function findPendingApprovalRequest(params: {
+  projectId: string;
+  environmentId: string;
+  action: ApprovalAction;
+  key: string;
+  secretId?: string | null;
+  targetEnvironmentId?: string | null;
+}) {
+  return prisma.approvalRequest.findFirst({
+    where: {
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+      action: params.action,
+      key: params.key,
+      secretId: params.secretId ?? null,
+      targetEnvironmentId: params.targetEnvironmentId ?? null,
+      status: ApprovalStatus.PENDING,
+    },
+  });
+}
+
+async function createApprovalRequest(params: {
+  projectId: string;
+  environmentId: string;
+  action: ApprovalAction;
+  key: string;
+  requestedBy: string;
+  secretId?: string | null;
+  targetEnvironmentId?: string | null;
+  expectedVersionId?: string | null;
+  payload?: { ciphertext: Buffer; iv: Buffer; tag: Buffer; keyVersion: string } | null;
+  metadataJson?: Record<string, unknown> | null;
+}) {
+  return prisma.approvalRequest.create({
+    data: {
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+      secretId: params.secretId ?? null,
+      action: params.action,
+      status: ApprovalStatus.PENDING,
+      requestedBy: params.requestedBy,
+      key: params.key,
+      targetEnvironmentId: params.targetEnvironmentId ?? null,
+      expectedVersionId: params.expectedVersionId ?? null,
+      payloadCiphertext: params.payload?.ciphertext,
+      payloadIv: params.payload?.iv,
+      payloadTag: params.payload?.tag,
+      payloadKeyVersion: params.payload?.keyVersion,
+      metadataJson: (params.metadataJson as Prisma.InputJsonValue) ?? undefined,
+    },
+  });
 }
 
 function requireAuth(request: FastifyRequest, reply: FastifyReply): AuthContext | null {
@@ -1024,6 +1180,618 @@ export async function buildApp(): Promise<FastifyInstance> {
     reply.send({ ok: true, projectId: invite.projectId });
   });
 
+  app.get('/projects/:id/approval-rules', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+    const rules = await prisma.approvalRule.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+    });
+    reply.send(rules.map(toApprovalRuleDto));
+  });
+
+  app.post('/projects/:id/approval-rules', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+    const body = request.body as
+      | {
+          name?: string;
+          environmentId?: string | null;
+          keyPattern?: string;
+          actions?: ApprovalAction[];
+          isActive?: boolean;
+        }
+      | undefined;
+    if (!body?.name || !body.keyPattern || !Array.isArray(body.actions) || body.actions.length === 0) {
+      reply.code(400).send({ error: 'Name, keyPattern, and actions are required' });
+      return;
+    }
+    if (body.environmentId) {
+      const env = await prisma.environment.findUnique({ where: { id: body.environmentId } });
+      if (!env || env.projectId !== projectId) {
+        reply.code(400).send({ error: 'Environment does not belong to project' });
+        return;
+      }
+    }
+    const rule = await prisma.approvalRule.create({
+      data: {
+        projectId,
+        name: body.name.trim(),
+        environmentId: body.environmentId ?? null,
+        keyPattern: body.keyPattern.trim(),
+        actionsJson: body.actions,
+        isActive: body.isActive ?? true,
+        createdBy: auth.user.id,
+      },
+    });
+    await logAudit({
+      projectId,
+      actorUserId: auth.user.id,
+      action: 'approval.rule.create',
+      resourceType: 'approval_rule',
+      resourceId: rule.id,
+      metadataJson: { name: rule.name },
+    });
+    reply.code(201).send(toApprovalRuleDto(rule));
+  });
+
+  app.patch('/approval-rules/:id', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { id } = request.params as { id: string };
+    const rule = await prisma.approvalRule.findUnique({ where: { id } });
+    if (!rule) {
+      reply.code(404).send({ error: 'Approval rule not found' });
+      return;
+    }
+    const role = await requireProjectRole(request, reply, rule.projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+    const body = request.body as
+      | {
+          name?: string;
+          environmentId?: string | null;
+          keyPattern?: string;
+          actions?: ApprovalAction[];
+          isActive?: boolean;
+        }
+      | undefined;
+    const nextActions = Array.isArray(body?.actions) ? body?.actions : undefined;
+    const hasEnvId = !!body && Object.prototype.hasOwnProperty.call(body, 'environmentId');
+    const nextEnvId = hasEnvId ? body?.environmentId ?? null : undefined;
+    if (nextEnvId) {
+      const env = await prisma.environment.findUnique({ where: { id: nextEnvId } });
+      if (!env || env.projectId !== rule.projectId) {
+        reply.code(400).send({ error: 'Environment does not belong to project' });
+        return;
+      }
+    }
+    const updated = await prisma.approvalRule.update({
+      where: { id },
+      data: {
+        name: body?.name?.trim() ?? undefined,
+        environmentId: nextEnvId,
+        keyPattern: body?.keyPattern?.trim() ?? undefined,
+        actionsJson: nextActions ?? undefined,
+        isActive: body?.isActive ?? undefined,
+      },
+    });
+    await logAudit({
+      projectId: rule.projectId,
+      actorUserId: auth.user.id,
+      action: 'approval.rule.update',
+      resourceType: 'approval_rule',
+      resourceId: id,
+    });
+    reply.send(toApprovalRuleDto(updated));
+  });
+
+  app.delete('/approval-rules/:id', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { id } = request.params as { id: string };
+    const rule = await prisma.approvalRule.findUnique({ where: { id } });
+    if (!rule) {
+      reply.code(404).send({ error: 'Approval rule not found' });
+      return;
+    }
+    const role = await requireProjectRole(request, reply, rule.projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+    await prisma.approvalRule.delete({ where: { id } });
+    await logAudit({
+      projectId: rule.projectId,
+      actorUserId: auth.user.id,
+      action: 'approval.rule.delete',
+      resourceType: 'approval_rule',
+      resourceId: id,
+    });
+    reply.send({ ok: true });
+  });
+
+  app.get('/projects/:id/approvals', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+    const query = (request.query ?? {}) as {
+      status?: ApprovalStatus;
+      environmentId?: string;
+      action?: ApprovalAction;
+      requestedBy?: string;
+    };
+    const approvals = await prisma.approvalRequest.findMany({
+      where: {
+        projectId,
+        status: query.status,
+        environmentId: query.environmentId,
+        action: query.action,
+        requestedBy: query.requestedBy,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    reply.send(approvals.map(toApprovalRequestDto));
+  });
+
+  app.get('/approvals/:id', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { id } = request.params as { id: string };
+    const approval = await prisma.approvalRequest.findUnique({ where: { id } });
+    if (!approval) {
+      reply.code(404).send({ error: 'Approval request not found' });
+      return;
+    }
+    const role = await requireProjectRole(request, reply, approval.projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+    let proposedValue: string | null = null;
+    let currentValue: string | null = null;
+    if (role === Role.ADMIN) {
+      if (approval.payloadCiphertext && approval.payloadIv && approval.payloadTag) {
+        proposedValue = decryptSecret(
+          {
+            ciphertext: approval.payloadCiphertext,
+            iv: approval.payloadIv,
+            tag: approval.payloadTag,
+          },
+          masterKey,
+        );
+      }
+      if (approval.secretId) {
+        const secret = await prisma.secret.findUnique({
+          where: { id: approval.secretId },
+          include: {
+            versions: {
+              where: { isActive: true },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
+          },
+        });
+        const version = secret?.versions[0];
+        if (version) {
+          currentValue = decryptSecret(
+            { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
+            masterKey,
+          );
+        }
+      }
+    }
+    reply.send(
+      toApprovalRequestDto({
+        ...approval,
+        proposedValue,
+        currentValue,
+      }),
+    );
+  });
+
+  app.post('/approvals/:id/approve', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { id } = request.params as { id: string };
+    const approval = await prisma.approvalRequest.findUnique({ where: { id } });
+    if (!approval) {
+      reply.code(404).send({ error: 'Approval request not found' });
+      return;
+    }
+    const role = await requireProjectRole(request, reply, approval.projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+    if (approval.status !== ApprovalStatus.PENDING) {
+      reply.code(409).send({ error: 'Approval request is not pending' });
+      return;
+    }
+
+    const applied = await prisma.$transaction(async (tx) => {
+      let resourceId: string | null = approval.secretId ?? null;
+      let auditAction: string | null = null;
+      const updatedApproval = await tx.approvalRequest.update({
+        where: { id },
+        data: {
+          status: ApprovalStatus.APPROVED,
+          approvedBy: auth.user.id,
+          approvedAt: new Date(),
+        },
+      });
+
+      if (approval.action === ApprovalAction.CREATE) {
+        const existing = await tx.secret.findUnique({
+          where: {
+            environmentId_key: { environmentId: approval.environmentId, key: approval.key },
+          },
+        });
+        if (existing) {
+          throw new Error('Secret already exists');
+        }
+        if (!approval.payloadCiphertext || !approval.payloadIv || !approval.payloadTag) {
+          throw new Error('Missing payload');
+        }
+        const secret = await tx.secret.create({
+          data: {
+            environmentId: approval.environmentId,
+            key: approval.key,
+          },
+        });
+        resourceId = secret.id;
+        auditAction = 'secret.create';
+        await tx.secretVersion.create({
+          data: {
+            secretId: secret.id,
+            ciphertext: approval.payloadCiphertext,
+            iv: approval.payloadIv,
+            tag: approval.payloadTag,
+            keyVersion: approval.payloadKeyVersion ?? masterKeyVersion(),
+            createdBy: auth.user.id,
+            isActive: true,
+          },
+        });
+      }
+
+      if (approval.action === ApprovalAction.UPDATE) {
+        if (!approval.secretId) {
+          throw new Error('Missing secret');
+        }
+        const secret = await tx.secret.findUnique({
+          where: { id: approval.secretId },
+          include: {
+            versions: {
+              where: { isActive: true },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
+          },
+        });
+        const version = secret?.versions[0];
+        if (!secret || !version) {
+          throw new Error('Secret not found');
+        }
+        if (approval.expectedVersionId && approval.expectedVersionId !== version.id) {
+          throw new Error('Secret version conflict');
+        }
+        if (approval.key !== secret.key) {
+          const existing = await tx.secret.findUnique({
+            where: {
+              environmentId_key: {
+                environmentId: secret.environmentId,
+                key: approval.key,
+              },
+            },
+          });
+          if (existing && existing.id !== secret.id) {
+            throw new Error('Key already exists in this environment');
+          }
+        }
+        const payload = approval.payloadCiphertext
+          ? {
+              ciphertext: approval.payloadCiphertext,
+              iv: approval.payloadIv!,
+              tag: approval.payloadTag!,
+              keyVersion: approval.payloadKeyVersion ?? masterKeyVersion(),
+            }
+          : null;
+        const updates: Prisma.PrismaPromise<unknown>[] = [];
+        if (payload) {
+          updates.push(
+            tx.secretVersion.updateMany({
+              where: { secretId: secret.id },
+              data: { isActive: false },
+            }),
+            tx.secretVersion.create({
+              data: {
+                secretId: secret.id,
+                ciphertext: payload.ciphertext,
+                iv: payload.iv,
+                tag: payload.tag,
+                keyVersion: payload.keyVersion,
+                createdBy: auth.user.id,
+                isActive: true,
+              },
+            }),
+          );
+        }
+        updates.push(
+          tx.secret.update({
+            where: { id: secret.id },
+            data: { key: approval.key, updatedAt: new Date(), deletedAt: null },
+          }),
+        );
+        await tx.$transaction(updates);
+        auditAction = 'secret.update';
+      }
+
+      if (approval.action === ApprovalAction.DELETE) {
+        if (!approval.secretId) {
+          throw new Error('Missing secret');
+        }
+        const secret = await tx.secret.findUnique({
+          include: {
+            versions: {
+              where: { isActive: true },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
+          },
+          where: { id: approval.secretId },
+        });
+        const version = secret?.versions[0];
+        if (!secret || !version) {
+          throw new Error('Secret not found');
+        }
+        if (approval.expectedVersionId && approval.expectedVersionId !== version.id) {
+          throw new Error('Secret version conflict');
+        }
+        await tx.secret.update({
+          where: { id: secret.id },
+          data: { deletedAt: new Date() },
+        });
+        auditAction = 'secret.delete';
+      }
+
+      if (approval.action === ApprovalAction.ROLLBACK) {
+        if (!approval.secretId || !approval.expectedVersionId) {
+          throw new Error('Missing rollback version');
+        }
+        const secret = await tx.secret.findUnique({
+          include: {
+            versions: { where: { id: approval.expectedVersionId } },
+          },
+          where: { id: approval.secretId },
+        });
+        if (!secret || secret.versions.length === 0) {
+          throw new Error('Secret not found');
+        }
+        await tx.$transaction([
+          tx.secretVersion.updateMany({
+            where: { secretId: secret.id },
+            data: { isActive: false },
+          }),
+          tx.secretVersion.update({
+            where: { id: approval.expectedVersionId },
+            data: { isActive: true },
+          }),
+          tx.secret.update({
+            where: { id: secret.id },
+            data: { updatedAt: new Date(), deletedAt: null },
+          }),
+        ]);
+        auditAction = 'secret.rollback';
+      }
+
+      if (approval.action === ApprovalAction.COPY || approval.action === ApprovalAction.COPY_FROM) {
+        if (!approval.secretId || !approval.targetEnvironmentId) {
+          throw new Error('Missing copy target');
+        }
+        const targetEnv = await tx.environment.findUnique({
+          where: { id: approval.targetEnvironmentId },
+        });
+        if (!targetEnv || targetEnv.projectId !== approval.projectId) {
+          throw new Error('Target environment not found');
+        }
+        const secret = await tx.secret.findUnique({
+          include: {
+            versions: {
+              where: { isActive: true },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
+            environment: true,
+          },
+          where: { id: approval.secretId },
+        });
+        const version = secret?.versions[0];
+        if (!secret || !version) {
+          throw new Error('Secret not found');
+        }
+        if (approval.expectedVersionId && approval.expectedVersionId !== version.id) {
+          throw new Error('Secret version conflict');
+        }
+        const value = decryptSecret(
+          { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
+          masterKey,
+        );
+        const payload = encryptSecret(value, masterKey);
+        const keyVersion = masterKeyVersion();
+        const existing = await tx.secret.findUnique({
+          where: {
+            environmentId_key: {
+              environmentId: approval.targetEnvironmentId,
+              key: secret.key,
+            },
+          },
+        });
+        let targetSecretId = existing?.id;
+        if (!targetSecretId) {
+          const created = await tx.secret.create({
+            data: {
+              environmentId: approval.targetEnvironmentId,
+              key: secret.key,
+            },
+          });
+          targetSecretId = created.id;
+        }
+        await tx.$transaction([
+          tx.secretVersion.updateMany({
+            where: { secretId: targetSecretId },
+            data: { isActive: false },
+          }),
+          tx.secretVersion.create({
+            data: {
+              secretId: targetSecretId,
+              ciphertext: payload.ciphertext,
+              iv: payload.iv,
+              tag: payload.tag,
+              keyVersion,
+              createdBy: auth.user.id,
+              isActive: true,
+            },
+          }),
+          tx.secret.update({
+            where: { id: targetSecretId },
+            data: { updatedAt: new Date(), deletedAt: null },
+          }),
+        ]);
+        resourceId = targetSecretId;
+        auditAction = 'secret.copy';
+      }
+
+      return { resourceId, auditAction };
+    });
+
+    await logAudit({
+      projectId: approval.projectId,
+      actorUserId: auth.user.id,
+      action: 'approval.approved',
+      resourceType: 'approval_request',
+      resourceId: approval.id,
+      metadataJson: { requestedBy: approval.requestedBy, action: approval.action },
+    });
+    if (applied.auditAction) {
+      await logAudit({
+        projectId: approval.projectId,
+        actorUserId: auth.user.id,
+        action: applied.auditAction,
+        resourceType: 'secret',
+        resourceId: applied.resourceId,
+        metadataJson: {
+          requestedBy: approval.requestedBy,
+          action: approval.action,
+          key: approval.key,
+          environmentId: approval.environmentId,
+          targetEnvironmentId: approval.targetEnvironmentId ?? undefined,
+        },
+      });
+    }
+
+    reply.send({ ok: true });
+  });
+
+  app.post('/approvals/:id/deny', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { id } = request.params as { id: string };
+    const approval = await prisma.approvalRequest.findUnique({ where: { id } });
+    if (!approval) {
+      reply.code(404).send({ error: 'Approval request not found' });
+      return;
+    }
+    const role = await requireProjectRole(request, reply, approval.projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+    if (approval.status !== ApprovalStatus.PENDING) {
+      reply.code(409).send({ error: 'Approval request is not pending' });
+      return;
+    }
+    await prisma.approvalRequest.update({
+      where: { id },
+      data: { status: ApprovalStatus.DENIED, deniedAt: new Date() },
+    });
+    await logAudit({
+      projectId: approval.projectId,
+      actorUserId: auth.user.id,
+      action: 'approval.denied',
+      resourceType: 'approval_request',
+      resourceId: approval.id,
+      metadataJson: { requestedBy: approval.requestedBy, action: approval.action },
+    });
+    reply.send({ ok: true });
+  });
+
+  app.post('/approvals/:id/cancel', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { id } = request.params as { id: string };
+    const approval = await prisma.approvalRequest.findUnique({ where: { id } });
+    if (!approval) {
+      reply.code(404).send({ error: 'Approval request not found' });
+      return;
+    }
+    const role = await requireProjectRole(request, reply, approval.projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+    const isRequester = approval.requestedBy === auth.user.id;
+    const isAdmin = role === Role.ADMIN;
+    if (!isRequester && !isAdmin) {
+      reply.code(403).send({ error: 'Forbidden' });
+      return;
+    }
+    if (approval.status !== ApprovalStatus.PENDING) {
+      reply.code(409).send({ error: 'Approval request is not pending' });
+      return;
+    }
+    await prisma.approvalRequest.update({
+      where: { id },
+      data: { status: ApprovalStatus.CANCELED, canceledAt: new Date() },
+    });
+    await logAudit({
+      projectId: approval.projectId,
+      actorUserId: auth.user.id,
+      action: 'approval.canceled',
+      resourceType: 'approval_request',
+      resourceId: approval.id,
+      metadataJson: { requestedBy: approval.requestedBy, action: approval.action },
+    });
+    reply.send({ ok: true });
+  });
+
   app.post('/projects/:id/environments', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
@@ -1266,6 +2034,46 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
+    const matchingRules = await findMatchingApprovalRules({
+      projectId: env.projectId,
+      environmentId: envId,
+      action: ApprovalAction.CREATE,
+      key: body.key,
+    });
+    if (matchingRules.length > 0) {
+      const existing = await findPendingApprovalRequest({
+        projectId: env.projectId,
+        environmentId: envId,
+        action: ApprovalAction.CREATE,
+        key: body.key,
+        secretId: null,
+      });
+      if (existing) {
+        reply.code(202).send({ status: 'pending', approvalRequestId: existing.id });
+        return;
+      }
+      const payload = encryptSecret(body.value, masterKey);
+      const keyVersion = masterKeyVersion();
+      const approval = await createApprovalRequest({
+        projectId: env.projectId,
+        environmentId: envId,
+        action: ApprovalAction.CREATE,
+        key: body.key,
+        requestedBy: auth.user.id,
+        payload: { ...payload, keyVersion },
+      });
+      await logAudit({
+        projectId: env.projectId,
+        actorUserId: auth.user.id,
+        action: 'approval.requested',
+        resourceType: 'approval_request',
+        resourceId: approval.id,
+        metadataJson: { action: 'CREATE', key: body.key, environmentId: envId },
+      });
+      reply.code(202).send({ status: 'pending', approvalRequestId: approval.id });
+      return;
+    }
+
     const payload = encryptSecret(body.value, masterKey);
     const keyVersion = masterKeyVersion();
 
@@ -1344,7 +2152,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     const secret = await prisma.secret.findUnique({
-      include: { environment: true },
+      include: {
+        environment: true,
+        versions: {
+          where: { isActive: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
       where: { id: secretId },
     });
     if (!secret) {
@@ -1359,6 +2174,53 @@ export async function buildApp(): Promise<FastifyInstance> {
       Role.EDITOR,
     );
     if (!role) {
+      return;
+    }
+
+    const activeVersion = secret.versions[0];
+    const requestedKey = nextKey ?? secret.key;
+    const matchingRules = await findMatchingApprovalRules({
+      projectId: secret.environment.projectId,
+      environmentId: secret.environmentId,
+      action: ApprovalAction.UPDATE,
+      key: requestedKey,
+    });
+    if (matchingRules.length > 0) {
+      const existing = await findPendingApprovalRequest({
+        projectId: secret.environment.projectId,
+        environmentId: secret.environmentId,
+        action: ApprovalAction.UPDATE,
+        key: requestedKey,
+        secretId: secretId,
+      });
+      if (existing) {
+        reply.code(202).send({ status: 'pending', approvalRequestId: existing.id });
+        return;
+      }
+      let payload: { ciphertext: Buffer; iv: Buffer; tag: Buffer; keyVersion: string } | null = null;
+      if (nextValue) {
+        const encrypted = encryptSecret(nextValue, masterKey);
+        payload = { ...encrypted, keyVersion: masterKeyVersion() };
+      }
+      const approval = await createApprovalRequest({
+        projectId: secret.environment.projectId,
+        environmentId: secret.environmentId,
+        action: ApprovalAction.UPDATE,
+        key: requestedKey,
+        requestedBy: auth.user.id,
+        secretId: secretId,
+        expectedVersionId: activeVersion?.id,
+        payload,
+      });
+      await logAudit({
+        projectId: secret.environment.projectId,
+        actorUserId: auth.user.id,
+        action: 'approval.requested',
+        resourceType: 'approval_request',
+        resourceId: approval.id,
+        metadataJson: { action: 'UPDATE', key: requestedKey, secretId },
+      });
+      reply.code(202).send({ status: 'pending', approvalRequestId: approval.id });
       return;
     }
 
@@ -1496,6 +2358,59 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     if (targetEnvs.some((env) => env.projectId !== secret.environment.projectId)) {
       reply.code(400).send({ error: 'Targets must belong to the same project' });
+      return;
+    }
+
+    const approvalRequestIds: string[] = [];
+    for (const targetEnv of targetEnvs) {
+      const rules = await findMatchingApprovalRules({
+        projectId: secret.environment.projectId,
+        environmentId: targetEnv.id,
+        action: ApprovalAction.COPY,
+        key: secret.key,
+      });
+      if (rules.length === 0) {
+        continue;
+      }
+      const existing = await findPendingApprovalRequest({
+        projectId: secret.environment.projectId,
+        environmentId: targetEnv.id,
+        action: ApprovalAction.COPY,
+        key: secret.key,
+        secretId: secretId,
+        targetEnvironmentId: targetEnv.id,
+      });
+      if (existing) {
+        approvalRequestIds.push(existing.id);
+        continue;
+      }
+      const approval = await createApprovalRequest({
+        projectId: secret.environment.projectId,
+        environmentId: targetEnv.id,
+        action: ApprovalAction.COPY,
+        key: secret.key,
+        requestedBy: auth.user.id,
+        secretId: secretId,
+        targetEnvironmentId: targetEnv.id,
+        expectedVersionId: activeVersion.id,
+      });
+      approvalRequestIds.push(approval.id);
+      await logAudit({
+        projectId: secret.environment.projectId,
+        actorUserId: auth.user.id,
+        action: 'approval.requested',
+        resourceType: 'approval_request',
+        resourceId: approval.id,
+        metadataJson: {
+          action: 'COPY',
+          key: secret.key,
+          secretId,
+          targetEnvironmentId: targetEnv.id,
+        },
+      });
+    }
+    if (approvalRequestIds.length > 0) {
+      reply.code(202).send({ status: 'pending', approvalRequestIds });
       return;
     }
 
@@ -1644,6 +2559,62 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
+    const approvalRequestIds: string[] = [];
+    for (const sourceSecret of sourceSecrets) {
+      const rules = await findMatchingApprovalRules({
+        projectId: targetEnv.projectId,
+        environmentId: targetEnv.id,
+        action: ApprovalAction.COPY_FROM,
+        key: sourceSecret.key,
+      });
+      if (rules.length === 0) {
+        continue;
+      }
+      const version = sourceSecret.versions[0];
+      const existing = await findPendingApprovalRequest({
+        projectId: targetEnv.projectId,
+        environmentId: targetEnv.id,
+        action: ApprovalAction.COPY_FROM,
+        key: sourceSecret.key,
+        secretId: sourceSecret.id,
+        targetEnvironmentId: targetEnv.id,
+      });
+      if (existing) {
+        approvalRequestIds.push(existing.id);
+        continue;
+      }
+      const approval = await createApprovalRequest({
+        projectId: targetEnv.projectId,
+        environmentId: targetEnv.id,
+        action: ApprovalAction.COPY_FROM,
+        key: sourceSecret.key,
+        requestedBy: auth.user.id,
+        secretId: sourceSecret.id,
+        targetEnvironmentId: targetEnv.id,
+        expectedVersionId: version?.id,
+        metadataJson: { sourceEnvironmentId: sourceEnv.id, overwrite },
+      });
+      approvalRequestIds.push(approval.id);
+      await logAudit({
+        projectId: targetEnv.projectId,
+        actorUserId: auth.user.id,
+        action: 'approval.requested',
+        resourceType: 'approval_request',
+        resourceId: approval.id,
+        metadataJson: {
+          action: 'COPY_FROM',
+          key: sourceSecret.key,
+          secretId: sourceSecret.id,
+          targetEnvironmentId: targetEnv.id,
+          sourceEnvironmentId: sourceEnv.id,
+        },
+      });
+    }
+    if (approvalRequestIds.length > 0) {
+      reply.code(202).send({ status: 'pending', approvalRequestIds });
+      return;
+    }
+
     const created: string[] = [];
     const updated: string[] = [];
     const skipped: string[] = [];
@@ -1734,7 +2705,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     const body = request.body as { versionId?: string } | undefined;
 
     const secret = await prisma.secret.findUnique({
-      include: { environment: true },
+      include: {
+        environment: true,
+        versions: {
+          where: { isActive: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
       where: { id: secretId },
     });
     if (!secret) {
@@ -1766,6 +2744,46 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     if (!target) {
       reply.code(404).send({ error: 'Version not found' });
+      return;
+    }
+
+    const matchingRules = await findMatchingApprovalRules({
+      projectId: secret.environment.projectId,
+      environmentId: secret.environmentId,
+      action: ApprovalAction.ROLLBACK,
+      key: secret.key,
+    });
+    if (matchingRules.length > 0) {
+      const existing = await findPendingApprovalRequest({
+        projectId: secret.environment.projectId,
+        environmentId: secret.environmentId,
+        action: ApprovalAction.ROLLBACK,
+        key: secret.key,
+        secretId: secretId,
+      });
+      if (existing) {
+        reply.code(202).send({ status: 'pending', approvalRequestId: existing.id });
+        return;
+      }
+      const approval = await createApprovalRequest({
+        projectId: secret.environment.projectId,
+        environmentId: secret.environmentId,
+        action: ApprovalAction.ROLLBACK,
+        key: secret.key,
+        requestedBy: auth.user.id,
+        secretId: secretId,
+        expectedVersionId: target.id,
+        metadataJson: { versionId: target.id },
+      });
+      await logAudit({
+        projectId: secret.environment.projectId,
+        actorUserId: auth.user.id,
+        action: 'approval.requested',
+        resourceType: 'approval_request',
+        resourceId: approval.id,
+        metadataJson: { action: 'ROLLBACK', key: secret.key, secretId, versionId: target.id },
+      });
+      reply.code(202).send({ status: 'pending', approvalRequestId: approval.id });
       return;
     }
 
@@ -1872,6 +2890,46 @@ export async function buildApp(): Promise<FastifyInstance> {
       Role.EDITOR,
     );
     if (!role) {
+      return;
+    }
+
+    const activeVersion = secret.versions[0];
+    const matchingRules = await findMatchingApprovalRules({
+      projectId: secret.environment.projectId,
+      environmentId: secret.environmentId,
+      action: ApprovalAction.DELETE,
+      key: secret.key,
+    });
+    if (matchingRules.length > 0) {
+      const existing = await findPendingApprovalRequest({
+        projectId: secret.environment.projectId,
+        environmentId: secret.environmentId,
+        action: ApprovalAction.DELETE,
+        key: secret.key,
+        secretId: secretId,
+      });
+      if (existing) {
+        reply.code(202).send({ status: 'pending', approvalRequestId: existing.id });
+        return;
+      }
+      const approval = await createApprovalRequest({
+        projectId: secret.environment.projectId,
+        environmentId: secret.environmentId,
+        action: ApprovalAction.DELETE,
+        key: secret.key,
+        requestedBy: auth.user.id,
+        secretId: secretId,
+        expectedVersionId: activeVersion?.id,
+      });
+      await logAudit({
+        projectId: secret.environment.projectId,
+        actorUserId: auth.user.id,
+        action: 'approval.requested',
+        resourceType: 'approval_request',
+        resourceId: approval.id,
+        metadataJson: { action: 'DELETE', key: secret.key, secretId },
+      });
+      reply.code(202).send({ status: 'pending', approvalRequestId: approval.id });
       return;
     }
 

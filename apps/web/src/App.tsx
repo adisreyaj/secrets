@@ -14,6 +14,8 @@ import {
   useRegisterShortcut,
 } from './lib/shortcuts'
 import { AuditPage } from './pages/AuditPage'
+import { ApprovalsPage } from './pages/ApprovalsPage'
+import { ApprovalRulesPage } from './pages/ApprovalRulesPage'
 import { CliLoginPage } from './pages/CliLoginPage'
 import { EnvironmentPage } from './pages/EnvironmentPage'
 import { EnvironmentsPage } from './pages/EnvironmentsPage'
@@ -46,6 +48,12 @@ const AppShell = () => {
     if (match.name === 'audit') {
       setLastProjectId(match.projectId)
     }
+    if (match.name === 'approvals') {
+      setLastProjectId(match.projectId)
+    }
+    if (match.name === 'approval-rules') {
+      setLastProjectId(match.projectId)
+    }
     if (match.name === 'team') {
       setLastProjectId(match.projectId)
     }
@@ -59,6 +67,8 @@ const AppShell = () => {
     match.name === 'environments' ||
     match.name === 'environment' ||
     match.name === 'audit' ||
+    match.name === 'approvals' ||
+    match.name === 'approval-rules' ||
     match.name === 'team' ||
     match.name === 'tokens'
       ? match.projectId
@@ -187,6 +197,10 @@ const AppShell = () => {
             <EnvironmentsPage projectId={match.projectId} navigate={navigate} />
           ) : match.name === 'audit' ? (
             <AuditPage projectId={match.projectId} navigate={navigate} />
+          ) : match.name === 'approvals' ? (
+            <ApprovalsPage projectId={match.projectId} navigate={navigate} />
+          ) : match.name === 'approval-rules' ? (
+            <ApprovalRulesPage projectId={match.projectId} navigate={navigate} />
           ) : match.name === 'tokens' ? (
             <TokensPage projectId={match.projectId} navigate={navigate} />
           ) : match.name === 'team' ? (

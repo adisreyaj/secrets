@@ -40,6 +40,8 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
     { keys: 'b', label: 'Back to environments' },
   ],
   audit: [{ keys: 'b', label: 'Back to overview' }],
+  approvals: [{ keys: 'b', label: 'Back to overview' }],
+  'approval-rules': [{ keys: 'b', label: 'Back to overview' }],
   team: [{ keys: 'b', label: 'Back to overview' }],
   tokens: [
     { keys: 'n', label: 'Focus token name' },

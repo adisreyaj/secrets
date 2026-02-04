@@ -10,6 +10,8 @@ export type RouteMatch =
   | { name: 'environments'; projectId: string }
   | { name: 'environment'; projectId: string; environmentId: string }
   | { name: 'audit'; projectId: string }
+  | { name: 'approvals'; projectId: string }
+  | { name: 'approval-rules'; projectId: string }
   | { name: 'team'; projectId: string }
   | { name: 'tokens'; projectId: string }
 
@@ -55,6 +57,12 @@ const parseRoute = (hash: string): RouteMatch => {
       }
       if (segments[2] === 'audit') {
         return { name: 'audit', projectId }
+      }
+      if (segments[2] === 'approvals') {
+        return { name: 'approvals', projectId }
+      }
+      if (segments[2] === 'approval-rules') {
+        return { name: 'approval-rules', projectId }
       }
       if (segments[2] === 'team') {
         return { name: 'team', projectId }

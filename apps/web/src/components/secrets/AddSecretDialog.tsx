@@ -123,7 +123,7 @@ export const AddSecretDialog = ({
           <ShortcutHint keys="n" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="rounded-3xl border-white/70 bg-white/95">
+      <DialogContent>
         <DialogHeader className="text-left">
           <DialogTitle>Add secret</DialogTitle>
           <DialogDescription>
@@ -132,7 +132,7 @@ export const AddSecretDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               Secret details
             </p>
             <Button
@@ -162,7 +162,7 @@ export const AddSecretDialog = ({
 
           {showPasteInput ? (
             <label className="grid gap-2 text-sm">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 Paste key=value
               </span>
               <Input
@@ -183,7 +183,7 @@ export const AddSecretDialog = ({
                   }
                 }}
                 placeholder="SECRET_KEY=secret-value"
-                className="h-11 rounded-2xl bg-white px-4"
+                className="h-11 rounded-2xl px-4"
               />
               {pasteError ? (
                 <span className="text-xs text-rose-600">{pasteError}</span>
@@ -198,7 +198,7 @@ export const AddSecretDialog = ({
           ) : null}
 
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               Secret key
             </span>
             <Input
@@ -210,11 +210,11 @@ export const AddSecretDialog = ({
                 }))
               }
               placeholder="SECRET_KEY"
-              className="h-11 rounded-2xl bg-white px-4"
+              className="h-11 rounded-2xl px-4"
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
               Secret value
             </span>
             <Input
@@ -226,7 +226,7 @@ export const AddSecretDialog = ({
                 }))
               }
               placeholder="secret-value"
-              className="h-11 rounded-2xl bg-white px-4"
+              className="h-11 rounded-2xl px-4"
             />
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>Quick set:</span>
@@ -261,7 +261,7 @@ export const AddSecretDialog = ({
             </Button>
             <Button
               type="submit"
-              className="rounded-full bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
+              className="rounded-full px-6 text-sm font-semibold"
               disabled={creating || !form.key.trim() || !form.value.trim()}
             >
               {creating ? 'Saving...' : 'Add secret'}

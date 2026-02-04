@@ -29,7 +29,10 @@ export const SecretActionDialog = ({
   onCopy: (
     secretId: string,
     payload: { targetEnvironmentIds: string[]; overwrite: boolean },
-  ) => Promise<{ created: string[]; updated: string[]; skipped: string[] }>
+  ) => Promise<
+    | { created: string[]; updated: string[]; skipped: string[] }
+    | { status: 'pending'; approvalRequestId?: string; approvalRequestIds?: string[] }
+  >
   onRollback: (secretId: string) => Promise<void>
   onDelete: (secretId: string) => Promise<void>
   onClose: () => void
@@ -72,6 +75,10 @@ export const SecretActionDialog = ({
           targetEnvironmentIds: selectedTargets,
           overwrite: overwriteExisting,
         })
+        if ('status' in result && result.status === 'pending') {
+          setCopyResult('Approval requested for copy.')
+          return
+        }
         const createdCount = result.created.length
         const updatedCount = result.updated.length
         const skippedCount = result.skipped.length

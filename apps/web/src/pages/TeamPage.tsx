@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { useRegisterShortcut } from '../lib/shortcuts'
@@ -88,15 +89,21 @@ export const TeamPage = ({
     }
   }, [projectId])
 
+  const selectedProject = projects.find((project) => project.id === projectId) ?? null
+  const isAdmin = selectedProject?.role === 'ADMIN'
+
   useEffect(() => {
     if (user) {
       void loadProjects()
       void loadMembers()
+    }
+  }, [user, loadProjects, loadMembers])
+
+  useEffect(() => {
+    if (user && isAdmin) {
       void loadInvites()
     }
-  }, [user, loadProjects, loadMembers, loadInvites])
-
-  const selectedProject = projects.find((project) => project.id === projectId) ?? null
+  }, [user, isAdmin, loadInvites])
 
   const handleCreateInvite = async () => {
     if (!inviteEmail.trim() || inviteCreating) return
@@ -140,18 +147,14 @@ export const TeamPage = ({
         }
       />
 
-      {(projectsError || membersError || invitesError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || membersError || invitesError}
-        </div>
-      )}
-
       <SectionCard>
         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <Users className="h-4 w-4 text-muted-foreground" />
           Members
         </div>
-        {membersLoading ? (
+        {membersError ? (
+          <p className="mt-3 text-sm text-rose-500">{membersError}</p>
+        ) : membersLoading ? (
           <p className="mt-3 text-sm text-muted-foreground">Loading members...</p>
         ) : members.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">No members yet.</p>
@@ -184,15 +187,24 @@ export const TeamPage = ({
             Send an invite link and assign a role.
           </p>
         </div>
+        {!isAdmin ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Only admins can invite teammates.
+          </p>
+        ) : null}
+        {invitesError && isAdmin ? (
+          <p className="mt-3 text-sm text-rose-500">{invitesError}</p>
+        ) : null}
         <div className="mt-4 grid gap-4 md:grid-cols-[1.2fr_0.6fr_auto]">
           <Input
             value={inviteEmail}
             onChange={(event) => setInviteEmail(event.target.value)}
             placeholder="teammate@company.com"
             className="h-11 rounded-2xl px-4"
+            disabled={!isAdmin}
           />
           <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as Role)}>
-            <SelectTrigger className="h-11 px-4">
+            <SelectTrigger className="h-11 px-4" disabled={!isAdmin}>
               <SelectValue placeholder="Role" />
             </SelectTrigger>
             <SelectContent>
@@ -201,13 +213,18 @@ export const TeamPage = ({
               <SelectItem value="VIEWER">Viewer</SelectItem>
             </SelectContent>
           </Select>
-          <Button
-            onClick={handleCreateInvite}
-            className="h-11 rounded-full px-6 text-sm font-semibold"
-            disabled={inviteCreating || !inviteEmail.trim()}
-          >
-            {inviteCreating ? 'Inviting...' : 'Send invite'}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={handleCreateInvite}
+                className="h-11 rounded-full px-6 text-sm font-semibold"
+                disabled={!isAdmin || inviteCreating || !inviteEmail.trim()}
+              >
+                {inviteCreating ? 'Inviting...' : 'Send invite'}
+              </Button>
+            </TooltipTrigger>
+            {!isAdmin ? <TooltipContent>Admin only</TooltipContent> : null}
+          </Tooltip>
         </div>
 
         {lastInviteLink ? (
@@ -223,7 +240,9 @@ export const TeamPage = ({
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             Pending invites
           </p>
-          {invitesLoading ? (
+          {invitesError && isAdmin ? (
+            <p className="mt-3 text-sm text-rose-500">{invitesError}</p>
+          ) : invitesLoading ? (
             <p className="mt-3 text-sm text-muted-foreground">Loading invites...</p>
           ) : invites.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">No invites yet.</p>
@@ -242,14 +261,20 @@ export const TeamPage = ({
                     </p>
                   </div>
                   {invite.status === 'PENDING' ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="rounded-full px-4 text-xs"
-                      onClick={() => handleRevokeInvite(invite.id)}
-                    >
-                      Revoke
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full px-4 text-xs"
+                          onClick={() => handleRevokeInvite(invite.id)}
+                          disabled={!isAdmin}
+                        >
+                          Revoke
+                        </Button>
+                      </TooltipTrigger>
+                      {!isAdmin ? <TooltipContent>Admin only</TooltipContent> : null}
+                    </Tooltip>
                   ) : null}
                 </div>
               ))}

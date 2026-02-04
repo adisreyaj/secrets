@@ -1,4 +1,4 @@
-import type { EnvironmentDto, ProjectDto, SecretDto } from '@secrets/shared'
+import type { ApprovalRequestDto, EnvironmentDto, ProjectDto, SecretDto } from '@secrets/shared'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, ApiError } from '../../lib/api'
 
@@ -39,6 +39,9 @@ export const useEnvironmentData = ({
   )
   const [coverageLoading, setCoverageLoading] = useState(false)
   const [coverageError, setCoverageError] = useState<string | null>(null)
+  const [approvals, setApprovals] = useState<ApprovalRequestDto[]>([])
+  const [approvalsLoading, setApprovalsLoading] = useState(false)
+  const [approvalsError, setApprovalsError] = useState<string | null>(null)
 
   const loadProjects = useCallback(async () => {
     setProjectsError(null)
@@ -80,6 +83,22 @@ export const useEnvironmentData = ({
     },
     [environmentId],
   )
+
+  const loadApprovals = useCallback(async () => {
+    setApprovalsLoading(true)
+    setApprovalsError(null)
+    try {
+      const data = await api.listApprovals(projectId, {
+        status: 'PENDING',
+        environmentId,
+      })
+      setApprovals(data)
+    } catch (error) {
+      setApprovalsError(getErrorMessage(error))
+    } finally {
+      setApprovalsLoading(false)
+    }
+  }, [projectId, environmentId])
 
   const loadSecretCoverage = useCallback(async () => {
     if (environments.length === 0) {
@@ -127,6 +146,12 @@ export const useEnvironmentData = ({
     }
   }, [enabled, environments, loadSecretCoverage])
 
+  useEffect(() => {
+    if (enabled) {
+      void loadApprovals()
+    }
+  }, [enabled, loadApprovals])
+
   const handleToggleValues = async (nextVisible: boolean) => {
     if (nextVisible && !valuesLoaded) {
       const loaded = await loadSecrets(true)
@@ -149,7 +174,11 @@ export const useEnvironmentData = ({
   }
 
   const handleCreateSecret = async (payload: { key: string; value: string }) => {
-    await api.createSecret(environmentId, payload)
+    const result = await api.createSecret(environmentId, payload)
+    if ('status' in result && result.status === 'pending') {
+      await loadApprovals()
+      return
+    }
     await loadSecrets(valuesLoaded)
   }
 
@@ -161,10 +190,14 @@ export const useEnvironmentData = ({
       if (change.key !== undefined) {
         keyUpdated = true
       }
-      await api.updateSecret(change.id, {
+      const result = await api.updateSecret(change.id, {
         key: change.key,
         value: change.value,
       })
+      if ('status' in result && result.status === 'pending') {
+        await loadApprovals()
+        continue
+      }
     }
     await loadSecrets(valuesLoaded)
     if (keyUpdated) {
@@ -173,12 +206,20 @@ export const useEnvironmentData = ({
   }
 
   const handleRollbackSecret = async (secretId: string) => {
-    await api.rollbackSecret(secretId)
+    const result = await api.rollbackSecret(secretId)
+    if ('status' in result && result.status === 'pending') {
+      await loadApprovals()
+      return
+    }
     await loadSecrets(valuesLoaded)
   }
 
   const handleDeleteSecret = async (secretId: string) => {
-    await api.deleteSecret(secretId)
+    const result = await api.deleteSecret(secretId)
+    if ('status' in result && result.status === 'pending') {
+      await loadApprovals()
+      return
+    }
     await loadSecrets(valuesLoaded)
   }
 
@@ -191,6 +232,10 @@ export const useEnvironmentData = ({
     payload: { targetEnvironmentIds: string[]; overwrite: boolean },
   ) => {
     const result = await api.copySecret(secretId, payload)
+    if ('status' in result && result.status === 'pending') {
+      await loadApprovals()
+      return result
+    }
     await loadSecretCoverage()
     return result
   }
@@ -204,6 +249,10 @@ export const useEnvironmentData = ({
       keys,
       overwrite: false,
     })
+    if ('status' in result && result.status === 'pending') {
+      await loadApprovals()
+      return result
+    }
     await loadSecretCoverage()
     await loadSecrets(valuesLoaded)
     return result
@@ -262,6 +311,16 @@ export const useEnvironmentData = ({
     return map
   }, [secrets])
 
+  const pendingBySecretId = useMemo(() => {
+    const map = new Map<string, ApprovalRequestDto>()
+    for (const approval of approvals) {
+      if (approval.secretId) {
+        map.set(approval.secretId, approval)
+      }
+    }
+    return map
+  }, [approvals])
+
   const handleExportEnv = async () => {
     if (!selectedEnvironment) return
     const content = await api.exportEnv(selectedEnvironment.id)
@@ -315,9 +374,13 @@ export const useEnvironmentData = ({
     valuesLoaded,
     coverageLoading,
     coverageError,
+    approvals,
+    approvalsLoading,
+    approvalsError,
     missingKeys,
     missingKeysByEnvironment,
     secretByKey,
+    pendingBySecretId,
     selectedEnvironment,
     selectedProject,
     environmentOptions,
@@ -334,5 +397,6 @@ export const useEnvironmentData = ({
     handleExportCsv,
     loadSecrets,
     loadSecretCoverage,
+    loadApprovals,
   }
 }
