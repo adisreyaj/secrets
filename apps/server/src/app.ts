@@ -513,8 +513,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   app.addHook('preHandler', async (request, reply) => {
-    const sessionToken = request.cookies[SESSION_COOKIE_NAME];
-    if (sessionToken && !request.cookies[CSRF_COOKIE_NAME]) {
+    const setCsrfCookie = () => {
       const csrfToken = generateToken();
       reply.setCookie(CSRF_COOKIE_NAME, csrfToken, {
         httpOnly: false,
@@ -523,6 +522,11 @@ export async function buildApp(): Promise<FastifyInstance> {
         path: '/',
         maxAge: config.sessionTtlHours * 60 * 60,
       });
+    };
+
+    const sessionToken = request.cookies[SESSION_COOKIE_NAME];
+    if (sessionToken && !request.cookies[CSRF_COOKIE_NAME]) {
+      setCsrfCookie();
     }
 
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
@@ -545,17 +549,25 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
-    if (sessionToken) {
-      const csrfCookie = request.cookies[CSRF_COOKIE_NAME];
-      const csrfHeader = request.headers['x-csrf-token'];
-      if (!csrfCookie || !csrfHeader || csrfHeader !== csrfCookie) {
-        return reply.code(403).send({ error: 'Invalid CSRF token' });
-      }
-    }
-
     const origin = request.headers.origin;
     if (!origin || origin !== config.appOrigin) {
       return reply.code(403).send({ error: 'Invalid origin' });
+    }
+
+    if (sessionToken) {
+      const csrfCookie = request.cookies[CSRF_COOKIE_NAME];
+      const rawCsrfHeader = request.headers['x-csrf-token'];
+      const csrfHeader = Array.isArray(rawCsrfHeader) ? rawCsrfHeader[0] : rawCsrfHeader;
+
+      // Bootstrap token for existing sessions that are missing the CSRF cookie in prod.
+      if (!csrfCookie) {
+        setCsrfCookie();
+        return;
+      }
+
+      if (!csrfCookie || !csrfHeader || csrfHeader !== csrfCookie) {
+        return reply.code(403).send({ error: 'Invalid CSRF token' });
+      }
     }
   });
 
@@ -1613,7 +1625,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     const applied = await prisma.$transaction(async (tx) => {
       let resourceId: string | null = approval.secretId ?? null;
       let auditAction: string | null = null;
-      const updatedApproval = await tx.approvalRequest.update({
+      await tx.approvalRequest.update({
         where: { id },
         data: {
           status: ApprovalStatus.APPROVED,
