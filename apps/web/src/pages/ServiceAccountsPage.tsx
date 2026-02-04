@@ -4,12 +4,13 @@ import type {
   ServiceAccountDto,
   ServiceAccountTokenDto,
 } from '@secrets/shared'
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft, Copy, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { Checkbox } from '../components/ui/checkbox'
 import {
   Dialog,
@@ -65,6 +66,10 @@ export const ServiceAccountsPage = ({
   const [tokenCreating, setTokenCreating] = useState(false)
   const [tokenError, setTokenError] = useState<string | null>(null)
   const [lastIssuedToken, setLastIssuedToken] = useState<string | null>(null)
+  const [revokeTarget, setRevokeTarget] = useState<{
+    account: ServiceAccountDto
+    token: ServiceAccountTokenDto
+  } | null>(null)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -189,10 +194,15 @@ export const ServiceAccountsPage = ({
     }
   }
 
-  const handleDeleteToken = async (accountId: string, tokenId: string) => {
-    await api.deleteServiceAccountToken(accountId, tokenId)
-    const list = await api.listServiceAccountTokens(accountId)
-    setTokensByAccount((prev) => ({ ...prev, [accountId]: list }))
+  const handleDeleteToken = async () => {
+    if (!revokeTarget) return
+    await api.deleteServiceAccountToken(
+      revokeTarget.account.id,
+      revokeTarget.token.id,
+    )
+    const list = await api.listServiceAccountTokens(revokeTarget.account.id)
+    setTokensByAccount((prev) => ({ ...prev, [revokeTarget.account.id]: list }))
+    setRevokeTarget(null)
   }
 
   return (
@@ -271,8 +281,8 @@ export const ServiceAccountsPage = ({
                     </Button>
                     <Button
                       size="sm"
-                      variant="ghost"
-                      className="rounded-full px-4 text-xs"
+                      variant="outline"
+                      className="rounded-full border-rose-200 px-4 text-xs text-rose-600 hover:border-rose-300 hover:text-rose-700"
                       onClick={() => handleDeleteAccount(account)}
                     >
                       Delete
@@ -302,9 +312,7 @@ export const ServiceAccountsPage = ({
                           size="sm"
                           variant="outline"
                           className="rounded-full px-3 text-xs"
-                          onClick={() =>
-                            handleDeleteToken(account.id, token.id)
-                          }
+                          onClick={() => setRevokeTarget({ account, token })}
                         >
                           Revoke
                         </Button>
@@ -327,12 +335,17 @@ export const ServiceAccountsPage = ({
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
-            <Input
-              value={tokenName}
-              onChange={(event) => setTokenName(event.target.value)}
-              placeholder="Token name"
-            />
-            <label className="flex items-center gap-3 text-sm">
+            <label className="grid gap-2 text-sm">
+              <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+                Token name
+              </span>
+              <Input
+                value={tokenName}
+                onChange={(event) => setTokenName(event.target.value)}
+                placeholder="Token name"
+              />
+            </label>
+            <label className="flex items-center gap-3 text-sm leading-none">
               <Checkbox
                 checked={tokenReadOnly}
                 onCheckedChange={(value) => setTokenReadOnly(Boolean(value))}
@@ -343,11 +356,11 @@ export const ServiceAccountsPage = ({
               <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
                 Environment scopes
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-3">
                 {environments.map((env) => (
                   <label
                     key={env.id}
-                    className="flex items-center gap-2 px-3 py-1 text-xs"
+                    className="flex items-center gap-2 text-xs leading-none"
                   >
                     <Checkbox
                       checked={tokenEnvIds.includes(env.id)}
@@ -368,10 +381,33 @@ export const ServiceAccountsPage = ({
               <p className="text-sm text-rose-600">{tokenError}</p>
             ) : null}
             {lastIssuedToken ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
-                <p className="font-semibold">New token</p>
-                <p className="mt-2 font-mono break-all text-emerald-800">
-                  {lastIssuedToken}
+              <div className="text-muted-foreground grid gap-2 text-xs">
+                <p className="text-foreground font-semibold">New token</p>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 p-3 font-mono text-sm break-all text-emerald-800">
+                    {lastIssuedToken}
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 w-9 rounded-full p-0"
+                        onClick={async () => {
+                          if (!lastIssuedToken) return
+                          await navigator.clipboard.writeText(lastIssuedToken)
+                        }}
+                        aria-label="Copy token"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Copy token</TooltipContent>
+                  </Tooltip>
+                </div>
+                <p>
+                  This token is only visible now. Copy and store it securely.
                 </p>
               </div>
             ) : null}
@@ -385,15 +421,62 @@ export const ServiceAccountsPage = ({
             >
               Close
             </Button>
+            {lastIssuedToken ? null : (
+              <Button
+                type="button"
+                className="rounded-full px-6 text-sm font-semibold"
+                onClick={handleCreateToken}
+                disabled={
+                  tokenCreating || !tokenName.trim() || tokenEnvIds.length === 0
+                }
+              >
+                {tokenCreating ? 'Issuing...' : 'Issue token'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(revokeTarget)}
+        onOpenChange={(open) => {
+          if (!open) setRevokeTarget(null)
+        }}
+      >
+        <DialogContent className="max-w-md rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Revoke token</DialogTitle>
+            <DialogDescription>
+              This token will stop working immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-muted-foreground text-sm">
+            Token{' '}
+            <span className="text-foreground font-semibold">
+              {revokeTarget?.token.name}
+            </span>{' '}
+            for service account{' '}
+            <span className="text-foreground font-semibold">
+              {revokeTarget?.account.name}
+            </span>
+            .
+          </div>
+          <DialogFooter>
             <Button
               type="button"
-              className="rounded-full px-6 text-sm font-semibold"
-              onClick={handleCreateToken}
-              disabled={
-                tokenCreating || !tokenName.trim() || tokenEnvIds.length === 0
-              }
+              variant="ghost"
+              className="rounded-full px-4 text-sm"
+              onClick={() => setRevokeTarget(null)}
             >
-              {tokenCreating ? 'Issuing...' : 'Issue token'}
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-full px-6 text-sm font-semibold"
+              onClick={handleDeleteToken}
+            >
+              Revoke token
             </Button>
           </DialogFooter>
         </DialogContent>
