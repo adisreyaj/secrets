@@ -2,6 +2,10 @@ import type { EnvironmentDto, SecretDto } from '@secrets/shared'
 import type { ChangeEvent, ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { api, ApiError } from '../lib/api'
+import { parseDotenv, type DotenvEntry, type DotenvInvalidLine } from '../lib/parseDotenv'
+import { ImportDropzone } from './import/ImportDropzone'
+import { ImportPreviewList } from './import/ImportPreviewList'
+import { ImportSummaryBanner } from './import/ImportSummaryBanner'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import {
@@ -17,64 +21,6 @@ import { Textarea } from './ui/textarea'
 
 const getErrorMessage = (error: unknown) =>
   error instanceof ApiError ? error.message : 'Something went wrong.'
-
-const parseDotenv = (content: string) => {
-  const entries = new Map<
-    string,
-    { key: string; value: string; line: number }
-  >()
-  const invalidLines: { line: number; text: string }[] = []
-  const duplicateKeys = new Set<string>()
-  const lines = content.split(/\r?\n/)
-
-  const normalizeValue = (value: string) => {
-    if (value.startsWith('"') && value.endsWith('"')) {
-      const inner = value.slice(1, -1)
-      return inner
-        .replace(/\\n/g, '\n')
-        .replace(/\\r/g, '\r')
-        .replace(/\\t/g, '\t')
-        .replace(/\\"/g, '"')
-    }
-    if (value.startsWith("'") && value.endsWith("'")) {
-      return value.slice(1, -1)
-    }
-    const commentIndex = value.search(/\s+#/)
-    if (commentIndex >= 0) {
-      return value.slice(0, commentIndex).trimEnd()
-    }
-    return value
-  }
-
-  lines.forEach((raw, index) => {
-    let line = raw.trim()
-    if (!line || line.startsWith('#')) return
-    if (line.startsWith('export ')) {
-      line = line.slice(7).trim()
-    }
-    const equalsIndex = line.indexOf('=')
-    if (equalsIndex <= 0) {
-      invalidLines.push({ line: index + 1, text: raw })
-      return
-    }
-    const key = line.slice(0, equalsIndex).trim()
-    const rawValue = line.slice(equalsIndex + 1).trim()
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      invalidLines.push({ line: index + 1, text: raw })
-      return
-    }
-    if (entries.has(key)) {
-      duplicateKeys.add(key)
-    }
-    entries.set(key, { key, value: normalizeValue(rawValue), line: index + 1 })
-  })
-
-  return {
-    entries: Array.from(entries.values()),
-    invalidLines,
-    duplicateKeys: Array.from(duplicateKeys.values()),
-  }
-}
 
 export const ImportEnvDialog = ({
   open,
@@ -97,17 +43,14 @@ export const ImportEnvDialog = ({
 }) => {
   const [importFileName, setImportFileName] = useState('')
   const [importText, setImportText] = useState('')
-  const [importEntries, setImportEntries] = useState<
-    { key: string; value: string; line: number }[]
-  >([])
+  const [importEntries, setImportEntries] = useState<DotenvEntry[]>([])
   const [importInvalidLines, setImportInvalidLines] = useState<
-    { line: number; text: string }[]
+    DotenvInvalidLine[]
   >([])
   const [importDuplicateKeys, setImportDuplicateKeys] = useState<string[]>([])
   const [importError, setImportError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [importOverwrite, setImportOverwrite] = useState(false)
-  const [importDragging, setImportDragging] = useState(false)
   const [importPreviewed, setImportPreviewed] = useState(false)
   const [importSummary, setImportSummary] = useState<{
     created: number
@@ -125,7 +68,6 @@ export const ImportEnvDialog = ({
       setImportError(null)
       setImporting(false)
       setImportOverwrite(false)
-      setImportDragging(false)
       setImportPreviewed(false)
       setImportSummary(null)
     }
@@ -248,97 +190,19 @@ export const ImportEnvDialog = ({
               rows={8}
               className="border-border bg-card/70 text-foreground focus:border-foreground/60 min-h-45 w-full resize-none rounded-2xl border px-4 py-3 font-mono text-xs shadow-inner transition outline-none"
             />
-            <div
-              className={`bg-secondary relative flex items-center justify-center rounded-2xl border border-dashed px-4 py-6 text-xs transition ${
-                importDragging
-                  ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
-                  : 'border-border text-muted-foreground'
-              }`}
-              onDragOver={(event) => {
-                event.preventDefault()
-                setImportDragging(true)
-              }}
-              onDragLeave={() => setImportDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault()
-                setImportDragging(false)
-                const file = event.dataTransfer.files?.[0]
-                if (file) {
-                  void handleImportDrop(file)
-                }
-              }}
-            >
-              <input
-                type="file"
-                accept=".env,.env.*"
-                onChange={handleImportFile}
-                className="absolute inset-0 cursor-pointer opacity-0"
-              />
-              <div className="grid gap-2 text-center">
-                <span className="text-foreground/90 text-base font-semibold tracking-normal normal-case">
-                  Choose a file or drag it here
-                </span>
-                <span className="text-muted-foreground text-xs">
-                  {importFileName || 'Drop your .env to auto-fill'}
-                </span>
-              </div>
-            </div>
+            <ImportDropzone
+              fileName={importFileName}
+              onFileSelected={(file) => void handleImportDrop(file)}
+            />
           </div>
 
           {importPreviewed && importEntries.length > 0 ? (
-            <div className="grid gap-2">
-              <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-foreground font-semibold">
-                  {importEntries.length} keys
-                </span>
-                <span>·</span>
-                <span>{importConflicts.length} conflicts</span>
-                {importDuplicateKeys.length > 0 ? (
-                  <>
-                    <span>·</span>
-                    <span>{importDuplicateKeys.length} duplicates</span>
-                  </>
-                ) : null}
-                {importInvalidLines.length > 0 ? (
-                  <>
-                    <span>·</span>
-                    <span>{importInvalidLines.length} invalid</span>
-                  </>
-                ) : null}
-              </div>
-              <div className="border-border bg-card/70 max-h-56 overflow-auto rounded-2xl border">
-                <div className="grid gap-1 p-3 text-xs">
-                  {importEntries.map((entry) => {
-                    const hasConflict = secretByKey.has(entry.key)
-                    return (
-                      <div
-                        key={`${entry.key}-${entry.line}`}
-                        className="hover:border-border/60 flex items-center justify-between gap-3 rounded-xl border border-transparent px-2 py-1"
-                      >
-                        <span className="text-foreground font-semibold">
-                          {entry.key}
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-[0.2em] uppercase ${
-                            hasConflict
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-emerald-100 text-emerald-700'
-                          }`}
-                        >
-                          {hasConflict ? 'Conflict' : 'New'}
-                        </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-              {importDuplicateKeys.length > 0 ? (
-                <p className="text-muted-foreground text-xs">
-                  Duplicate keys detected. The last value in the file will be
-                  used.
-                </p>
-              ) : null}
-            </div>
+            <ImportPreviewList
+              entries={importEntries}
+              conflictKeys={new Set(importConflicts.map((entry) => entry.key))}
+              duplicateKeys={importDuplicateKeys}
+              invalidLines={importInvalidLines}
+            />
           ) : null}
 
           <label className="flex items-center gap-3 text-sm">
@@ -354,10 +218,11 @@ export const ImportEnvDialog = ({
           ) : null}
 
           {importSummary ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-              Imported {importSummary.created} new, updated{' '}
-              {importSummary.updated}, skipped {importSummary.skipped}.
-            </div>
+            <ImportSummaryBanner
+              created={importSummary.created}
+              updated={importSummary.updated}
+              skipped={importSummary.skipped}
+            />
           ) : null}
         </div>
         <DialogFooter className="mt-4">
