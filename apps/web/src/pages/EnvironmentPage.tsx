@@ -105,6 +105,7 @@ export const EnvironmentPage = ({
   useRegisterShortcut('v', () => handleToggleValues(!valuesVisible))
   useRegisterShortcut('d', () => handleExportEnv())
   useRegisterShortcut('i', () => setImportDialogOpen(true))
+  useRegisterShortcut('c', () => handleExportCsv())
 
   return (
     <section className="flex flex-col gap-6">

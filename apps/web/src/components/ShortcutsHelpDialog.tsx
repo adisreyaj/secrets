@@ -35,6 +35,7 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
     { keys: 'Shift+n', label: 'New environment' },
     { keys: 'v', label: 'Toggle values' },
     { keys: 'd', label: 'Download .env' },
+    { keys: 'c', label: 'Download CSV' },
     { keys: 'i', label: 'Import .env' },
     { keys: 'b', label: 'Back to environments' },
   ],

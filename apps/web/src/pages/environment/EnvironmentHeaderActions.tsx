@@ -66,6 +66,7 @@ export const EnvironmentHeaderActions = ({
       >
         <FileSpreadsheet className="h-4 w-4" />
         Download CSV
+        <ShortcutHint keys="c" />
       </Button>
       <Button
         variant="outline"
