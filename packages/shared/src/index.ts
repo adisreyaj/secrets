@@ -270,6 +270,28 @@ export interface SecretVersionDto {
   isActive: boolean;
 }
 
+export interface SecretSearchResultDto {
+  id: string;
+  key: string;
+  environmentId: string;
+  environmentName: string;
+  updatedAt: string;
+  value?: string;
+}
+
+export interface BulkImportRequest {
+  entries: { key: string; value: string }[];
+  overwrite?: boolean;
+}
+
+export interface BulkImportResponse {
+  created: number;
+  updated: number;
+  skipped: number;
+  pending: number;
+  approvalRequestIds: string[];
+}
+
 export interface AddMemberRequest {
   email: string;
   role: Role;

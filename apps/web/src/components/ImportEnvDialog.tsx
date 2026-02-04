@@ -56,6 +56,7 @@ export const ImportEnvDialog = ({
     created: number
     updated: number
     skipped: number
+    pending: number
   } | null>(null)
 
   useEffect(() => {
@@ -132,30 +133,25 @@ export const ImportEnvDialog = ({
     if (!environment || importing || importEntries.length === 0) return
     setImporting(true)
     setImportError(null)
-    let created = 0
-    let updated = 0
-    let skipped = 0
-
     try {
+      const deduped = new Map<string, string>()
       for (const entry of importEntries) {
-        const existing = secretByKey.get(entry.key)
-        if (existing) {
-          if (!importOverwrite) {
-            skipped += 1
-            continue
-          }
-          await api.updateSecret(existing.id, { value: entry.value })
-          updated += 1
-          continue
-        }
-        await api.createSecret(environment.id, {
-          key: entry.key,
-          value: entry.value,
-        })
-        created += 1
+        deduped.set(entry.key, entry.value)
       }
-
-      setImportSummary({ created, updated, skipped })
+      const entries = Array.from(deduped.entries()).map(([key, value]) => ({
+        key,
+        value,
+      }))
+      const result = await api.bulkImportSecrets(environment.id, {
+        entries,
+        overwrite: importOverwrite,
+      })
+      setImportSummary({
+        created: result.created,
+        updated: result.updated,
+        skipped: result.skipped,
+        pending: result.pending,
+      })
       await loadSecrets(valuesLoaded)
       await loadSecretCoverage()
     } catch (error) {
@@ -204,6 +200,11 @@ export const ImportEnvDialog = ({
               invalidLines={importInvalidLines}
             />
           ) : null}
+          {importPreviewed && importDuplicateKeys.length > 0 ? (
+            <p className="text-muted-foreground text-xs">
+              Duplicates resolve to the last value in the import list.
+            </p>
+          ) : null}
 
           <label className="flex items-center gap-3 text-sm">
             <Checkbox
@@ -222,6 +223,7 @@ export const ImportEnvDialog = ({
               created={importSummary.created}
               updated={importSummary.updated}
               skipped={importSummary.skipped}
+              pending={importSummary.pending}
             />
           ) : null}
         </div>

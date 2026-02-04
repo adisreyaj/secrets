@@ -1950,6 +1950,84 @@ export async function buildApp(): Promise<FastifyInstance> {
     reply.send(toEnvironmentDto(env));
   });
 
+  app.get('/projects/:id/secrets/search', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const query = request.query as {
+      q?: string;
+      environmentId?: string;
+      includeValues?: string;
+    };
+
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const q = query.q?.trim();
+    if (!q) {
+      reply.send([]);
+      return;
+    }
+
+    const where: {
+      deletedAt: null;
+      environment: { projectId: string };
+      environmentId?: string;
+      key: { contains: string; mode?: 'insensitive' };
+    } = {
+      deletedAt: null,
+      environment: { projectId },
+      key: { contains: q, mode: 'insensitive' },
+    };
+
+    if (query.environmentId) {
+      where.environmentId = query.environmentId;
+    }
+
+    const secrets = await prisma.secret.findMany({
+      where,
+      include: {
+        environment: true,
+        versions: {
+          where: { isActive: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { key: 'asc' },
+      take: 200,
+    });
+
+    const canViewValues =
+      query.includeValues === 'true' && ROLE_RANK[role] >= ROLE_RANK.EDITOR;
+
+    const data = secrets.map((secret) => {
+      const version = secret.versions[0];
+      let value: string | undefined;
+      if (canViewValues && version) {
+        value = decryptSecret(
+          { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
+          masterKey,
+        );
+      }
+      return {
+        id: secret.id,
+        key: secret.key,
+        environmentId: secret.environmentId,
+        environmentName: secret.environment.name,
+        updatedAt: secret.updatedAt.toISOString(),
+        value,
+      };
+    });
+
+    reply.send(data);
+  });
+
   app.get('/environments/:id/secrets', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
@@ -2122,6 +2200,194 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.code(201).send({ id: secretId });
+  });
+
+  app.post('/environments/:id/secrets/bulk', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: envId } = request.params as { id: string };
+    const body = request.body as
+      | { entries?: { key?: string; value?: string }[]; overwrite?: boolean }
+      | undefined;
+
+    const entries = body?.entries ?? [];
+    if (entries.length === 0) {
+      reply.code(400).send({ error: 'Entries are required' });
+      return;
+    }
+    if (entries.length > 500) {
+      reply.code(400).send({ error: 'Too many entries (max 500).' });
+      return;
+    }
+
+    const env = await prisma.environment.findUnique({ where: { id: envId } });
+    if (!env) {
+      reply.code(404).send({ error: 'Environment not found' });
+      return;
+    }
+
+    const role = await requireProjectRole(request, reply, env.projectId, Role.EDITOR);
+    if (!role) {
+      return;
+    }
+
+    const deduped = new Map<string, string>();
+    for (const entry of entries) {
+      const key = typeof entry.key === 'string' ? entry.key.trim() : '';
+      const value = typeof entry.value === 'string' ? entry.value : undefined;
+      if (!key || value === undefined) {
+        reply.code(400).send({ error: 'Each entry must include key and value' });
+        return;
+      }
+      deduped.set(key, value);
+    }
+
+    const keys = Array.from(deduped.keys());
+    if (keys.length === 0) {
+      reply.code(400).send({ error: 'Entries are required' });
+      return;
+    }
+
+    const existingSecrets = await prisma.secret.findMany({
+      where: { environmentId: envId, key: { in: keys } },
+      include: {
+        versions: {
+          where: { isActive: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+    const existingByKey = new Map(existingSecrets.map((secret) => [secret.key, secret]));
+    const activeByKey = new Map(
+      existingSecrets
+        .filter((secret) => secret.deletedAt === null)
+        .map((secret) => [secret.key, secret]),
+    );
+
+    const overwrite = Boolean(body?.overwrite);
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    let pending = 0;
+    const approvalRequestIds: string[] = [];
+
+    for (const [key, value] of deduped.entries()) {
+      const active = activeByKey.get(key);
+      const existing = existingByKey.get(key);
+      if (active && !overwrite) {
+        skipped += 1;
+        continue;
+      }
+
+      const isCreate = !existing;
+      const action = isCreate ? ApprovalAction.CREATE : ApprovalAction.UPDATE;
+
+      const matchingRules = await findMatchingApprovalRules({
+        projectId: env.projectId,
+        environmentId: envId,
+        action,
+        key,
+      });
+      if (matchingRules.length > 0) {
+        const existingApproval = await findPendingApprovalRequest({
+          projectId: env.projectId,
+          environmentId: envId,
+          action,
+          key,
+          secretId: isCreate ? null : existing?.id ?? null,
+        });
+        if (existingApproval) {
+          pending += 1;
+          approvalRequestIds.push(existingApproval.id);
+          continue;
+        }
+        const encrypted = encryptSecret(value, masterKey);
+        const keyVersion = masterKeyVersion();
+        const approval = await createApprovalRequest({
+          projectId: env.projectId,
+          environmentId: envId,
+          action,
+          key,
+          requestedBy: auth.user.id,
+          secretId: isCreate ? undefined : existing?.id,
+          expectedVersionId: isCreate ? undefined : existing?.versions[0]?.id,
+          payload: { ...encrypted, keyVersion },
+        });
+        await logAudit({
+          projectId: env.projectId,
+          actorUserId: auth.user.id,
+          action: 'approval.requested',
+          resourceType: 'approval_request',
+          resourceId: approval.id,
+          metadataJson: {
+            action: action === ApprovalAction.CREATE ? 'CREATE' : 'UPDATE',
+            key,
+            environmentId: envId,
+            secretId: existing?.id,
+          },
+        });
+        pending += 1;
+        approvalRequestIds.push(approval.id);
+        continue;
+      }
+
+      const payload = encryptSecret(value, masterKey);
+      const keyVersion = masterKeyVersion();
+
+      let secretId = existing?.id;
+      if (!secretId) {
+        const secret = await prisma.secret.create({
+          data: {
+            environmentId: envId,
+            key,
+          },
+        });
+        secretId = secret.id;
+      }
+
+      await prisma.$transaction([
+        prisma.secretVersion.updateMany({
+          where: { secretId },
+          data: { isActive: false },
+        }),
+        prisma.secretVersion.create({
+          data: {
+            secretId,
+            ciphertext: payload.ciphertext,
+            iv: payload.iv,
+            tag: payload.tag,
+            keyVersion,
+            createdBy: auth.user.id,
+            isActive: true,
+          },
+        }),
+        prisma.secret.update({
+          where: { id: secretId },
+          data: { updatedAt: new Date(), deletedAt: null },
+        }),
+      ]);
+
+      await logAudit({
+        projectId: env.projectId,
+        actorUserId: auth.user.id,
+        action: isCreate ? 'secret.create' : 'secret.update',
+        resourceType: 'secret',
+        resourceId: secretId,
+        metadataJson: { key, environmentId: envId },
+      });
+
+      if (isCreate) {
+        created += 1;
+      } else {
+        updated += 1;
+      }
+    }
+
+    reply.send({ created, updated, skipped, pending, approvalRequestIds });
   });
 
   app.patch('/secrets/:id', async (request, reply) => {

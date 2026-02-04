@@ -6,6 +6,7 @@ import type {
   ProjectDto,
   ProjectInviteDto,
   Role,
+  SecretSearchResultDto,
 } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
 import { AuditLog } from '../components/AuditLog'
@@ -45,6 +46,11 @@ export const ProjectPage = ({
   const [envLoading, setEnvLoading] = useState(false)
   const [envError, setEnvError] = useState<string | null>(null)
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchEnvFilter, setSearchEnvFilter] = useState<string | null>(null)
+  const [searchResults, setSearchResults] = useState<SecretSearchResultDto[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
 
   const [auditLogs, setAuditLogs] = useState<AuditLogDto[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
@@ -151,6 +157,35 @@ export const ProjectPage = ({
     }
   }, [user, projectId, loadProjects, loadEnvironments, loadAudit, loadTokens, loadInvites])
 
+  useEffect(() => {
+    if (!user) return
+    const trimmed = searchQuery.trim()
+    if (!trimmed) {
+      setSearchResults([])
+      setSearchError(null)
+      return
+    }
+
+    const handle = window.setTimeout(async () => {
+      setSearchLoading(true)
+      setSearchError(null)
+      try {
+        const data = await api.searchProjectSecrets(projectId, {
+          query: trimmed,
+          environmentId: searchEnvFilter,
+          includeValues: true,
+        })
+        setSearchResults(data)
+      } catch (error) {
+        setSearchError(getErrorMessage(error))
+      } finally {
+        setSearchLoading(false)
+      }
+    }, 250)
+
+    return () => window.clearTimeout(handle)
+  }, [projectId, searchEnvFilter, searchQuery, user])
+
   const handleCreateProject = async (payload: { name: string; template: ProjectTemplate }) => {
     const project = await api.createProject({ name: payload.name })
     const templates: Record<ProjectTemplate, string[]> = {
@@ -250,6 +285,110 @@ export const ProjectPage = ({
         onSelect={(id) => navigate(`/projects/${id}`)}
         onCreate={handleCreateProject}
       />
+
+      <SectionCard>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">Global secret search</h3>
+            <p className="text-xs text-muted-foreground">
+              Search across all environments in this project.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.5fr]">
+          <Input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search by key..."
+          />
+          <Select
+            value={searchEnvFilter ?? 'all'}
+            onValueChange={(value) =>
+              setSearchEnvFilter(value === 'all' ? null : value)
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="All environments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All environments</SelectItem>
+              {environments.map((env) => (
+                <SelectItem key={env.id} value={env.id}>
+                  {env.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            variant={searchEnvFilter ? 'outline' : 'default'}
+            size="sm"
+            className="rounded-full px-4 text-xs"
+            onClick={() => setSearchEnvFilter(null)}
+          >
+            All
+          </Button>
+          {environments.map((env) => (
+            <Button
+              key={env.id}
+              variant={searchEnvFilter === env.id ? 'default' : 'outline'}
+              size="sm"
+              className="rounded-full px-4 text-xs"
+              onClick={() => setSearchEnvFilter(env.id)}
+            >
+              {env.name}
+            </Button>
+          ))}
+        </div>
+
+        {searchError ? (
+          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            {searchError}
+          </div>
+        ) : null}
+
+        <div className="mt-4 space-y-2">
+          {searchLoading ? (
+            <p className="text-sm text-muted-foreground">Searching secrets...</p>
+          ) : searchQuery.trim().length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Start typing to search for keys across environments.
+            </p>
+          ) : searchResults.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No secrets matched.</p>
+          ) : (
+            searchResults.map((secret) => (
+              <button
+                key={secret.id}
+                type="button"
+                className="flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card/80 px-4 py-3 text-left text-sm transition hover:border-foreground/20"
+                onClick={() =>
+                  navigate(
+                    `/projects/${projectId}/environments/${secret.environmentId}`,
+                  )
+                }
+              >
+                <div>
+                  <p className="font-semibold text-foreground">{secret.key}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {secret.environmentName} · updated{' '}
+                    {new Date(secret.updatedAt).toLocaleString()}
+                  </p>
+                </div>
+                {secret.value ? (
+                  <span className="text-muted-foreground text-xs">
+                    {secret.value.slice(0, 48)}
+                    {secret.value.length > 48 ? '…' : ''}
+                  </span>
+                ) : null}
+              </button>
+            ))
+          )}
+        </div>
+      </SectionCard>
 
       <section>
         <EnvironmentsSection

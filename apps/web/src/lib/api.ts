@@ -24,8 +24,11 @@ import type {
   SecretDto,
   SecretDiffResponse,
   SecretVersionDto,
+  SecretSearchResultDto,
   AcceptInviteRequest,
   AcceptInviteResponse,
+  BulkImportRequest,
+  BulkImportResponse,
   UpdateMeRequest,
   UpdateSecretRequest,
   ApprovalRuleDto,
@@ -140,6 +143,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  bulkImportSecrets: (environmentId: string, payload: BulkImportRequest) =>
+    apiFetch<BulkImportResponse>(`/environments/${environmentId}/secrets/bulk`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   updateSecret: (secretId: string, payload: UpdateSecretRequest) =>
     apiFetch<{ ok: true } | ApprovalRequestResponse>(`/secrets/${secretId}`, {
       method: 'PATCH',
@@ -167,6 +175,18 @@ export const api = {
         body: JSON.stringify(payload),
       },
     ),
+
+  searchProjectSecrets: (
+    projectId: string,
+    payload: { query: string; environmentId?: string | null; includeValues?: boolean },
+  ) => {
+    const params = new URLSearchParams({ q: payload.query })
+    if (payload.environmentId) params.set('environmentId', payload.environmentId)
+    if (payload.includeValues) params.set('includeValues', 'true')
+    return apiFetch<SecretSearchResultDto[]>(
+      `/projects/${projectId}/secrets/search?${params.toString()}`,
+    )
+  },
 
   exportEnv: (environmentId: string) =>
     apiFetch<string>(`/environments/${environmentId}/export?format=dotenv`),

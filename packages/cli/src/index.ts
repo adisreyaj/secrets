@@ -404,8 +404,25 @@ async function initCommand(args: string[]) {
     } catch {
       gitignore = ''
     }
-    if (!gitignore.includes('.env')) {
-      console.warn('Warning: .env is not in .gitignore')
+    const hasEnvIgnore = gitignore
+      .split(/\r?\n/)
+      .some((line) => {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith('#')) return false
+        if (trimmed.startsWith('!')) return false
+        return (
+          /^\.env$/.test(trimmed) ||
+          /^\.env\/$/.test(trimmed) ||
+          /^\.env\*$/.test(trimmed) ||
+          /^\.env\..+/.test(trimmed) ||
+          /^(?:\*\/|\*\*\/)\.env(\..+)?$/.test(trimmed) ||
+          /^(?:\*\/|\*\*\/)\.env\*$/.test(trimmed)
+        )
+      })
+    if (!hasEnvIgnore) {
+      console.warn(
+        'Warning: .env is not ignored in .gitignore (add .env, .env.*, or **/.env*).',
+      )
     }
 
     const shouldImport = await promptYesNo('Import .env into secrets?', true)
