@@ -38,6 +38,11 @@ import type {
   UpdateApprovalRuleRequest,
   ApprovalStatus,
   ApprovalAction,
+  ServiceAccountDto,
+  ServiceAccountTokenDto,
+  CreateServiceAccountRequest,
+  CreateServiceAccountTokenRequest,
+  CreateServiceAccountTokenResponse,
 } from '@secrets/shared'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
@@ -202,6 +207,39 @@ export const api = {
     apiFetch<{ ok: true }>(`/projects/${projectId}/api-tokens/${tokenId}`, {
       method: 'DELETE',
     }),
+
+  listServiceAccounts: (projectId: string) =>
+    apiFetch<ServiceAccountDto[]>(`/projects/${projectId}/service-accounts`),
+  createServiceAccount: (projectId: string, payload: CreateServiceAccountRequest) =>
+    apiFetch<ServiceAccountDto>(`/projects/${projectId}/service-accounts`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  deleteServiceAccount: (projectId: string, serviceAccountId: string) =>
+    apiFetch<{ ok: true }>(
+      `/projects/${projectId}/service-accounts/${serviceAccountId}`,
+      { method: 'DELETE' },
+    ),
+  listServiceAccountTokens: (serviceAccountId: string) =>
+    apiFetch<ServiceAccountTokenDto[]>(
+      `/service-accounts/${serviceAccountId}/tokens`,
+    ),
+  createServiceAccountToken: (
+    serviceAccountId: string,
+    payload: CreateServiceAccountTokenRequest,
+  ) =>
+    apiFetch<CreateServiceAccountTokenResponse>(
+      `/service-accounts/${serviceAccountId}/tokens`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
+  deleteServiceAccountToken: (serviceAccountId: string, tokenId: string) =>
+    apiFetch<{ ok: true }>(
+      `/service-accounts/${serviceAccountId}/tokens/${tokenId}`,
+      { method: 'DELETE' },
+    ),
 
   listInvites: (projectId: string) =>
     apiFetch<ProjectInviteDto[]>(`/projects/${projectId}/invites`),

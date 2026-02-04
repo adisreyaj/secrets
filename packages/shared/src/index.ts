@@ -74,6 +74,7 @@ export interface AuditLogDto {
   id: string;
   projectId: string;
   actorUserId?: string | null;
+  actorServiceAccountId?: string | null;
   action: string;
   resourceType: string;
   resourceId?: string | null;
@@ -290,6 +291,42 @@ export interface BulkImportResponse {
   skipped: number;
   pending: number;
   approvalRequestIds: string[];
+}
+
+export interface ServiceAccountDto {
+  id: string;
+  projectId: string;
+  name: string;
+  createdAt: string;
+  createdBy: string;
+  environmentIds: string[];
+}
+
+export interface ServiceAccountTokenDto {
+  id: string;
+  serviceAccountId: string;
+  name: string;
+  readOnly: boolean;
+  createdAt: string;
+  lastUsedAt?: string | null;
+  expiresAt?: string | null;
+}
+
+export interface CreateServiceAccountRequest {
+  name: string;
+  environmentIds: string[];
+}
+
+export interface CreateServiceAccountTokenRequest {
+  name: string;
+  readOnly?: boolean;
+  environmentIds: string[];
+  expiresAt?: string | null;
+}
+
+export interface CreateServiceAccountTokenResponse {
+  token: string;
+  tokenMeta: ServiceAccountTokenDto;
 }
 
 export interface AddMemberRequest {

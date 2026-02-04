@@ -1,10 +1,23 @@
+import type {
+  ProjectDto,
+  ProjectInviteDto,
+  ProjectMemberDto,
+  Role,
+} from '@secrets/shared'
+import { ArrowLeft } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
-import type { ProjectDto, ProjectInviteDto, ProjectMemberDto, Role } from '@secrets/shared'
-import { ArrowLeft, Users } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
+import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
-import { SectionCard } from '../components/SectionCard'
 import { Button } from '../components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import {
   Select,
@@ -13,7 +26,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '../components/ui/tooltip'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { useRegisterShortcut } from '../lib/shortcuts'
@@ -44,6 +61,7 @@ export const TeamPage = ({
   const [inviteRole, setInviteRole] = useState<Role>('VIEWER')
   const [inviteCreating, setInviteCreating] = useState(false)
   const [lastInviteLink, setLastInviteLink] = useState<string | null>(null)
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -52,6 +70,9 @@ export const TeamPage = ({
   }, [user, loading, navigate])
 
   useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
+  useRegisterShortcut('n', () => {
+    if (isAdmin) setInviteDialogOpen(true)
+  })
 
   const loadProjects = useCallback(async () => {
     setProjectsError(null)
@@ -89,7 +110,8 @@ export const TeamPage = ({
     }
   }, [projectId])
 
-  const selectedProject = projects.find((project) => project.id === projectId) ?? null
+  const selectedProject =
+    projects.find((project) => project.id === projectId) ?? null
   const isAdmin = selectedProject?.role === 'ADMIN'
 
   useEffect(() => {
@@ -137,7 +159,7 @@ export const TeamPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
             onClick={() => navigate(`/projects/${projectId}`)}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -148,30 +170,50 @@ export const TeamPage = ({
       />
 
       <SectionCard>
-        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          Members
-        </div>
+        <SectionHeader
+          kicker="Team"
+          title="Members"
+          action={
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="border-border text-foreground hover:border-foreground/40 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
+                  onClick={() => setInviteDialogOpen(true)}
+                  disabled={!isAdmin}
+                >
+                  Invite
+                  <ShortcutHint keys="n" />
+                </Button>
+              </TooltipTrigger>
+              {!isAdmin ? <TooltipContent>Admin only</TooltipContent> : null}
+            </Tooltip>
+          }
+        />
         {membersError ? (
           <p className="mt-3 text-sm text-rose-500">{membersError}</p>
         ) : membersLoading ? (
-          <p className="mt-3 text-sm text-muted-foreground">Loading members...</p>
+          <p className="text-muted-foreground mt-3 text-sm">
+            Loading members...
+          </p>
         ) : members.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">No members yet.</p>
+          <p className="text-muted-foreground mt-3 text-sm">No members yet.</p>
         ) : (
           <div className="mt-4 space-y-2">
             {members.map((member) => (
               <div
                 key={member.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card/80 px-4 py-3 text-sm"
+                className="border-border bg-card/80 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm"
               >
                 <div>
-                  <p className="font-semibold text-foreground">
+                  <p className="text-foreground font-semibold">
                     {member.name ?? member.email}
                   </p>
-                  <p className="text-xs text-muted-foreground">{member.email}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {member.email}
+                  </p>
                 </div>
-                <span className="rounded-full border border-border px-3 py-1 text-xs font-semibold text-muted-foreground">
+                <span className="border-border text-muted-foreground rounded-full border px-3 py-1 text-xs font-semibold">
                   {member.role}
                 </span>
               </div>
@@ -181,50 +223,16 @@ export const TeamPage = ({
       </SectionCard>
 
       <SectionCard>
-        <div>
-          <h3 className="text-lg font-semibold text-foreground">Invite teammates</h3>
-          <p className="text-xs text-muted-foreground">
-            Send an invite link and assign a role.
-          </p>
-        </div>
+        <SectionHeader kicker="Team" title="Invite teammates" />
+
         {!isAdmin ? (
-          <p className="mt-3 text-xs text-muted-foreground">
+          <p className="text-muted-foreground mt-3 text-xs">
             Only admins can invite teammates.
           </p>
         ) : null}
         {invitesError && isAdmin ? (
           <p className="mt-3 text-sm text-rose-500">{invitesError}</p>
         ) : null}
-        <div className="mt-4 grid gap-4 md:grid-cols-[1.2fr_0.6fr_auto]">
-          <Input
-            value={inviteEmail}
-            onChange={(event) => setInviteEmail(event.target.value)}
-            placeholder="teammate@company.com"
-            disabled={!isAdmin}
-          />
-          <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as Role)}>
-            <SelectTrigger disabled={!isAdmin}>
-              <SelectValue placeholder="Role" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ADMIN">Admin</SelectItem>
-              <SelectItem value="EDITOR">Editor</SelectItem>
-              <SelectItem value="VIEWER">Viewer</SelectItem>
-            </SelectContent>
-          </Select>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                onClick={handleCreateInvite}
-                className="h-11 rounded-full px-6 text-sm font-semibold"
-                disabled={!isAdmin || inviteCreating || !inviteEmail.trim()}
-              >
-                {inviteCreating ? 'Inviting...' : 'Send invite'}
-              </Button>
-            </TooltipTrigger>
-            {!isAdmin ? <TooltipContent>Admin only</TooltipContent> : null}
-          </Tooltip>
-        </div>
 
         {lastInviteLink ? (
           <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
@@ -236,51 +244,114 @@ export const TeamPage = ({
         ) : null}
 
         <div className="mt-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
             Pending invites
           </p>
           {invitesError && isAdmin ? (
             <p className="mt-3 text-sm text-rose-500">{invitesError}</p>
           ) : invitesLoading ? (
-            <p className="mt-3 text-sm text-muted-foreground">Loading invites...</p>
-          ) : invites.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">No invites yet.</p>
+            <p className="text-muted-foreground mt-3 text-sm">
+              Loading invites...
+            </p>
+          ) : invites.filter((invite) => invite.status === 'PENDING').length ===
+            0 ? (
+            <p className="text-muted-foreground mt-3 text-sm">
+              No invites yet.
+            </p>
           ) : (
             <div className="mt-3 space-y-2">
-              {invites.map((invite) => (
-                <div
-                  key={invite.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card/80 px-4 py-3 text-sm"
-                >
-                  <div>
-                    <p className="font-semibold text-foreground">{invite.email}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {invite.role} · {invite.status} · expires{' '}
-                      {new Date(invite.expiresAt).toLocaleDateString()}
-                    </p>
+              {invites
+                .filter((invite) => invite.status === 'PENDING')
+                .map((invite) => (
+                  <div
+                    key={invite.id}
+                    className="border-border bg-card/80 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm"
+                  >
+                    <div>
+                      <p className="text-foreground font-semibold">
+                        {invite.email}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {invite.role} · {invite.status} · expires{' '}
+                        {new Date(invite.expiresAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    {invite.status === 'PENDING' ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full px-4 text-xs"
+                            onClick={() => handleRevokeInvite(invite.id)}
+                            disabled={!isAdmin}
+                          >
+                            Revoke
+                          </Button>
+                        </TooltipTrigger>
+                        {!isAdmin ? (
+                          <TooltipContent>Admin only</TooltipContent>
+                        ) : null}
+                      </Tooltip>
+                    ) : null}
                   </div>
-                  {invite.status === 'PENDING' ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-full px-4 text-xs"
-                          onClick={() => handleRevokeInvite(invite.id)}
-                          disabled={!isAdmin}
-                        >
-                          Revoke
-                        </Button>
-                      </TooltipTrigger>
-                      {!isAdmin ? <TooltipContent>Admin only</TooltipContent> : null}
-                    </Tooltip>
-                  ) : null}
-                </div>
-              ))}
+                ))}
             </div>
           )}
         </div>
+
       </SectionCard>
+      <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
+        <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
+          <DialogHeader className="text-left">
+            <DialogTitle>Invite teammate</DialogTitle>
+            <DialogDescription>
+              Send an invite link and assign a role.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-[1.2fr_0.6fr]">
+            <Input
+              value={inviteEmail}
+              onChange={(event) => setInviteEmail(event.target.value)}
+              placeholder="teammate@company.com"
+              disabled={!isAdmin}
+            />
+            <Select
+              value={inviteRole}
+              onValueChange={(value) => setInviteRole(value as Role)}
+            >
+              <SelectTrigger disabled={!isAdmin}>
+                <SelectValue placeholder="Role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ADMIN">Admin</SelectItem>
+                <SelectItem value="EDITOR">Editor</SelectItem>
+                <SelectItem value="VIEWER">Viewer</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {invitesError && isAdmin ? (
+            <p className="text-sm text-rose-500">{invitesError}</p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-full px-4 text-sm"
+              onClick={() => setInviteDialogOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              onClick={handleCreateInvite}
+              className="rounded-full px-6 text-sm font-semibold"
+              disabled={!isAdmin || inviteCreating || !inviteEmail.trim()}
+            >
+              {inviteCreating ? 'Inviting...' : 'Send invite'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

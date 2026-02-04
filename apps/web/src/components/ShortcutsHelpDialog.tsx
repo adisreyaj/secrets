@@ -8,10 +8,12 @@ const globalShortcuts: ShortcutItem[] = [
   { keys: 'g p', label: 'Projects' },
   { keys: 'g o', label: 'Project overview' },
   { keys: 'g e', label: 'Environments list' },
-  { keys: 'g s', label: 'Secrets' },
-  { keys: 'g a', label: 'Audit log' },
+  { keys: 'g c', label: 'Secrets' },
+  { keys: 'g a', label: 'Approvals' },
+  { keys: 'g l', label: 'Audit log' },
   { keys: 'g m', label: 'Team' },
   { keys: 'g t', label: 'API tokens' },
+  { keys: 'g s', label: 'Service accounts' },
 ]
 
 const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
@@ -21,9 +23,11 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
   projects: [{ keys: 'n', label: 'New project' }],
   project: [
     { keys: 'e', label: 'Environments' },
-    { keys: 'a', label: 'Audit log' },
+    { keys: 'l', label: 'Audit log' },
+    { keys: 'a', label: 'Approvals' },
     { keys: 'm', label: 'Team' },
     { keys: 't', label: 'API tokens' },
+    { keys: 's', label: 'Service accounts' },
     { keys: 'b', label: 'Back to projects' },
   ],
   environments: [
@@ -47,6 +51,7 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
     { keys: 'n', label: 'Focus token name' },
     { keys: 'b', label: 'Back to overview' },
   ],
+  'service-accounts': [{ keys: 'b', label: 'Back to overview' }],
   profile: [],
 }
 

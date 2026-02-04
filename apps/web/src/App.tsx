@@ -26,6 +26,7 @@ import { ProjectOverviewPage } from './pages/ProjectOverviewPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { TeamPage } from './pages/TeamPage'
 import { TokensPage } from './pages/TokensPage'
+import { ServiceAccountsPage } from './pages/ServiceAccountsPage'
 
 const AppShell = () => {
   const { user, logout } = useAuth()
@@ -60,6 +61,9 @@ const AppShell = () => {
     if (match.name === 'tokens') {
       setLastProjectId(match.projectId)
     }
+    if (match.name === 'service-accounts') {
+      setLastProjectId(match.projectId)
+    }
   }, [match])
 
   const resolveProjectId = () =>
@@ -70,7 +74,8 @@ const AppShell = () => {
     match.name === 'approvals' ||
     match.name === 'approval-rules' ||
     match.name === 'team' ||
-    match.name === 'tokens'
+    match.name === 'tokens' ||
+    match.name === 'service-accounts'
       ? match.projectId
       : getLastProjectId()
 
@@ -112,6 +117,15 @@ const AppShell = () => {
     'g s',
     () => {
       const projectId = resolveProjectId()
+      navigate(projectId ? `/projects/${projectId}/service-accounts` : '/projects')
+    },
+    { enabled: shortcutsEnabled },
+  )
+
+  useRegisterShortcut(
+    'g c',
+    () => {
+      const projectId = resolveProjectId()
       if (!projectId) {
         navigate('/projects')
         return
@@ -130,7 +144,7 @@ const AppShell = () => {
     'g a',
     () => {
       const projectId = resolveProjectId()
-      navigate(projectId ? `/projects/${projectId}/audit` : '/projects')
+      navigate(projectId ? `/projects/${projectId}/approvals` : '/projects')
     },
     { enabled: shortcutsEnabled },
   )
@@ -140,6 +154,15 @@ const AppShell = () => {
     () => {
       const projectId = resolveProjectId()
       navigate(projectId ? `/projects/${projectId}/tokens` : '/projects')
+    },
+    { enabled: shortcutsEnabled },
+  )
+
+  useRegisterShortcut(
+    'g l',
+    () => {
+      const projectId = resolveProjectId()
+      navigate(projectId ? `/projects/${projectId}/audit` : '/projects')
     },
     { enabled: shortcutsEnabled },
   )
@@ -203,6 +226,8 @@ const AppShell = () => {
             <ApprovalRulesPage projectId={match.projectId} navigate={navigate} />
           ) : match.name === 'tokens' ? (
             <TokensPage projectId={match.projectId} navigate={navigate} />
+          ) : match.name === 'service-accounts' ? (
+            <ServiceAccountsPage projectId={match.projectId} navigate={navigate} />
           ) : match.name === 'team' ? (
             <TeamPage projectId={match.projectId} navigate={navigate} />
           ) : (

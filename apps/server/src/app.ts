@@ -220,6 +220,7 @@ function buildCliLoginUrl(code: string): string {
 async function logAudit(params: {
   projectId: string;
   actorUserId?: string | null;
+  actorServiceAccountId?: string | null;
   action: string;
   resourceType: string;
   resourceId?: string | null;
@@ -229,6 +230,7 @@ async function logAudit(params: {
     data: {
       projectId: params.projectId,
       actorUserId: params.actorUserId ?? null,
+      actorServiceAccountId: params.actorServiceAccountId ?? null,
       action: params.action,
       resourceType: params.resourceType,
       resourceId: params.resourceId ?? null,
@@ -238,15 +240,15 @@ async function logAudit(params: {
 }
 
 async function getProjectRole(request: FastifyRequest, projectId: string): Promise<Role | null> {
-  if (!request.auth?.user) {
-    return null;
-  }
-
-  if (request.auth.viaToken) {
+  if (request.auth?.viaToken) {
     if (request.auth.projectId !== projectId) {
       return null;
     }
     return request.auth.role ?? null;
+  }
+
+  if (!request.auth?.user) {
+    return null;
   }
 
   const membership = await prisma.projectMember.findUnique({
@@ -259,6 +261,27 @@ async function getProjectRole(request: FastifyRequest, projectId: string): Promi
   });
 
   return membership?.role ?? null;
+}
+
+function requireEnvironmentScope(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  environmentId: string,
+): boolean {
+  const scope = request.auth?.scopeEnvironmentIds;
+  if (request.auth?.viaToken && scope && !scope.includes(environmentId)) {
+    reply.code(403).send({ error: 'Token does not have access to this environment' });
+    return false;
+  }
+  return true;
+}
+
+function requireUserForApproval(request: FastifyRequest, reply: FastifyReply): boolean {
+  if (request.auth?.serviceAccountId && !request.auth.user) {
+    reply.code(403).send({ error: 'Approvals require a user session' });
+    return false;
+  }
+  return true;
 }
 
 async function requireProjectRole(
@@ -356,7 +379,7 @@ async function createApprovalRequest(params: {
 }
 
 function requireAuth(request: FastifyRequest, reply: FastifyReply): AuthContext | null {
-  if (!request.auth?.user) {
+  if (!request.auth?.user && !request.auth?.serviceAccountId) {
     reply.code(401).send({ error: 'Unauthorized' });
     return null;
   }
@@ -437,6 +460,37 @@ export async function buildApp(): Promise<FastifyInstance> {
 
           await prisma.apiToken.update({
             where: { id: token.id },
+            data: { lastUsedAt: new Date() },
+          });
+          return;
+        }
+
+        const serviceToken = await prisma.serviceAccountToken.findFirst({
+          where: {
+            tokenHash,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+          },
+          include: {
+            serviceAccount: true,
+            environments: true,
+          },
+        });
+
+        if (serviceToken) {
+          const scopeEnvironmentIds = serviceToken.environments.map(
+            (scope) => scope.environmentId,
+          );
+          request.auth = {
+            viaToken: true,
+            projectId: serviceToken.serviceAccount.projectId,
+            role: Role.EDITOR,
+            readOnly: serviceToken.readOnly,
+            serviceAccountId: serviceToken.serviceAccountId,
+            scopeEnvironmentIds,
+          };
+
+          await prisma.serviceAccountToken.update({
+            where: { id: serviceToken.id },
             data: { lastUsedAt: new Date() },
           });
         }
@@ -660,7 +714,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         projectId,
         name,
         tokenHash: hashToken(raw),
-        createdBy: auth.user.id,
+        createdBy: auth.user?.id ?? null,
         readOnly: false,
         expiresAt: new Date(Date.now() + config.apiTokenTtlDays * 24 * 60 * 60 * 1000),
       },
@@ -677,7 +731,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'token.create',
       resourceType: 'api_token',
       resourceId: token.id,
@@ -864,7 +919,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: project.id,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'project.create',
       resourceType: 'project',
       resourceId: project.id,
@@ -940,7 +996,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'project.member.add',
       resourceType: 'project_member',
       resourceId: membership.id,
@@ -1033,14 +1090,15 @@ export async function buildApp(): Promise<FastifyInstance> {
         role: body.role,
         status: 'PENDING',
         tokenHash: hashToken(token),
-        createdBy: auth.user.id,
+        createdBy: auth.user?.id ?? null,
         expiresAt: new Date(Date.now() + config.inviteTtlDays * 24 * 60 * 60 * 1000),
       },
     });
 
     await logAudit({
       projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'invite.create',
       resourceType: 'project_invite',
       resourceId: invite.id,
@@ -1099,7 +1157,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'invite.revoke',
       resourceType: 'project_invite',
       resourceId: inviteId,
@@ -1171,7 +1230,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: invite.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'invite.accept',
       resourceType: 'project_invite',
       resourceId: invite.id,
@@ -1235,12 +1295,13 @@ export async function buildApp(): Promise<FastifyInstance> {
         keyPattern: body.keyPattern.trim(),
         actionsJson: body.actions,
         isActive: body.isActive ?? true,
-        createdBy: auth.user.id,
+        createdBy: auth.user?.id ?? null,
       },
     });
     await logAudit({
       projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.rule.create',
       resourceType: 'approval_rule',
       resourceId: rule.id,
@@ -1295,7 +1356,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
     await logAudit({
       projectId: rule.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.rule.update',
       resourceType: 'approval_rule',
       resourceId: id,
@@ -1321,7 +1383,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     await prisma.approvalRule.delete({ where: { id } });
     await logAudit({
       projectId: rule.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.rule.delete',
       resourceType: 'approval_rule',
       resourceId: id,
@@ -1474,7 +1537,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: approval.payloadIv,
             tag: approval.payloadTag,
             keyVersion: approval.payloadKeyVersion ?? masterKeyVersion(),
-            createdBy: auth.user.id,
+            createdBy: auth.user?.id ?? null,
             isActive: true,
           },
         });
@@ -1536,7 +1599,7 @@ export async function buildApp(): Promise<FastifyInstance> {
                 iv: payload.iv,
                 tag: payload.tag,
                 keyVersion: payload.keyVersion,
-                createdBy: auth.user.id,
+                createdBy: auth.user?.id ?? null,
                 isActive: true,
               },
             }),
@@ -1673,7 +1736,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: payload.iv,
             tag: payload.tag,
             keyVersion,
-            createdBy: auth.user.id,
+            createdBy: auth.user?.id ?? null,
             isActive: true,
           },
         });
@@ -1690,7 +1753,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: approval.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.approved',
       resourceType: 'approval_request',
       resourceId: approval.id,
@@ -1699,7 +1763,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (applied.auditAction) {
       await logAudit({
         projectId: approval.projectId,
-        actorUserId: auth.user.id,
+        actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
         action: applied.auditAction,
         resourceType: 'secret',
         resourceId: applied.resourceId,
@@ -1741,7 +1806,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
     await logAudit({
       projectId: approval.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.denied',
       resourceType: 'approval_request',
       resourceId: approval.id,
@@ -1781,7 +1847,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
     await logAudit({
       projectId: approval.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'approval.canceled',
       resourceType: 'approval_request',
       resourceId: approval.id,
@@ -1793,6 +1860,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.post('/projects/:id/environments', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
+      return;
+    }
+    if (request.auth?.viaToken) {
+      reply.code(403).send({ error: 'Tokens cannot create environments' });
       return;
     }
 
@@ -1878,7 +1949,7 @@ export async function buildApp(): Promise<FastifyInstance> {
                     iv: payload.iv,
                     tag: payload.tag,
                     keyVersion,
-                    createdBy: auth.user.id,
+                    createdBy: auth.user?.id ?? null,
                     isActive: true,
                   },
                 },
@@ -1894,7 +1965,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'environment.create',
       resourceType: 'environment',
       resourceId: env.id,
@@ -1918,8 +1990,12 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
+    const scopedEnvIds = request.auth?.scopeEnvironmentIds;
     const envs = await prisma.environment.findMany({
-      where: { projectId },
+      where: {
+        projectId,
+        ...(request.auth?.viaToken && scopedEnvIds ? { id: { in: scopedEnvIds } } : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -1944,6 +2020,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     if (!env) {
       reply.code(404).send({ error: 'Environment not found' });
+      return;
+    }
+    if (!requireEnvironmentScope(request, reply, env.id)) {
       return;
     }
 
@@ -1985,8 +2064,15 @@ export async function buildApp(): Promise<FastifyInstance> {
       key: { contains: q, mode: 'insensitive' },
     };
 
+    const scopedEnvIds = request.auth?.scopeEnvironmentIds;
     if (query.environmentId) {
+      if (request.auth?.viaToken && scopedEnvIds && !scopedEnvIds.includes(query.environmentId)) {
+        reply.code(403).send({ error: 'Token does not have access to this environment' });
+        return;
+      }
       where.environmentId = query.environmentId;
+    } else if (request.auth?.viaToken && scopedEnvIds) {
+      where.environmentId = { in: scopedEnvIds };
     }
 
     const secrets = await prisma.secret.findMany({
@@ -2041,6 +2127,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     const env = await prisma.environment.findUnique({ where: { id: envId } });
     if (!env) {
       reply.code(404).send({ error: 'Environment not found' });
+      return;
+    }
+    if (!requireEnvironmentScope(request, reply, envId)) {
       return;
     }
 
@@ -2117,6 +2206,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       key: body.key,
     });
     if (matchingRules.length > 0) {
+      if (!requireUserForApproval(request, reply)) {
+        return;
+      }
       const existing = await findPendingApprovalRequest({
         projectId: env.projectId,
         environmentId: envId,
@@ -2140,7 +2232,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
       await logAudit({
         projectId: env.projectId,
-        actorUserId: auth.user.id,
+        actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
         resourceId: approval.id,
@@ -2180,7 +2273,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           iv: payload.iv,
           tag: payload.tag,
           keyVersion,
-          createdBy: auth.user.id,
+          createdBy: auth.user?.id ?? null,
           isActive: true,
         },
       }),
@@ -2192,7 +2285,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: env.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.create',
       resourceType: 'secret',
       resourceId: secretId,
@@ -2226,6 +2320,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     const env = await prisma.environment.findUnique({ where: { id: envId } });
     if (!env) {
       reply.code(404).send({ error: 'Environment not found' });
+      return;
+    }
+    if (!requireEnvironmentScope(request, reply, envId)) {
       return;
     }
 
@@ -2293,6 +2390,9 @@ export async function buildApp(): Promise<FastifyInstance> {
         key,
       });
       if (matchingRules.length > 0) {
+        if (!requireUserForApproval(request, reply)) {
+          return;
+        }
         const existingApproval = await findPendingApprovalRequest({
           projectId: env.projectId,
           environmentId: envId,
@@ -2319,7 +2419,8 @@ export async function buildApp(): Promise<FastifyInstance> {
         });
         await logAudit({
           projectId: env.projectId,
-          actorUserId: auth.user.id,
+          actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
           action: 'approval.requested',
           resourceType: 'approval_request',
           resourceId: approval.id,
@@ -2361,7 +2462,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: payload.iv,
             tag: payload.tag,
             keyVersion,
-            createdBy: auth.user.id,
+            createdBy: auth.user?.id ?? null,
             isActive: true,
           },
         }),
@@ -2373,7 +2474,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
       await logAudit({
         projectId: env.projectId,
-        actorUserId: auth.user.id,
+        actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
         action: isCreate ? 'secret.create' : 'secret.update',
         resourceType: 'secret',
         resourceId: secretId,
@@ -2430,6 +2532,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       reply.code(404).send({ error: 'Secret not found' });
       return;
     }
+    if (!requireEnvironmentScope(request, reply, secret.environmentId)) {
+      return;
+    }
 
     const role = await requireProjectRole(
       request,
@@ -2450,6 +2555,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       key: requestedKey,
     });
     if (matchingRules.length > 0) {
+      if (!requireUserForApproval(request, reply)) {
+        return;
+      }
       const existing = await findPendingApprovalRequest({
         projectId: secret.environment.projectId,
         environmentId: secret.environmentId,
@@ -2478,7 +2586,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
       await logAudit({
         projectId: secret.environment.projectId,
-        actorUserId: auth.user.id,
+        actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
         resourceId: approval.id,
@@ -2526,7 +2635,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: payload.iv,
             tag: payload.tag,
             keyVersion,
-            createdBy: auth.user.id,
+            createdBy: auth.user?.id ?? null,
             isActive: true,
           },
         }),
@@ -2543,7 +2652,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: secret.environment.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.update',
       resourceType: 'secret',
       resourceId: secretId,
@@ -2636,6 +2746,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       if (rules.length === 0) {
         continue;
       }
+      if (!requireUserForApproval(request, reply)) {
+        return;
+      }
       const existing = await findPendingApprovalRequest({
         projectId: secret.environment.projectId,
         environmentId: targetEnv.id,
@@ -2661,7 +2774,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       approvalRequestIds.push(approval.id);
       await logAudit({
         projectId: secret.environment.projectId,
-        actorUserId: auth.user.id,
+        actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
         resourceId: approval.id,
@@ -2724,7 +2838,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: payload.iv,
             tag: payload.tag,
             keyVersion,
-            createdBy: auth.user.id,
+            createdBy: auth.user?.id ?? null,
             isActive: true,
           },
         });
@@ -2737,7 +2851,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: secret.environment.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.copy',
       resourceType: 'secret',
       resourceId: secret.id,
@@ -2777,10 +2892,16 @@ export async function buildApp(): Promise<FastifyInstance> {
       reply.code(404).send({ error: 'Target environment not found' });
       return;
     }
+    if (!requireEnvironmentScope(request, reply, targetEnvId)) {
+      return;
+    }
 
     const sourceEnv = await prisma.environment.findUnique({ where: { id: sourceEnvironmentId } });
     if (!sourceEnv) {
       reply.code(404).send({ error: 'Source environment not found' });
+      return;
+    }
+    if (!requireEnvironmentScope(request, reply, sourceEnvironmentId)) {
       return;
     }
 
@@ -2834,6 +2955,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       if (rules.length === 0) {
         continue;
       }
+      if (!requireUserForApproval(request, reply)) {
+        return;
+      }
       const version = sourceSecret.versions[0];
       const existing = await findPendingApprovalRequest({
         projectId: targetEnv.projectId,
@@ -2861,7 +2985,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       approvalRequestIds.push(approval.id);
       await logAudit({
         projectId: targetEnv.projectId,
-        actorUserId: auth.user.id,
+        actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
         resourceId: approval.id,
@@ -2930,7 +3055,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             iv: payload.iv,
             tag: payload.tag,
             keyVersion,
-            createdBy: auth.user.id,
+            createdBy: auth.user?.id ?? null,
             isActive: true,
           },
         });
@@ -2943,7 +3068,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: targetEnv.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.copy.bulk',
       resourceType: 'secret',
       metadataJson: {
@@ -3018,6 +3144,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       key: secret.key,
     });
     if (matchingRules.length > 0) {
+      if (!requireUserForApproval(request, reply)) {
+        return;
+      }
       const existing = await findPendingApprovalRequest({
         projectId: secret.environment.projectId,
         environmentId: secret.environmentId,
@@ -3041,7 +3170,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
       await logAudit({
         projectId: secret.environment.projectId,
-        actorUserId: auth.user.id,
+        actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
         resourceId: approval.id,
@@ -3058,7 +3188,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: secret.environment.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.rollback',
       resourceType: 'secret',
       resourceId: secretId,
@@ -3301,6 +3432,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       key: secret.key,
     });
     if (matchingRules.length > 0) {
+      if (!requireUserForApproval(request, reply)) {
+        return;
+      }
       const existing = await findPendingApprovalRequest({
         projectId: secret.environment.projectId,
         environmentId: secret.environmentId,
@@ -3323,7 +3457,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
       await logAudit({
         projectId: secret.environment.projectId,
-        actorUserId: auth.user.id,
+        actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
         action: 'approval.requested',
         resourceType: 'approval_request',
         resourceId: approval.id,
@@ -3340,7 +3475,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId: secret.environment.projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'secret.delete',
       resourceType: 'secret',
       resourceId: secretId,
@@ -3402,6 +3538,357 @@ export async function buildApp(): Promise<FastifyInstance> {
     reply.type('text/plain').send(output);
   });
 
+  app.get('/projects/:id/service-accounts', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    if (request.auth?.viaToken) {
+      reply.code(403).send({ error: 'Service accounts require a user session' });
+      return;
+    }
+    if (!auth.user) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.EDITOR);
+    if (!role) {
+      return;
+    }
+
+    const accounts = await prisma.serviceAccount.findMany({
+      where: { projectId },
+      include: { environments: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    reply.send(
+      accounts.map((account) => ({
+        id: account.id,
+        projectId: account.projectId,
+        name: account.name,
+        createdAt: account.createdAt.toISOString(),
+        createdBy: account.createdBy,
+        environmentIds: account.environments.map((env) => env.environmentId),
+      })),
+    );
+  });
+
+  app.post('/projects/:id/service-accounts', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    if (request.auth?.viaToken) {
+      reply.code(403).send({ error: 'Service accounts require a user session' });
+      return;
+    }
+    if (!auth.user) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const body = request.body as { name?: string; environmentIds?: string[] } | undefined;
+    const name = body?.name?.trim();
+    const environmentIds = Array.from(
+      new Set(body?.environmentIds?.map((id) => id.trim()).filter(Boolean) ?? []),
+    );
+    if (!name) {
+      reply.code(400).send({ error: 'Name is required' });
+      return;
+    }
+    if (environmentIds.length === 0) {
+      reply.code(400).send({ error: 'Environment IDs are required' });
+      return;
+    }
+
+    const role = await requireProjectRole(request, reply, projectId, Role.EDITOR);
+    if (!role) {
+      return;
+    }
+
+    const envs = await prisma.environment.findMany({
+      where: { id: { in: environmentIds }, projectId },
+      select: { id: true },
+    });
+    if (envs.length !== environmentIds.length) {
+      reply.code(400).send({ error: 'One or more environments are invalid' });
+      return;
+    }
+
+    const account = await prisma.serviceAccount.create({
+      data: {
+        projectId,
+        name,
+        createdBy: auth.user.id,
+        environments: {
+          create: environmentIds.map((environmentId) => ({ environmentId })),
+        },
+      },
+    });
+
+    await logAudit({
+      projectId,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'service_account.create',
+      resourceType: 'service_account',
+      resourceId: account.id,
+    });
+
+    reply.code(201).send({
+      id: account.id,
+      projectId: account.projectId,
+      name: account.name,
+      createdAt: account.createdAt.toISOString(),
+      createdBy: account.createdBy,
+      environmentIds,
+    });
+  });
+
+  app.delete('/projects/:id/service-accounts/:serviceAccountId', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    if (request.auth?.viaToken) {
+      reply.code(403).send({ error: 'Service accounts require a user session' });
+      return;
+    }
+    if (!auth.user) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { id: projectId, serviceAccountId } = request.params as {
+      id: string;
+      serviceAccountId: string;
+    };
+    const role = await requireProjectRole(request, reply, projectId, Role.EDITOR);
+    if (!role) {
+      return;
+    }
+
+    const account = await prisma.serviceAccount.findFirst({
+      where: { id: serviceAccountId, projectId },
+    });
+    if (!account) {
+      reply.code(404).send({ error: 'Service account not found' });
+      return;
+    }
+
+    await prisma.serviceAccount.delete({ where: { id: account.id } });
+
+    await logAudit({
+      projectId,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'service_account.delete',
+      resourceType: 'service_account',
+      resourceId: account.id,
+    });
+
+    reply.code(204).send();
+  });
+
+  app.get('/service-accounts/:id/tokens', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    if (request.auth?.viaToken) {
+      reply.code(403).send({ error: 'Service accounts require a user session' });
+      return;
+    }
+    if (!auth.user) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { id: serviceAccountId } = request.params as { id: string };
+    const account = await prisma.serviceAccount.findUnique({
+      where: { id: serviceAccountId },
+    });
+    if (!account) {
+      reply.code(404).send({ error: 'Service account not found' });
+      return;
+    }
+
+    const role = await requireProjectRole(request, reply, account.projectId, Role.EDITOR);
+    if (!role) {
+      return;
+    }
+
+    const tokens = await prisma.serviceAccountToken.findMany({
+      where: { serviceAccountId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    reply.send(
+      tokens.map((token) => ({
+        id: token.id,
+        serviceAccountId: token.serviceAccountId,
+        name: token.name,
+        readOnly: token.readOnly,
+        createdAt: token.createdAt.toISOString(),
+        lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+        expiresAt: token.expiresAt?.toISOString() ?? null,
+      })),
+    );
+  });
+
+  app.post('/service-accounts/:id/tokens', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    if (request.auth?.viaToken) {
+      reply.code(403).send({ error: 'Service accounts require a user session' });
+      return;
+    }
+    if (!auth.user) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { id: serviceAccountId } = request.params as { id: string };
+    const body = request.body as
+      | { name?: string; readOnly?: boolean; environmentIds?: string[]; expiresAt?: string | null }
+      | undefined;
+    const name = body?.name?.trim();
+    const environmentIds = Array.from(
+      new Set(body?.environmentIds?.map((id) => id.trim()).filter(Boolean) ?? []),
+    );
+    if (!name) {
+      reply.code(400).send({ error: 'Name is required' });
+      return;
+    }
+    if (environmentIds.length === 0) {
+      reply.code(400).send({ error: 'Environment IDs are required' });
+      return;
+    }
+
+    const account = await prisma.serviceAccount.findUnique({
+      where: { id: serviceAccountId },
+    });
+    if (!account) {
+      reply.code(404).send({ error: 'Service account not found' });
+      return;
+    }
+
+    const role = await requireProjectRole(request, reply, account.projectId, Role.EDITOR);
+    if (!role) {
+      return;
+    }
+
+    const envs = await prisma.environment.findMany({
+      where: { id: { in: environmentIds }, projectId: account.projectId },
+      select: { id: true },
+    });
+    if (envs.length !== environmentIds.length) {
+      reply.code(400).send({ error: 'One or more environments are invalid' });
+      return;
+    }
+
+    const raw = generateToken();
+    const token = await prisma.serviceAccountToken.create({
+      data: {
+        serviceAccountId,
+        name,
+        tokenHash: hashToken(raw),
+        readOnly: body?.readOnly === true,
+        expiresAt: body?.expiresAt ? new Date(body.expiresAt) : null,
+      },
+    });
+
+    await prisma.serviceAccountTokenEnvironment.createMany({
+      data: environmentIds.map((environmentId) => ({
+        serviceAccountTokenId: token.id,
+        environmentId,
+      })),
+    });
+
+    await logAudit({
+      projectId: account.projectId,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'service_account.token.create',
+      resourceType: 'service_account_token',
+      resourceId: token.id,
+      metadataJson: { serviceAccountId },
+    });
+
+    reply.send({
+      token: raw,
+      tokenMeta: {
+        id: token.id,
+        serviceAccountId: token.serviceAccountId,
+        name: token.name,
+        readOnly: token.readOnly,
+        createdAt: token.createdAt.toISOString(),
+        lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+        expiresAt: token.expiresAt?.toISOString() ?? null,
+      },
+    });
+  });
+
+  app.delete('/service-accounts/:id/tokens/:tokenId', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    if (request.auth?.viaToken) {
+      reply.code(403).send({ error: 'Service accounts require a user session' });
+      return;
+    }
+    if (!auth.user) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { id: serviceAccountId, tokenId } = request.params as {
+      id: string;
+      tokenId: string;
+    };
+    const account = await prisma.serviceAccount.findUnique({
+      where: { id: serviceAccountId },
+    });
+    if (!account) {
+      reply.code(404).send({ error: 'Service account not found' });
+      return;
+    }
+
+    const role = await requireProjectRole(request, reply, account.projectId, Role.EDITOR);
+    if (!role) {
+      return;
+    }
+
+    const token = await prisma.serviceAccountToken.findFirst({
+      where: { id: tokenId, serviceAccountId },
+    });
+    if (!token) {
+      reply.code(404).send({ error: 'Token not found' });
+      return;
+    }
+
+    await prisma.serviceAccountToken.delete({ where: { id: token.id } });
+
+    await logAudit({
+      projectId: account.projectId,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'service_account.token.delete',
+      resourceType: 'service_account_token',
+      resourceId: token.id,
+      metadataJson: { serviceAccountId },
+    });
+
+    reply.code(204).send();
+  });
+
   app.post('/projects/:id/api-tokens', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
@@ -3430,7 +3917,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         projectId,
         name: body.name,
         tokenHash: hashToken(raw),
-        createdBy: auth.user.id,
+        createdBy: auth.user?.id ?? null,
         readOnly: body.readOnly === true,
         expiresAt,
       },
@@ -3438,7 +3925,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'token.create',
       resourceType: 'api_token',
       resourceId: token.id,
@@ -3513,7 +4001,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     await logAudit({
       projectId,
-      actorUserId: auth.user.id,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
       action: 'token.delete',
       resourceType: 'api_token',
       resourceId: token.id,
@@ -3550,6 +4039,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         id: log.id,
         projectId: log.projectId,
         actorUserId: log.actorUserId,
+        actorServiceAccountId: log.actorServiceAccountId,
         action: log.action,
         resourceType: log.resourceType,
         resourceId: log.resourceId,

@@ -1,0 +1,463 @@
+import type {
+  EnvironmentDto,
+  ProjectDto,
+  ServiceAccountDto,
+  ServiceAccountTokenDto,
+} from '@secrets/shared'
+import { ArrowLeft, Plus } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { PageHeader } from '../components/PageHeader'
+import { SectionCard, SectionHeader } from '../components/SectionCard'
+import { ShortcutHint } from '../components/ShortcutHint'
+import { Button } from '../components/ui/button'
+import { Checkbox } from '../components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog'
+import { Input } from '../components/ui/input'
+import { api, ApiError } from '../lib/api'
+import { useAuth } from '../lib/auth'
+import { useRegisterShortcut } from '../lib/shortcuts'
+
+const getErrorMessage = (error: unknown) =>
+  error instanceof ApiError ? error.message : 'Something went wrong.'
+
+export const ServiceAccountsPage = ({
+  projectId,
+  navigate,
+}: {
+  projectId: string
+  navigate: (path: string) => void
+}) => {
+  const { user, loading } = useAuth()
+  const [projects, setProjects] = useState<ProjectDto[]>([])
+  const [projectsError, setProjectsError] = useState<string | null>(null)
+
+  const [environments, setEnvironments] = useState<EnvironmentDto[]>([])
+  const [envError, setEnvError] = useState<string | null>(null)
+
+  const [accounts, setAccounts] = useState<ServiceAccountDto[]>([])
+  const [accountsLoading, setAccountsLoading] = useState(false)
+  const [accountsError, setAccountsError] = useState<string | null>(null)
+
+  const [tokensByAccount, setTokensByAccount] = useState<
+    Record<string, ServiceAccountTokenDto[]>
+  >({})
+
+  const [createName, setCreateName] = useState('')
+  const [createEnvIds, setCreateEnvIds] = useState<string[]>([])
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+
+  const [tokenDialogOpen, setTokenDialogOpen] = useState(false)
+  const [tokenAccount, setTokenAccount] = useState<ServiceAccountDto | null>(
+    null,
+  )
+  const [tokenName, setTokenName] = useState('')
+  const [tokenReadOnly, setTokenReadOnly] = useState(true)
+  const [tokenEnvIds, setTokenEnvIds] = useState<string[]>([])
+  const [tokenCreating, setTokenCreating] = useState(false)
+  const [tokenError, setTokenError] = useState<string | null>(null)
+  const [lastIssuedToken, setLastIssuedToken] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/login')
+    }
+  }, [user, loading, navigate])
+
+  const loadProjects = useCallback(async () => {
+    setProjectsError(null)
+    try {
+      const data = await api.listProjects()
+      setProjects(data)
+    } catch (error) {
+      setProjectsError(getErrorMessage(error))
+    }
+  }, [])
+
+  const loadEnvironments = useCallback(async () => {
+    setEnvError(null)
+    try {
+      const data = await api.listEnvironments(projectId)
+      setEnvironments(data)
+    } catch (error) {
+      setEnvError(getErrorMessage(error))
+    }
+  }, [projectId])
+
+  const loadAccounts = useCallback(async () => {
+    setAccountsLoading(true)
+    setAccountsError(null)
+    try {
+      const data = await api.listServiceAccounts(projectId)
+      setAccounts(data)
+      const tokens = await Promise.all(
+        data.map(async (account) => {
+          const list = await api.listServiceAccountTokens(account.id)
+          return [account.id, list] as const
+        }),
+      )
+      setTokensByAccount(Object.fromEntries(tokens))
+    } catch (error) {
+      setAccountsError(getErrorMessage(error))
+    } finally {
+      setAccountsLoading(false)
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    if (user) {
+      void loadProjects()
+      void loadEnvironments()
+      void loadAccounts()
+    }
+  }, [user, loadProjects, loadEnvironments, loadAccounts])
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === projectId) ?? null,
+    [projects, projectId],
+  )
+
+  useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
+  useRegisterShortcut('n', () => setCreateDialogOpen(true))
+
+  const toggleEnvSelection = (id: string) => {
+    setCreateEnvIds((prev) =>
+      prev.includes(id) ? prev.filter((envId) => envId !== id) : [...prev, id],
+    )
+  }
+
+  const handleCreateAccount = async () => {
+    if (!createName.trim() || createEnvIds.length === 0 || creating) return
+    setCreating(true)
+    setCreateError(null)
+    try {
+      await api.createServiceAccount(projectId, {
+        name: createName.trim(),
+        environmentIds: createEnvIds,
+      })
+      setCreateName('')
+      setCreateEnvIds([])
+      setCreateDialogOpen(false)
+      await loadAccounts()
+    } catch (error) {
+      setCreateError(getErrorMessage(error))
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleDeleteAccount = async (account: ServiceAccountDto) => {
+    await api.deleteServiceAccount(projectId, account.id)
+    await loadAccounts()
+  }
+
+  const openTokenDialog = (account: ServiceAccountDto) => {
+    setTokenAccount(account)
+    setTokenName(`${account.name} token`)
+    setTokenReadOnly(true)
+    setTokenEnvIds(account.environmentIds)
+    setTokenError(null)
+    setLastIssuedToken(null)
+    setTokenDialogOpen(true)
+  }
+
+  const handleCreateToken = async () => {
+    if (!tokenAccount || tokenEnvIds.length === 0 || !tokenName.trim()) return
+    setTokenCreating(true)
+    setTokenError(null)
+    try {
+      const result = await api.createServiceAccountToken(tokenAccount.id, {
+        name: tokenName.trim(),
+        readOnly: tokenReadOnly,
+        environmentIds: tokenEnvIds,
+      })
+      setLastIssuedToken(result.token)
+      const list = await api.listServiceAccountTokens(tokenAccount.id)
+      setTokensByAccount((prev) => ({ ...prev, [tokenAccount.id]: list }))
+    } catch (error) {
+      setTokenError(getErrorMessage(error))
+    } finally {
+      setTokenCreating(false)
+    }
+  }
+
+  const handleDeleteToken = async (accountId: string, tokenId: string) => {
+    await api.deleteServiceAccountToken(accountId, tokenId)
+    const list = await api.listServiceAccountTokens(accountId)
+    setTokensByAccount((prev) => ({ ...prev, [accountId]: list }))
+  }
+
+  return (
+    <section className="flex flex-col gap-6">
+      <PageHeader
+        title="Service accounts"
+        subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
+        actions={
+          <Button
+            variant="outline"
+            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
+            onClick={() => navigate(`/projects/${projectId}`)}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to overview
+            <ShortcutHint keys="b" />
+          </Button>
+        }
+      />
+
+      {(projectsError || envError || accountsError) && (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+          {projectsError || envError || accountsError}
+        </div>
+      )}
+
+      <SectionCard>
+        <SectionHeader
+          kicker="Service accounts"
+          title="Account list"
+          action={
+            <Button
+              variant="outline"
+              className="border-border text-foreground hover:border-foreground/40 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
+              onClick={() => setCreateDialogOpen(true)}
+            >
+              <Plus className="h-4 w-4" />
+              New service account
+              <ShortcutHint keys="n" />
+            </Button>
+          }
+        />
+
+        <div className="mt-4 space-y-4">
+          {accountsLoading ? (
+            <p className="text-muted-foreground text-sm">
+              Loading service accounts...
+            </p>
+          ) : accounts.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              No service accounts yet.
+            </p>
+          ) : (
+            accounts.map((account) => (
+              <div
+                key={account.id}
+                className="border-border bg-card/80 rounded-2xl border p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-foreground font-semibold">
+                      {account.name}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      {account.environmentIds.length} environment scopes
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="rounded-full px-4 text-xs"
+                      onClick={() => openTokenDialog(account)}
+                    >
+                      Create token
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="rounded-full px-4 text-xs"
+                      onClick={() => handleDeleteAccount(account)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+                <div className="text-muted-foreground mt-3 space-y-2 text-xs">
+                  {(tokensByAccount[account.id] ?? []).length === 0 ? (
+                    <p>No tokens yet.</p>
+                  ) : (
+                    (tokensByAccount[account.id] ?? []).map((token) => (
+                      <div
+                        key={token.id}
+                        className="border-border/60 flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2"
+                      >
+                        <div>
+                          <p className="text-foreground text-sm font-semibold">
+                            {token.name}
+                          </p>
+                          <p>
+                            {token.readOnly ? 'Read-only' : 'Read/write'} ·
+                            created{' '}
+                            {new Date(token.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-full px-3 text-xs"
+                          onClick={() =>
+                            handleDeleteToken(account.id, token.id)
+                          }
+                        >
+                          Revoke
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </SectionCard>
+
+      <Dialog open={tokenDialogOpen} onOpenChange={setTokenDialogOpen}>
+        <DialogContent className="max-w-lg rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Issue service account token</DialogTitle>
+            <DialogDescription>
+              Tokens are shown once. Store them securely.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <Input
+              value={tokenName}
+              onChange={(event) => setTokenName(event.target.value)}
+              placeholder="Token name"
+            />
+            <label className="flex items-center gap-3 text-sm">
+              <Checkbox
+                checked={tokenReadOnly}
+                onCheckedChange={(value) => setTokenReadOnly(Boolean(value))}
+              />
+              <span>Read-only</span>
+            </label>
+            <div className="grid gap-2">
+              <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+                Environment scopes
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {environments.map((env) => (
+                  <label
+                    key={env.id}
+                    className="flex items-center gap-2 px-3 py-1 text-xs"
+                  >
+                    <Checkbox
+                      checked={tokenEnvIds.includes(env.id)}
+                      onCheckedChange={() =>
+                        setTokenEnvIds((prev) =>
+                          prev.includes(env.id)
+                            ? prev.filter((id) => id !== env.id)
+                            : [...prev, env.id],
+                        )
+                      }
+                    />
+                    {env.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+            {tokenError ? (
+              <p className="text-sm text-rose-600">{tokenError}</p>
+            ) : null}
+            {lastIssuedToken ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
+                <p className="font-semibold">New token</p>
+                <p className="mt-2 font-mono break-all text-emerald-800">
+                  {lastIssuedToken}
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-full px-4 text-sm"
+              onClick={() => setTokenDialogOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              type="button"
+              className="rounded-full px-6 text-sm font-semibold"
+              onClick={handleCreateToken}
+              disabled={
+                tokenCreating || !tokenName.trim() || tokenEnvIds.length === 0
+              }
+            >
+              {tokenCreating ? 'Issuing...' : 'Issue token'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="max-w-lg rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Create service account</DialogTitle>
+            <DialogDescription>
+              Generate a scoped principal for automation and integrations.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <Input
+              value={createName}
+              onChange={(event) => setCreateName(event.target.value)}
+              placeholder="e.g. CI deploy bot"
+            />
+            <div className="grid gap-2">
+              <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+                Environment scopes
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {environments.map((env) => (
+                  <label
+                    key={env.id}
+                    className="flex items-center gap-2 px-3 py-1 text-xs"
+                  >
+                    <Checkbox
+                      checked={createEnvIds.includes(env.id)}
+                      onCheckedChange={() => toggleEnvSelection(env.id)}
+                    />
+                    {env.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+            {createError ? (
+              <p className="text-sm text-rose-600">{createError}</p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-full px-4 text-sm"
+              onClick={() => setCreateDialogOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              type="button"
+              className="rounded-full px-6 text-sm font-semibold"
+              onClick={handleCreateAccount}
+              disabled={
+                creating || !createName.trim() || createEnvIds.length === 0
+              }
+            >
+              {creating ? 'Creating...' : 'Create service account'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
+  )
+}

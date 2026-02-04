@@ -7,11 +7,13 @@ export interface AuthUser {
 }
 
 export interface AuthContext {
-  user: AuthUser;
+  user?: AuthUser;
   viaToken: boolean;
   projectId?: string;
   role?: Role | null;
   readOnly?: boolean;
+  serviceAccountId?: string;
+  scopeEnvironmentIds?: string[];
 }
 
 declare module 'fastify' {

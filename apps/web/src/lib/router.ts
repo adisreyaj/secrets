@@ -14,6 +14,7 @@ export type RouteMatch =
   | { name: 'approval-rules'; projectId: string }
   | { name: 'team'; projectId: string }
   | { name: 'tokens'; projectId: string }
+  | { name: 'service-accounts'; projectId: string }
 
 const normalize = (value: string) => value.replace(/^#/, '').trim()
 
@@ -69,6 +70,9 @@ const parseRoute = (hash: string): RouteMatch => {
       }
       if (segments[2] === 'tokens') {
         return { name: 'tokens', projectId }
+      }
+      if (segments[2] === 'service-accounts') {
+        return { name: 'service-accounts', projectId }
       }
       return { name: 'project', projectId }
     }

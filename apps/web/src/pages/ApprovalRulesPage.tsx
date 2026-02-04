@@ -1,11 +1,31 @@
+import type {
+  ApprovalAction,
+  ApprovalRuleDto,
+  EnvironmentDto,
+  ProjectDto,
+} from '@secrets/shared'
+import { ArrowLeft, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { ApprovalAction, ApprovalRuleDto, EnvironmentDto, ProjectDto } from '@secrets/shared'
-import { ArrowLeft } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
+import { SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select'
 import { api, ApiError } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { useRegisterShortcut } from '../lib/shortcuts'
@@ -31,7 +51,11 @@ export const ApprovalRulesPage = ({
   const [ruleName, setRuleName] = useState('')
   const [ruleEnvironmentId, setRuleEnvironmentId] = useState<string>('all')
   const [rulePattern, setRulePattern] = useState('*')
-  const [ruleActions, setRuleActions] = useState<ApprovalAction[]>(['CREATE', 'UPDATE'])
+  const [ruleActions, setRuleActions] = useState<ApprovalAction[]>([
+    'CREATE',
+    'UPDATE',
+  ])
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -95,7 +119,9 @@ export const ApprovalRulesPage = ({
 
   const toggleAction = (action: ApprovalAction) => {
     setRuleActions((prev) =>
-      prev.includes(action) ? prev.filter((item) => item !== action) : [...prev, action],
+      prev.includes(action)
+        ? prev.filter((item) => item !== action)
+        : [...prev, action],
     )
   }
 
@@ -129,6 +155,7 @@ export const ApprovalRulesPage = ({
   }
 
   useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
+  useRegisterShortcut('n', () => setCreateDialogOpen(true))
 
   return (
     <section className="flex flex-col gap-6">
@@ -138,7 +165,7 @@ export const ApprovalRulesPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
+            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
             onClick={() => navigate(`/projects/${projectId}`)}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -154,110 +181,46 @@ export const ApprovalRulesPage = ({
         </div>
       )}
 
-      <section className="rounded-3xl border border-border/60 bg-card/70 p-6 shadow-soft">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-foreground">Create rule</p>
-            <p className="text-xs text-muted-foreground">
-              Require approval for sensitive keys and actions.
-            </p>
-          </div>
-          <Button variant="outline" className="rounded-full" onClick={() => loadRules()}>
-            Refresh
-          </Button>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground" htmlFor="rule-name">
-              Rule name
-            </label>
-            <Input
-              id="rule-name"
-              placeholder="Rule name"
-              value={ruleName}
-              onChange={(event) => setRuleName(event.target.value)}
+      <section className="border-border/60 bg-card/70 shadow-soft rounded-3xl border p-6">
+        <SectionHeader
+          kicker="Rules"
+          title="Existing rules"
+          action={
+            <Button
+              variant="outline"
+              className="border-border text-foreground hover:border-foreground/40 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
+              onClick={() => setCreateDialogOpen(true)}
               disabled={!isAdmin}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground" htmlFor="rule-environment">
-              Environment
-            </label>
-            <Select value={ruleEnvironmentId} onValueChange={setRuleEnvironmentId}>
-              <SelectTrigger id="rule-environment" disabled={!isAdmin}>
-                <SelectValue placeholder="Environment" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All environments</SelectItem>
-                {environments.map((env) => (
-                  <SelectItem key={env.id} value={env.id}>
-                    {env.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground" htmlFor="rule-pattern">
-              Key pattern
-            </label>
-            <Input
-              id="rule-pattern"
-              placeholder="Key pattern (e.g. DATABASE_*)"
-              value={rulePattern}
-              onChange={(event) => setRulePattern(event.target.value)}
-              disabled={!isAdmin}
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2 text-xs">
-          {(['CREATE', 'UPDATE', 'DELETE', 'ROLLBACK', 'COPY', 'COPY_FROM'] as ApprovalAction[]).map(
-            (action) => (
-              <Button
-                key={action}
-                type="button"
-                variant={ruleActions.includes(action) ? 'default' : 'outline'}
-                className="rounded-full text-xs"
-                onClick={() => toggleAction(action)}
-                disabled={!isAdmin}
-              >
-                {action}
-              </Button>
-            ),
-          )}
-        </div>
-
-        <div className="mt-4">
-          <Button onClick={handleCreateRule} className="rounded-full" disabled={!isAdmin}>
-            Create rule
-          </Button>
-        </div>
-      </section>
-
-      <section className="rounded-3xl border border-border/60 bg-card/70 p-6 shadow-soft">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-foreground">Existing rules</p>
-        </div>
+            >
+              <Plus className="h-4 w-4" />
+              New rule
+              <ShortcutHint keys="n" />
+            </Button>
+          }
+        />
         <div className="mt-4 space-y-3">
           {rulesLoading ? (
-            <p className="text-sm text-muted-foreground">Loading rules...</p>
+            <p className="text-muted-foreground text-sm">Loading rules...</p>
           ) : rules.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No rules yet.</p>
+            <p className="text-muted-foreground text-sm">No rules yet.</p>
           ) : (
             rules.map((rule) => (
               <div
                 key={rule.id}
-                className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-border/60 bg-background/60 p-4"
+                className="border-border/60 bg-background/60 flex flex-wrap items-start justify-between gap-4 rounded-2xl border p-4"
               >
                 <div>
-                  <p className="text-sm font-semibold text-foreground">{rule.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Env: {rule.environmentId ? envById.get(rule.environmentId) ?? rule.environmentId : 'All'} · Pattern:{' '}
-                    {rule.keyPattern}
+                  <p className="text-foreground text-sm font-semibold">
+                    {rule.name}
                   </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-muted-foreground text-xs">
+                    Env:{' '}
+                    {rule.environmentId
+                      ? (envById.get(rule.environmentId) ?? rule.environmentId)
+                      : 'All'}{' '}
+                    · Pattern: {rule.keyPattern}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
                     Actions: {rule.actions.join(', ')}
                   </p>
                 </div>
@@ -284,6 +247,123 @@ export const ApprovalRulesPage = ({
           )}
         </div>
       </section>
+
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
+          <DialogHeader className="text-left">
+            <DialogTitle>Create approval rule</DialogTitle>
+            <DialogDescription>
+              Require approval for sensitive keys and actions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div className="space-y-2">
+              <label
+                className="text-muted-foreground text-xs font-semibold"
+                htmlFor="rule-name"
+              >
+                Rule name
+              </label>
+              <Input
+                id="rule-name"
+                placeholder="Rule name"
+                value={ruleName}
+                onChange={(event) => setRuleName(event.target.value)}
+                disabled={!isAdmin}
+              />
+            </div>
+            <div className="space-y-2">
+              <label
+                className="text-muted-foreground text-xs font-semibold"
+                htmlFor="rule-environment"
+              >
+                Environment
+              </label>
+              <Select
+                value={ruleEnvironmentId}
+                onValueChange={setRuleEnvironmentId}
+              >
+                <SelectTrigger id="rule-environment" disabled={!isAdmin}>
+                  <SelectValue placeholder="Environment" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All environments</SelectItem>
+                  {environments.map((env) => (
+                    <SelectItem key={env.id} value={env.id}>
+                      {env.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label
+                className="text-muted-foreground text-xs font-semibold"
+                htmlFor="rule-pattern"
+              >
+                Key pattern
+              </label>
+              <Input
+                id="rule-pattern"
+                placeholder="Key pattern (e.g. DATABASE_*)"
+                value={rulePattern}
+                onChange={(event) => setRulePattern(event.target.value)}
+                disabled={!isAdmin}
+              />
+            </div>
+          </div>
+
+          <div className="mt-2 space-y-2">
+            <p className="text-muted-foreground text-xs font-semibold">
+              Actions
+            </p>
+            <div className="flex flex-wrap gap-2 text-xs">
+              {(
+                [
+                  'CREATE',
+                  'UPDATE',
+                  'DELETE',
+                  'ROLLBACK',
+                  'COPY',
+                  'COPY_FROM',
+                ] as ApprovalAction[]
+              ).map((action) => (
+                <button
+                  key={action}
+                  type="button"
+                  onClick={() => toggleAction(action)}
+                  disabled={!isAdmin}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                    ruleActions.includes(action)
+                      ? 'border-foreground bg-foreground text-background'
+                      : 'border-border text-foreground/70 hover:border-foreground/40'
+                  } ${!isAdmin ? 'opacity-60' : ''}`}
+                >
+                  {action}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              className="rounded-full px-4 text-sm"
+              onClick={() => setCreateDialogOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              onClick={handleCreateRule}
+              className="rounded-full"
+              disabled={!isAdmin}
+            >
+              Create rule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

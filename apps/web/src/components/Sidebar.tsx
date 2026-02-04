@@ -12,7 +12,16 @@ import {
 import { Button } from './ui/button'
 
 const navItems: {
-  key: 'overview' | 'environments' | 'secrets' | 'audit' | 'approvals' | 'approval-rules' | 'tokens' | 'team'
+  key:
+    | 'overview'
+    | 'environments'
+    | 'secrets'
+    | 'audit'
+    | 'approvals'
+    | 'approval-rules'
+    | 'tokens'
+    | 'service-accounts'
+    | 'team'
   label: string
   icon: LucideIcon
   path: (id: string) => string
@@ -30,6 +39,12 @@ const navItems: {
   { key: 'approval-rules', label: 'Approval rules', icon: ShieldCheck, path: (id: string) => `/projects/${id}/approval-rules` },
   { key: 'team', label: 'Team', icon: Users, path: (id: string) => `/projects/${id}/team` },
   { key: 'tokens', label: 'API tokens', icon: KeyRound, path: (id: string) => `/projects/${id}/tokens` },
+  {
+    key: 'service-accounts',
+    label: 'Service accounts',
+    icon: KeyRound,
+    path: (id: string) => `/projects/${id}/service-accounts`,
+  },
 ]
 
 export const Sidebar = ({
@@ -44,7 +59,16 @@ export const Sidebar = ({
   environmentCount: number
   secretCount: number
   projectId: string
-  active: 'overview' | 'environments' | 'audit' | 'approvals' | 'approval-rules' | 'tokens' | 'secrets' | 'team'
+  active:
+    | 'overview'
+    | 'environments'
+    | 'audit'
+    | 'approvals'
+    | 'approval-rules'
+    | 'tokens'
+    | 'service-accounts'
+    | 'secrets'
+    | 'team'
   onNavigate: (path: string) => void
 }) => (
   <aside className="space-y-4 rounded-3xl border border-border/60 bg-card/70 p-6 shadow-soft">
