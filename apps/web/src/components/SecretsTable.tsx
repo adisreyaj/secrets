@@ -218,25 +218,28 @@ export const SecretsTable = ({
 
   return (
     <SectionCard className={className}>
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4">
         <div className="min-w-55">
           <h3 className="text-foreground text-lg font-semibold">
             Key registry
           </h3>
         </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         {typeof searchValue === 'string' && onSearchChange ? (
-          <div className="flex min-w-60 flex-1 items-center gap-3">
+          <div className="flex max-w-80 flex-1 items-center gap-3">
             <Input
               value={searchValue}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Filter by key or value..."
-              className="bg-background h-9 flex-1 rounded-2xl px-4"
+              size="xs"
+              className="flex-1"
             />
           </div>
         ) : null}
         <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
           {pendingChangesCount > 0 ? (
-            <>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
                 {pendingChangesCount} pending
               </span>
@@ -257,7 +260,7 @@ export const SecretsTable = ({
               >
                 Discard
               </Button>
-            </>
+            </div>
           ) : null}
           <AddSecretDialog onCreate={onCreate} />
           <Button
@@ -594,7 +597,7 @@ const SecretRow = memo(
                 onChange={(event) =>
                   onRowKeyChange(secret.id, event.target.value)
                 }
-                className="h-8 rounded-lg"
+                size="xxs"
                 placeholder="SECRET_KEY"
               />
               {rowError ? (
@@ -605,7 +608,7 @@ const SecretRow = memo(
             <div className="flex items-center gap-2">
               <p>{secret.key}</p>
               {isPending ? (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-700">
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-[0.2em] text-amber-700 uppercase">
                   Pending
                 </span>
               ) : null}
@@ -620,7 +623,7 @@ const SecretRow = memo(
                 onChange={(event) =>
                   onRowValueChange(secret.id, event.target.value)
                 }
-                className="h-8 rounded-lg"
+                size="xxs"
                 placeholder="New value"
               />
               <div className="flex items-center gap-1">

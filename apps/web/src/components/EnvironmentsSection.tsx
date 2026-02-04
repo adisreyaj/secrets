@@ -125,7 +125,6 @@ export const EnvironmentsSection = ({
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="e.g. staging"
-                    className="h-11 rounded-2xl bg-background px-4"
                   />
                 </label>
                 <label className="grid gap-2 text-sm">
@@ -137,7 +136,7 @@ export const EnvironmentsSection = ({
                     onValueChange={setCopyFromId}
                     disabled={environmentOptions.length === 0}
                   >
-                    <SelectTrigger className="h-11 px-4">
+                    <SelectTrigger>
                       <SelectValue placeholder="Don't copy anything" />
                     </SelectTrigger>
                     <SelectContent>

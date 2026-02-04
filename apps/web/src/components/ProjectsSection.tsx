@@ -114,7 +114,6 @@ export const ProjectsSection = ({
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="e.g. Signalflow"
-                    className="h-11 rounded-2xl bg-background px-4"
                   />
                 </label>
                 <label className="grid gap-2 text-sm">
@@ -122,7 +121,7 @@ export const ProjectsSection = ({
                     Environment template
                   </span>
                   <Select value={template} onValueChange={(value) => setTemplate(value as ProjectTemplate)}>
-                    <SelectTrigger className="h-11 px-4">
+                    <SelectTrigger>
                       <SelectValue placeholder="Select a template" />
                     </SelectTrigger>
                     <SelectContent>

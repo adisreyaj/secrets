@@ -3,7 +3,13 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { Check, ChevronDown, ChevronUp } from "lucide-react"
 
 import { cn } from "../../lib/utils"
-import { controlBaseClasses } from "./control-classes"
+import {
+  controlBaseClasses,
+  controlSizeClasses,
+  controlVariantClasses,
+  type ControlSize,
+  type ControlVariant,
+} from "./control-classes"
 
 const Select = SelectPrimitive.Root
 
@@ -11,14 +17,23 @@ const SelectGroup = SelectPrimitive.Group
 
 const SelectValue = SelectPrimitive.Value
 
+type SelectTriggerProps = React.ComponentPropsWithoutRef<
+  typeof SelectPrimitive.Trigger
+> & {
+  size?: ControlSize
+  variant?: ControlVariant
+}
+
 const SelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
+  SelectTriggerProps
+>(({ className, children, size = "md", variant = "default", ...props }, ref) => (
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
       controlBaseClasses,
+      controlSizeClasses[size],
+      controlVariantClasses[variant],
       "items-center justify-between gap-2",
       className,
     )}

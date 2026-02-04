@@ -1548,7 +1548,9 @@ export async function buildApp(): Promise<FastifyInstance> {
             data: { key: approval.key, updatedAt: new Date(), deletedAt: null },
           }),
         );
-        await tx.$transaction(updates);
+        for (const update of updates) {
+          await update;
+        }
         auditAction = 'secret.update';
       }
 
@@ -1593,20 +1595,18 @@ export async function buildApp(): Promise<FastifyInstance> {
         if (!secret || secret.versions.length === 0) {
           throw new Error('Secret not found');
         }
-        await tx.$transaction([
-          tx.secretVersion.updateMany({
-            where: { secretId: secret.id },
-            data: { isActive: false },
-          }),
-          tx.secretVersion.update({
-            where: { id: approval.expectedVersionId },
-            data: { isActive: true },
-          }),
-          tx.secret.update({
-            where: { id: secret.id },
-            data: { updatedAt: new Date(), deletedAt: null },
-          }),
-        ]);
+        await tx.secretVersion.updateMany({
+          where: { secretId: secret.id },
+          data: { isActive: false },
+        });
+        await tx.secretVersion.update({
+          where: { id: approval.expectedVersionId },
+          data: { isActive: true },
+        });
+        await tx.secret.update({
+          where: { id: secret.id },
+          data: { updatedAt: new Date(), deletedAt: null },
+        });
         auditAction = 'secret.rollback';
       }
 
@@ -1662,27 +1662,25 @@ export async function buildApp(): Promise<FastifyInstance> {
           });
           targetSecretId = created.id;
         }
-        await tx.$transaction([
-          tx.secretVersion.updateMany({
-            where: { secretId: targetSecretId },
-            data: { isActive: false },
-          }),
-          tx.secretVersion.create({
-            data: {
-              secretId: targetSecretId,
-              ciphertext: payload.ciphertext,
-              iv: payload.iv,
-              tag: payload.tag,
-              keyVersion,
-              createdBy: auth.user.id,
-              isActive: true,
-            },
-          }),
-          tx.secret.update({
-            where: { id: targetSecretId },
-            data: { updatedAt: new Date(), deletedAt: null },
-          }),
-        ]);
+        await tx.secretVersion.updateMany({
+          where: { secretId: targetSecretId },
+          data: { isActive: false },
+        });
+        await tx.secretVersion.create({
+          data: {
+            secretId: targetSecretId,
+            ciphertext: payload.ciphertext,
+            iv: payload.iv,
+            tag: payload.tag,
+            keyVersion,
+            createdBy: auth.user.id,
+            isActive: true,
+          },
+        });
+        await tx.secret.update({
+          where: { id: targetSecretId },
+          data: { updatedAt: new Date(), deletedAt: null },
+        });
         resourceId = targetSecretId;
         auditAction = 'secret.copy';
       }

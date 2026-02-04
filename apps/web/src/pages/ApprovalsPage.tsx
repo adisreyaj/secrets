@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ApprovalRequestDto, ApprovalStatus, EnvironmentDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft, Check, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
@@ -219,7 +219,7 @@ export const ApprovalsPage = ({
                         className="rounded-full"
                         onClick={() => handleApprove(approval.id)}
                       >
-                        <Check className="mr-2 h-4 w-4" />
+                        <Check className="h-4 w-4" />
                         Approve
                       </Button>
                       <Button
@@ -227,7 +227,7 @@ export const ApprovalsPage = ({
                         className="rounded-full border-rose-200 text-rose-600 hover:border-rose-300 hover:text-rose-700"
                         onClick={() => handleDeny(approval.id)}
                       >
-                        <X className="mr-2 h-4 w-4" />
+                        <X className="h-4 w-4" />
                         Deny
                       </Button>
                     </>

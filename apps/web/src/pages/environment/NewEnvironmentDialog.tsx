@@ -88,7 +88,6 @@ export const NewEnvironmentDialog = ({
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="e.g. staging"
-              className="bg-background h-11 rounded-2xl px-4"
             />
           </label>
           <label className="grid gap-2 text-sm">
@@ -100,7 +99,7 @@ export const NewEnvironmentDialog = ({
               onValueChange={setCopyFromId}
               disabled={environmentOptions.length === 0}
             >
-              <SelectTrigger className="h-11 px-4">
+              <SelectTrigger>
                 <SelectValue placeholder="Don't copy anything" />
               </SelectTrigger>
               <SelectContent>

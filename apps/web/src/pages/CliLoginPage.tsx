@@ -112,7 +112,6 @@ export const CliLoginPage = ({
               value={loginCode}
               onChange={(event) => setLoginCode(event.target.value)}
               placeholder="Paste the CLI code"
-              className="h-11 rounded-2xl px-4"
             />
           </label>
           <label className="grid gap-2 text-sm">
@@ -123,7 +122,7 @@ export const CliLoginPage = ({
               value={selectedProject}
               onValueChange={setSelectedProject}
             >
-              <SelectTrigger className="h-11 px-4">
+              <SelectTrigger>
                 <SelectValue placeholder="Select a project" />
               </SelectTrigger>
               <SelectContent>
@@ -143,7 +142,6 @@ export const CliLoginPage = ({
               value={tokenName}
               onChange={(event) => setTokenName(event.target.value)}
               placeholder="CLI login"
-              className="h-11 rounded-2xl px-4"
             />
           </label>
         </div>

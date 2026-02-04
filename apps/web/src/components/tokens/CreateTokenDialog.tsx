@@ -82,7 +82,6 @@ export const CreateTokenDialog = ({
               onChange={(event) => setName(event.target.value)}
               placeholder="e.g. CI deploy"
               autoComplete="off"
-              className="h-11 rounded-2xl bg-background px-4"
             />
           </label>
           <label className="flex items-center gap-3 text-sm text-muted-foreground">

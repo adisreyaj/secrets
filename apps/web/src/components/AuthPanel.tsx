@@ -63,7 +63,6 @@ export const AuthPanel = ({
               }
               placeholder="Full name"
               autoComplete="name"
-              className="h-11 rounded-2xl"
             />
           </label>
         ) : null}
@@ -80,7 +79,6 @@ export const AuthPanel = ({
             placeholder="Email"
             type="email"
             autoComplete="email"
-            className="h-11 rounded-2xl"
           />
         </label>
         <label className="grid gap-2 text-sm">
@@ -96,7 +94,6 @@ export const AuthPanel = ({
             placeholder="Password"
             type="password"
             autoComplete={passwordAutoComplete}
-            className="h-11 rounded-2xl"
           />
         </label>
         {error ? <p className="text-sm text-rose-600">{error}</p> : null}

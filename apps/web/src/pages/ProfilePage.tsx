@@ -105,7 +105,6 @@ export const ProfilePage = ({
                 setProfileForm((prev) => ({ ...prev, name: event.target.value }))
               }
               placeholder="Your name"
-              className="h-11 rounded-2xl bg-background px-4"
             />
             <span className="text-xs text-muted-foreground opacity-0 select-none">
               Email updates are disabled for now.
@@ -120,7 +119,7 @@ export const ProfilePage = ({
               value={user?.email ?? ''}
               disabled
               readOnly
-              className="h-11 rounded-2xl bg-muted/60 px-4 text-muted-foreground"
+              variant="muted"
             />
             <span className="text-xs text-muted-foreground">
               Email updates are disabled for now.
@@ -161,7 +160,6 @@ export const ProfilePage = ({
                 }))
               }
               placeholder="Current password"
-              className="h-11 rounded-2xl bg-background px-4"
             />
           </label>
           <label className="grid gap-2 text-sm">
@@ -178,7 +176,6 @@ export const ProfilePage = ({
                 }))
               }
               placeholder="New password"
-              className="h-11 rounded-2xl bg-background px-4"
             />
           </label>
           <div className="md:col-span-2 flex flex-wrap items-center gap-3">

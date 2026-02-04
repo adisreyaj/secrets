@@ -18,7 +18,8 @@ export const SecretsSearchBar = ({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder="Filter by key or value..."
-          className="bg-background h-10 flex-1 rounded-2xl px-4"
+          size="sm"
+          className="flex-1"
         />
       </div>
     </SectionCard>

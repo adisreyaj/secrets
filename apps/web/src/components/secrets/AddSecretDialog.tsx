@@ -183,7 +183,6 @@ export const AddSecretDialog = ({
                   }
                 }}
                 placeholder="SECRET_KEY=secret-value"
-                className="h-11 rounded-2xl px-4"
               />
               {pasteError ? (
                 <span className="text-xs text-rose-600">{pasteError}</span>
@@ -210,7 +209,6 @@ export const AddSecretDialog = ({
                 }))
               }
               placeholder="SECRET_KEY"
-              className="h-11 rounded-2xl px-4"
             />
           </label>
           <label className="grid gap-2 text-sm">
@@ -226,7 +224,6 @@ export const AddSecretDialog = ({
                 }))
               }
               placeholder="secret-value"
-              className="h-11 rounded-2xl px-4"
             />
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>Quick set:</span>

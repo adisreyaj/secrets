@@ -200,11 +200,10 @@ export const TeamPage = ({
             value={inviteEmail}
             onChange={(event) => setInviteEmail(event.target.value)}
             placeholder="teammate@company.com"
-            className="h-11 rounded-2xl px-4"
             disabled={!isAdmin}
           />
           <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as Role)}>
-            <SelectTrigger className="h-11 px-4" disabled={!isAdmin}>
+            <SelectTrigger disabled={!isAdmin}>
               <SelectValue placeholder="Role" />
             </SelectTrigger>
             <SelectContent>
