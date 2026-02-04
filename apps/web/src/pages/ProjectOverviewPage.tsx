@@ -15,6 +15,7 @@ import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
+import { environmentsPath, projectPath } from '../lib/paths'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useAsyncResource } from '../lib/useAsyncResource'
 import { useRequireAuth } from '../lib/useRequireAuth'
@@ -44,17 +45,25 @@ export const ProjectOverviewPage = ({
     [projects, projectId],
   )
   useRegisterShortcut('e', () =>
-    navigate(`/projects/${projectId}/environments`),
+    navigate(environmentsPath(projectId, selectedProject?.slug)),
   )
-  useRegisterShortcut('l', () => navigate(`/projects/${projectId}/audit`))
-  useRegisterShortcut('a', () => navigate(`/projects/${projectId}/approvals`))
+  useRegisterShortcut('l', () =>
+    navigate(projectPath(projectId, selectedProject?.slug, 'audit')),
+  )
+  useRegisterShortcut('a', () =>
+    navigate(projectPath(projectId, selectedProject?.slug, 'approvals')),
+  )
   useRegisterShortcut('r', () =>
-    navigate(`/projects/${projectId}/approval-rules`),
+    navigate(projectPath(projectId, selectedProject?.slug, 'approval-rules')),
   )
-  useRegisterShortcut('m', () => navigate(`/projects/${projectId}/team`))
-  useRegisterShortcut('t', () => navigate(`/projects/${projectId}/tokens`))
+  useRegisterShortcut('m', () =>
+    navigate(projectPath(projectId, selectedProject?.slug, 'team')),
+  )
+  useRegisterShortcut('t', () =>
+    navigate(projectPath(projectId, selectedProject?.slug, 'tokens')),
+  )
   useRegisterShortcut('s', () =>
-    navigate(`/projects/${projectId}/service-accounts`),
+    navigate(projectPath(projectId, selectedProject?.slug, 'service-accounts')),
   )
   useRegisterShortcut('b', () => navigate('/projects'))
 
@@ -84,7 +93,9 @@ export const ProjectOverviewPage = ({
         <li>
           <Button
             variant="outline"
-            onClick={() => navigate(`/projects/${projectId}/environments`)}
+            onClick={() =>
+              navigate(environmentsPath(projectId, selectedProject?.slug))
+            }
             className="border-border bg-card shadow-soft hover:border-foreground/30 h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal"
           >
             <div className="flex w-full items-start justify-between gap-3">
@@ -104,7 +115,9 @@ export const ProjectOverviewPage = ({
         <li>
           <Button
             variant="outline"
-            onClick={() => navigate(`/projects/${projectId}/audit`)}
+            onClick={() =>
+              navigate(projectPath(projectId, selectedProject?.slug, 'audit'))
+            }
             className="border-border bg-card shadow-soft hover:border-foreground/30 h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal"
           >
             <div className="flex w-full items-start justify-between gap-3">
@@ -124,7 +137,9 @@ export const ProjectOverviewPage = ({
         <li>
           <Button
             variant="outline"
-            onClick={() => navigate(`/projects/${projectId}/tokens`)}
+            onClick={() =>
+              navigate(projectPath(projectId, selectedProject?.slug, 'tokens'))
+            }
             className="border-border bg-card shadow-soft hover:border-foreground/30 h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal"
           >
             <div className="flex w-full items-start justify-between gap-3">
@@ -144,7 +159,11 @@ export const ProjectOverviewPage = ({
         <li>
           <Button
             variant="outline"
-            onClick={() => navigate(`/projects/${projectId}/service-accounts`)}
+            onClick={() =>
+              navigate(
+                projectPath(projectId, selectedProject?.slug, 'service-accounts'),
+              )
+            }
             className="border-border bg-card shadow-soft hover:border-foreground/30 h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal"
           >
             <div className="flex w-full items-start justify-between gap-3">
@@ -165,7 +184,7 @@ export const ProjectOverviewPage = ({
           <Button
             variant="outline"
             onClick={() => {
-              navigate(`/projects/${projectId}/team`)
+              navigate(projectPath(projectId, selectedProject?.slug, 'team'))
             }}
             className="border-border bg-card shadow-soft hover:border-foreground/30 h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal"
           >
@@ -186,7 +205,9 @@ export const ProjectOverviewPage = ({
         <li>
           <Button
             variant="outline"
-            onClick={() => navigate(`/projects/${projectId}/approvals`)}
+            onClick={() =>
+              navigate(projectPath(projectId, selectedProject?.slug, 'approvals'))
+            }
             className="border-border bg-card shadow-soft hover:border-foreground/30 h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal"
           >
             <div className="flex w-full items-start justify-between gap-3">
@@ -206,7 +227,11 @@ export const ProjectOverviewPage = ({
         <li>
           <Button
             variant="outline"
-            onClick={() => navigate(`/projects/${projectId}/approval-rules`)}
+            onClick={() =>
+              navigate(
+                projectPath(projectId, selectedProject?.slug, 'approval-rules'),
+              )
+            }
             className="border-border bg-card shadow-soft hover:border-foreground/30 h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal"
           >
             <div className="flex w-full items-start justify-between gap-3">

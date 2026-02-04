@@ -67,7 +67,7 @@ describe('CLI login endpoints', () => {
     expect(response.statusCode).toBe(200);
     const payload = response.json() as { code: string; loginUrl: string; expiresAt: string };
     expect(payload.code).toBeTruthy();
-    expect(payload.loginUrl).toContain('/#/cli-login?code=');
+    expect(payload.loginUrl).toContain('/cli-login?code=');
     expect(payload.loginUrl).toContain(payload.code);
     expect(new Date(payload.expiresAt).getTime()).toBeGreaterThan(Date.now());
     await app.close();

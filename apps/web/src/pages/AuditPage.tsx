@@ -29,6 +29,7 @@ import {
     SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
+import { projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useAsyncResource } from '../lib/useAsyncResource'
@@ -207,7 +208,9 @@ export const AuditPage = ({
   const actionOptions = allActions
   const resourceTypeOptions = allResourceTypes
 
-  useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
+  useRegisterShortcut('b', () =>
+    navigate(projectPath(projectId, selectedProject?.slug)),
+  )
 
   return (
     <section className="flex flex-col gap-6">
@@ -218,7 +221,9 @@ export const AuditPage = ({
           <Button
             variant="outline"
             className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
-            onClick={() => navigate(`/projects/${projectId}`)}
+            onClick={() =>
+              navigate(projectPath(projectId, selectedProject?.slug))
+            }
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview

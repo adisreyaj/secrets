@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SecretsTable } from '../components/SecretsTable'
+import { environmentPath, environmentsPath } from '../lib/paths'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 import { EnvironmentHeaderActions } from './environment/EnvironmentHeaderActions'
@@ -76,7 +77,14 @@ export const EnvironmentPage = ({
     const selectByIndex = (index: number) => {
       const target = environments[index]
       if (target) {
-        navigate(`/projects/${projectId}/environments/${target.id}`)
+        navigate(
+          environmentPath(
+            projectId,
+            selectedProject?.slug,
+            target.id,
+            target.slug,
+          ),
+        )
       }
     }
 
@@ -99,7 +107,7 @@ export const EnvironmentPage = ({
   }, [environments, navigate, projectId])
 
   useRegisterShortcut('b', () =>
-    navigate(`/projects/${projectId}/environments`),
+    navigate(environmentsPath(projectId, selectedProject?.slug)),
   )
   useRegisterShortcut('v', () => handleToggleValues(!valuesVisible))
   useRegisterShortcut('d', () => handleExportEnv())
@@ -122,7 +130,9 @@ export const EnvironmentPage = ({
             loadSecretCoverage={loadSecretCoverage}
             onExport={handleExportEnv}
             onExportCsv={handleExportCsv}
-            onBack={() => navigate(`/projects/${projectId}/environments`)}
+            onBack={() =>
+              navigate(environmentsPath(projectId, selectedProject?.slug))
+            }
           />
         }
       />
@@ -149,7 +159,14 @@ export const EnvironmentPage = ({
           envLoading={envLoading}
           environmentId={environmentId}
           onSelectEnvironment={(envId) =>
-            navigate(`/projects/${projectId}/environments/${envId}`)
+            navigate(
+              environmentPath(
+                projectId,
+                selectedProject?.slug,
+                envId,
+                environments.find((env) => env.id === envId)?.slug,
+              ),
+            )
           }
           environmentOptions={environmentOptions}
           onCreateEnvironment={handleCreateEnvironment}

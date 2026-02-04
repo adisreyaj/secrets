@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { formatDate } from '../lib/format'
+import { projectPath } from '../lib/paths'
 
 const navItems: {
   key:
@@ -25,61 +26,69 @@ const navItems: {
     | 'team'
   label: string
   icon: LucideIcon
-  path: (id: string) => string
+  path: (id: string, slug?: string | null) => string
 }[] = [
   {
     key: 'overview',
     label: 'Overview',
     icon: LayoutDashboard,
-    path: (id: string) => `/projects/${id}`,
+    path: (id: string, slug?: string | null) => projectPath(id, slug),
   },
   {
     key: 'environments',
     label: 'Environments',
     icon: Layers,
-    path: (id: string) => `/projects/${id}/environments`,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'environments'),
   },
   {
     key: 'secrets',
     label: 'Secrets',
     icon: Key,
-    path: (id: string) => `/projects/${id}/environments`,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'environments'),
   },
   {
     key: 'audit',
     label: 'Audit log',
     icon: ShieldCheck,
-    path: (id: string) => `/projects/${id}/audit`,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'audit'),
   },
   {
     key: 'approvals',
     label: 'Approvals',
     icon: ShieldCheck,
-    path: (id: string) => `/projects/${id}/approvals`,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'approvals'),
   },
   {
     key: 'approval-rules',
     label: 'Approval rules',
     icon: ShieldCheck,
-    path: (id: string) => `/projects/${id}/approval-rules`,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'approval-rules'),
   },
   {
     key: 'team',
     label: 'Team',
     icon: Users,
-    path: (id: string) => `/projects/${id}/team`,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'team'),
   },
   {
     key: 'tokens',
     label: 'API tokens',
     icon: KeyRound,
-    path: (id: string) => `/projects/${id}/tokens`,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'tokens'),
   },
   {
     key: 'service-accounts',
     label: 'Service accounts',
     icon: KeyRound,
-    path: (id: string) => `/projects/${id}/service-accounts`,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'service-accounts'),
   },
 ]
 
@@ -136,7 +145,7 @@ export const Sidebar = ({
             <li key={item.key}>
               <Button
                 variant="ghost"
-                onClick={() => onNavigate(item.path(projectId))}
+                onClick={() => onNavigate(item.path(projectId, project?.slug))}
                 className={`flex h-auto w-full items-center justify-between rounded-full px-3 py-2 text-left transition ${
                   isActive
                     ? 'bg-foreground text-background hover:bg-foreground'

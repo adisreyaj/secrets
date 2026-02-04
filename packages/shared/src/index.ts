@@ -139,6 +139,7 @@ export interface AcceptInviteRequest {
 export interface AcceptInviteResponse {
   ok: true;
   projectId: string;
+  projectSlug?: string | null;
 }
 
 export interface AuthResponse {

@@ -135,6 +135,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  getProjectBySlug: (slug: string) =>
+    apiFetch<ProjectDto>(`/projects/slug/${slug}`),
 
   listEnvironments: (projectId: string) =>
     apiFetch<EnvironmentDto[]>(`/projects/${projectId}/environments`),
@@ -143,6 +145,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  getEnvironmentBySlug: (projectId: string, slug: string) =>
+    apiFetch<EnvironmentDto>(`/projects/${projectId}/environments/slug/${slug}`),
 
   listSecrets: (environmentId: string, includeValues: boolean) =>
     apiFetch<SecretDto[]>(

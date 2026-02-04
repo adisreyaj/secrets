@@ -6,6 +6,7 @@ import {
   type ProjectTemplate,
 } from '../components/ProjectsSection'
 import { api } from '../lib/api'
+import { projectPath } from '../lib/paths'
 import { useAsyncResource } from '../lib/useAsyncResource'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
@@ -60,7 +61,10 @@ export const ProjectsPage = ({
         selectedProjectId={null}
         loading={projectsLoading}
         error={projectsError}
-        onSelect={(projectId) => navigate(`/projects/${projectId}`)}
+        onSelect={(projectId) => {
+          const project = projects.find((item) => item.id === projectId)
+          navigate(projectPath(projectId, project?.slug))
+        }}
         onCreate={handleCreate}
       />
     </section>

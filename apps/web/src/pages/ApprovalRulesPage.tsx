@@ -29,6 +29,7 @@ import {
     SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
+import { projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useAsyncResource } from '../lib/useAsyncResource'
@@ -134,7 +135,9 @@ export const ApprovalRulesPage = ({
     await loadRules()
   }
 
-  useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
+  useRegisterShortcut('b', () =>
+    navigate(projectPath(projectId, selectedProject?.slug)),
+  )
   useRegisterShortcut('n', () => setCreateDialogOpen(true))
 
   return (
@@ -146,7 +149,9 @@ export const ApprovalRulesPage = ({
           <Button
             variant="outline"
             className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
-            onClick={() => navigate(`/projects/${projectId}`)}
+            onClick={() =>
+              navigate(projectPath(projectId, selectedProject?.slug))
+            }
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview

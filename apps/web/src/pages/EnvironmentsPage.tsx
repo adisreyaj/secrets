@@ -7,6 +7,7 @@ import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
+import { environmentPath, projectPath } from '../lib/paths'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useAsyncResource } from '../lib/useAsyncResource'
 import { useRequireAuth } from '../lib/useRequireAuth'
@@ -39,7 +40,9 @@ export const EnvironmentsPage = ({
     [projects, projectId],
   )
 
-  useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
+  useRegisterShortcut('b', () =>
+    navigate(projectPath(projectId, selectedProject?.slug)),
+  )
 
   const handleCreateEnvironment = useCallback(
     async (payload: {
@@ -64,7 +67,9 @@ export const EnvironmentsPage = ({
           <Button
             variant="outline"
             className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
-            onClick={() => navigate(`/projects/${projectId}`)}
+            onClick={() =>
+              navigate(projectPath(projectId, selectedProject?.slug))
+            }
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview
@@ -85,7 +90,14 @@ export const EnvironmentsPage = ({
         missingCounts={{}}
         coverageLoading={false}
         onSelect={(envId) =>
-          navigate(`/projects/${projectId}/environments/${envId}`)
+          navigate(
+            environmentPath(
+              projectId,
+              selectedProject?.slug,
+              envId,
+              environments.find((env) => env.id === envId)?.slug,
+            ),
+          )
         }
         onCreate={handleCreateEnvironment}
       />

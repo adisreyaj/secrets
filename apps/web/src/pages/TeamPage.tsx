@@ -34,6 +34,7 @@ import {
     TooltipTrigger,
 } from '../components/ui/tooltip'
 import { api } from '../lib/api'
+import { projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
@@ -68,7 +69,13 @@ export const TeamPage = ({
   const [lastInviteLink, setLastInviteLink] = useState<string | null>(null)
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
 
-  useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
+  const selectedProject =
+    projects.find((project) => project.id === projectId) ?? null
+  const isAdmin = selectedProject?.role === 'ADMIN'
+
+  useRegisterShortcut('b', () =>
+    navigate(projectPath(projectId, selectedProject?.slug)),
+  )
   useRegisterShortcut('n', () => {
     if (isAdmin) setInviteDialogOpen(true)
   })
@@ -99,10 +106,6 @@ export const TeamPage = ({
     }
   }, [projectId])
 
-  const selectedProject =
-    projects.find((project) => project.id === projectId) ?? null
-  const isAdmin = selectedProject?.role === 'ADMIN'
-
   useEffect(() => {
     if (user) {
       void loadMembers()
@@ -123,7 +126,7 @@ export const TeamPage = ({
         email: inviteEmail.trim(),
         role: inviteRole,
       })
-      const link = `${window.location.origin}${window.location.pathname}#/invite?token=${encodeURIComponent(
+      const link = `${window.location.origin}/invite?token=${encodeURIComponent(
         data.token,
       )}`
       setLastInviteLink(link)
@@ -148,7 +151,9 @@ export const TeamPage = ({
           <Button
             variant="outline"
             className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
-            onClick={() => navigate(`/projects/${projectId}`)}
+            onClick={() =>
+              navigate(projectPath(projectId, selectedProject?.slug))
+            }
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview

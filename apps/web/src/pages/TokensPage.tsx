@@ -7,6 +7,7 @@ import { ShortcutHint } from '../components/ShortcutHint'
 import { TokensPanel } from '../components/TokensPanel'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
+import { projectPath } from '../lib/paths'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useAsyncResource } from '../lib/useAsyncResource'
 import { useRequireAuth } from '../lib/useRequireAuth'
@@ -42,7 +43,9 @@ export const TokensPage = ({
     [projects, projectId],
   )
 
-  useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
+  useRegisterShortcut('b', () =>
+    navigate(projectPath(projectId, selectedProject?.slug)),
+  )
 
   const handleCreateToken = useCallback(
     async (name: string, readOnly: boolean) => {
@@ -71,7 +74,9 @@ export const TokensPage = ({
           <Button
             variant="outline"
             className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
-            onClick={() => navigate(`/projects/${projectId}`)}
+            onClick={() =>
+              navigate(projectPath(projectId, selectedProject?.slug))
+            }
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview

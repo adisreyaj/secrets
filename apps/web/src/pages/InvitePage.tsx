@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { getErrorMessage } from '../lib/errors'
+import { projectPath } from '../lib/paths'
 
 export const InvitePage = ({
   token,
@@ -30,7 +31,7 @@ export const InvitePage = ({
       .acceptInvite({ token })
       .then((data) => {
         setStatus('accepted')
-        navigate(`/projects/${data.projectId}`)
+        navigate(projectPath(data.projectId, data.projectSlug))
       })
       .catch((err) => {
         setStatus('idle')

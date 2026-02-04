@@ -222,7 +222,7 @@ function formatDotenvValue(value: string): string {
 
 function buildCliLoginUrl(code: string): string {
   const base = config.appOrigin.replace(/\/$/, '');
-  return `${base}/#/cli-login?code=${encodeURIComponent(code)}`;
+  return `${base}/cli-login?code=${encodeURIComponent(code)}`;
 }
 
 function parseDateInput(value?: string): Date | null {
@@ -1321,7 +1321,15 @@ export async function buildApp(): Promise<FastifyInstance> {
       resourceId: invite.id,
     });
 
-    reply.send({ ok: true, projectId: invite.projectId });
+    const project = await prisma.project.findUnique({
+      where: { id: invite.projectId },
+      select: { slug: true },
+    });
+    reply.send({
+      ok: true,
+      projectId: invite.projectId,
+      projectSlug: project?.slug ?? null,
+    });
   });
 
   app.get('/projects/:id/approval-rules', async (request, reply) => {

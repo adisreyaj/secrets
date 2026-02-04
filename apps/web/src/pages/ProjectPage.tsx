@@ -29,6 +29,7 @@ import {
     SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
+import { environmentPath, projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate, formatDateTime } from '../lib/format'
 import { useAsyncResource } from '../lib/useAsyncResource'
@@ -213,7 +214,7 @@ export const ProjectPage = ({
         email: inviteEmail.trim(),
         role: inviteRole,
       })
-      const link = `${window.location.origin}${window.location.pathname}#/invite?token=${encodeURIComponent(
+      const link = `${window.location.origin}/invite?token=${encodeURIComponent(
         data.token,
       )}`
       setLastInviteLink(link)
@@ -263,7 +264,10 @@ export const ProjectPage = ({
         selectedProjectId={projectId}
         loading={projectsLoading}
         error={projectsError}
-        onSelect={(id) => navigate(`/projects/${id}`)}
+        onSelect={(id) => {
+          const project = projects.find((item) => item.id === id)
+          navigate(projectPath(id, project?.slug))
+        }}
         onCreate={handleCreateProject}
       />
 
@@ -350,7 +354,14 @@ export const ProjectPage = ({
                 className="border-border bg-card/80 hover:border-foreground/20 flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-sm transition"
                 onClick={() =>
                   navigate(
-                    `/projects/${projectId}/environments/${secret.environmentId}`,
+                    environmentPath(
+                      projectId,
+                      selectedProject?.slug,
+                      secret.environmentId,
+                      environments.find(
+                        (env) => env.id === secret.environmentId,
+                      )?.slug,
+                    ),
                   )
                 }
               >
@@ -383,7 +394,14 @@ export const ProjectPage = ({
           coverageLoading={false}
           onSelect={(environmentId) => {
             setSelectedEnvironmentId(environmentId)
-            navigate(`/projects/${projectId}/environments/${environmentId}`)
+            navigate(
+              environmentPath(
+                projectId,
+                selectedProject?.slug,
+                environmentId,
+                environments.find((env) => env.id === environmentId)?.slug,
+              ),
+            )
           }}
           onCreate={handleCreateEnvironment}
         />

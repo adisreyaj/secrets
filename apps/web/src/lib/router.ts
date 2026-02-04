@@ -16,12 +16,12 @@ export type RouteMatch =
   | { name: 'tokens'; projectId: string }
   | { name: 'service-accounts'; projectId: string }
 
-const normalize = (value: string) => value.replace(/^#/, '').trim()
+const normalize = (value: string) => value.replace(/\/+$/, '').trim()
 
-const parseRoute = (hash: string): RouteMatch => {
-  const raw = normalize(hash) || '/'
-  const [path, query] = raw.split('?')
-  const segments = path.replace(/^\//, '').split('/').filter(Boolean)
+const parseRoute = (pathWithQuery: string): RouteMatch => {
+  const [path, query] = pathWithQuery.split('?')
+  const raw = normalize(path) || '/'
+  const segments = raw.replace(/^\//, '').split('/').filter(Boolean)
   const queryParams = new URLSearchParams(query ?? '')
 
   if (segments.length === 0) {
@@ -98,25 +98,39 @@ export const getProjectId = (match: RouteMatch) =>
 export const getEnvironmentId = (match: RouteMatch) =>
   match.name === 'environment' ? match.environmentId : null
 
-export const useHashRouter = () => {
-  const [hash, setHash] = useState(() => window.location.hash || '#/')
+const readLocationPath = () =>
+  `${window.location.pathname}${window.location.search}`
+
+export const useBrowserRouter = () => {
+  const [path, setPath] = useState(() => readLocationPath())
 
   useEffect(() => {
-    const handler = () => setHash(window.location.hash || '#/')
-    window.addEventListener('hashchange', handler)
-    return () => window.removeEventListener('hashchange', handler)
+    const hash = window.location.hash
+    if (hash.startsWith('#/')) {
+      const normalized = hash.replace(/^#/, '')
+      const next = normalized.startsWith('/') ? normalized : `/${normalized}`
+      window.history.replaceState({}, '', next)
+      setPath(next)
+    }
   }, [])
 
-  const match = useMemo(() => parseRoute(hash), [hash])
+  useEffect(() => {
+    const handler = () => setPath(readLocationPath())
+    window.addEventListener('popstate', handler)
+    return () => window.removeEventListener('popstate', handler)
+  }, [])
 
-  const navigate = (path: string) => {
-    const normalized = path.startsWith('#')
-      ? path
-      : `#${path.startsWith('/') ? path : `/${path}`}`
-    if (window.location.hash !== normalized) {
-      window.location.hash = normalized
+  const match = useMemo(() => parseRoute(path), [path])
+
+  const navigate = (nextPath: string) => {
+    const normalized = nextPath.startsWith('/')
+      ? nextPath
+      : `/${nextPath}`
+    if (readLocationPath() !== normalized) {
+      window.history.pushState({}, '', normalized)
+      setPath(normalized)
     }
   }
 
-  return { match, navigate }
+  return { match, navigate, path }
 }
