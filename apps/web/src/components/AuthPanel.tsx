@@ -45,8 +45,8 @@ export const AuthPanel = ({
           SM
         </div>
         <div>
-          <p className="text-sm font-semibold">Secrets Manager</p>
-          <p className="text-muted-foreground text-xs">Single-tenant vault</p>
+          <p className="text-sm font-semibold">Secrets</p>
+          <p className="text-muted-foreground text-xs">Secure your secrets!</p>
         </div>
       </div>
       <p className="text-muted-foreground mt-6 text-center text-xs tracking-[0.3em] uppercase">
