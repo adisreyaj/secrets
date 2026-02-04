@@ -94,6 +94,7 @@ model Project {
   id          String          @id @default(cuid())
   name        String
   slug        String?         @unique
+  auditRetentionDays Int?     @default(90) @map("audit_retention_days")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
   members     ProjectMember[]

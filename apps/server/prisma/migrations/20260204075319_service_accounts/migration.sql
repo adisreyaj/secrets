@@ -1,12 +1,5 @@
 -- AlterTable
-ALTER TABLE `approval_requests` MODIFY `payload_iv` LONGBLOB NULL,
-    MODIFY `payload_tag` LONGBLOB NULL;
-
--- AlterTable
 ALTER TABLE `audit_logs` ADD COLUMN `actor_service_account_id` VARCHAR(191) NULL;
-
--- AlterTable
-ALTER TABLE `cli_login_sessions` MODIFY `token` VARCHAR(191) NULL;
 
 -- CreateTable
 CREATE TABLE `service_accounts` (

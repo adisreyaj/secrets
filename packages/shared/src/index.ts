@@ -12,6 +12,7 @@ export interface ProjectDto {
   id: string;
   name: string;
   slug?: string | null;
+  auditRetentionDays?: number | null;
   createdAt: string;
   updatedAt: string;
   role?: Role;
@@ -80,6 +81,22 @@ export interface AuditLogDto {
   resourceId?: string | null;
   metadataJson?: Record<string, unknown> | null;
   createdAt: string;
+}
+
+export interface AuditLogFilters {
+  start?: string;
+  end?: string;
+  action?: string;
+  resourceType?: string;
+  resourceId?: string;
+  actorUserId?: string;
+  actorServiceAccountId?: string;
+  limit?: number;
+}
+
+export interface AuditRetentionDto {
+  projectId: string;
+  auditRetentionDays: number | null;
 }
 
 export interface ApiTokenDto {

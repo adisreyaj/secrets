@@ -69,13 +69,21 @@ function toUserDto(user: { id: string; email: string; name: string | null }) {
 }
 
 function toProjectDto(
-  project: { id: string; name: string; slug: string | null; createdAt: Date; updatedAt: Date },
+  project: {
+    id: string;
+    name: string;
+    slug: string | null;
+    auditRetentionDays: number | null;
+    createdAt: Date;
+    updatedAt: Date;
+  },
   role?: Role,
 ) {
   return {
     id: project.id,
     name: project.name,
     slug: project.slug,
+    auditRetentionDays: project.auditRetentionDays,
     createdAt: project.createdAt.toISOString(),
     updatedAt: project.updatedAt.toISOString(),
     role,
@@ -215,6 +223,12 @@ function formatDotenvValue(value: string): string {
 function buildCliLoginUrl(code: string): string {
   const base = config.appOrigin.replace(/\/$/, '');
   return `${base}/#/cli-login?code=${encodeURIComponent(code)}`;
+}
+
+function parseDateInput(value?: string): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 async function logAudit(params: {
@@ -941,6 +955,76 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.send(memberships.map((membership) => toProjectDto(membership.project, membership.role)));
+  });
+
+  app.get('/projects/:id/audit-retention', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, auditRetentionDays: true },
+    });
+
+    if (!project) {
+      reply.code(404).send({ error: 'Project not found' });
+      return;
+    }
+
+    reply.send({ projectId: project.id, auditRetentionDays: project.auditRetentionDays });
+  });
+
+  app.put('/projects/:id/audit-retention', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const body = request.body as { auditRetentionDays?: number | null } | undefined;
+    if (!body || !('auditRetentionDays' in body)) {
+      reply.code(400).send({ error: 'auditRetentionDays is required' });
+      return;
+    }
+
+    if (body.auditRetentionDays !== null) {
+      const value = Number(body.auditRetentionDays);
+      if (!Number.isFinite(value) || value < 1) {
+        reply.code(400).send({ error: 'auditRetentionDays must be >= 1 or null' });
+        return;
+      }
+    }
+
+    const project = await prisma.project.update({
+      where: { id: projectId },
+      data: { auditRetentionDays: body.auditRetentionDays },
+      select: { id: true, auditRetentionDays: true },
+    });
+
+    await logAudit({
+      projectId,
+      actorUserId: auth.user?.id ?? null,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'project.audit_retention.update',
+      resourceType: 'project',
+      resourceId: projectId,
+      metadataJson: { auditRetentionDays: body.auditRetentionDays },
+    });
+
+    reply.send({ projectId: project.id, auditRetentionDays: project.auditRetentionDays });
   });
 
   app.get('/projects/slug/:slug', async (request, reply) => {
@@ -4017,7 +4101,20 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
-    const projectId = (request.query as { projectId?: string } | undefined)?.projectId;
+    const query = request.query as
+      | {
+          projectId?: string;
+          start?: string;
+          end?: string;
+          action?: string;
+          resourceType?: string;
+          resourceId?: string;
+          actorUserId?: string;
+          actorServiceAccountId?: string;
+          limit?: string;
+        }
+      | undefined;
+    const projectId = query?.projectId;
     if (!projectId) {
       reply.code(400).send({ error: 'projectId is required' });
       return;
@@ -4028,10 +4125,41 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
+    const startDate = parseDateInput(query?.start);
+    const endDate = parseDateInput(query?.end);
+    if ((query?.start && !startDate) || (query?.end && !endDate)) {
+      reply.code(400).send({ error: 'Invalid start or end date' });
+      return;
+    }
+
+    if (startDate && endDate && startDate > endDate) {
+      reply.code(400).send({ error: 'start must be before end' });
+      return;
+    }
+
+    const limitRaw = query?.limit ? Number(query.limit) : 200;
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
+
+    const where: Prisma.AuditLogWhereInput = {
+      projectId,
+      action: query?.action ?? undefined,
+      resourceType: query?.resourceType ?? undefined,
+      resourceId: query?.resourceId ?? undefined,
+      actorUserId: query?.actorUserId ?? undefined,
+      actorServiceAccountId: query?.actorServiceAccountId ?? undefined,
+      createdAt:
+        startDate || endDate
+          ? {
+              gte: startDate ?? undefined,
+              lte: endDate ?? undefined,
+            }
+          : undefined,
+    };
+
     const logs = await prisma.auditLog.findMany({
-      where: { projectId },
+      where,
       orderBy: { createdAt: 'desc' },
-      take: 200,
+      take: limit,
     });
 
     reply.send(
@@ -4048,6 +4176,52 @@ export async function buildApp(): Promise<FastifyInstance> {
       })),
     );
   });
+
+  let auditCleanupRunning = false;
+  const runAuditRetentionCleanup = async () => {
+    if (auditCleanupRunning) {
+      return;
+    }
+    auditCleanupRunning = true;
+    try {
+      const projects = await prisma.project.findMany({
+        where: { auditRetentionDays: { not: null } },
+        select: { id: true, auditRetentionDays: true },
+      });
+
+      const now = new Date();
+      for (const project of projects) {
+        if (project.auditRetentionDays === null) continue;
+        const cutoff = new Date(
+          now.getTime() - project.auditRetentionDays * 24 * 60 * 60 * 1000,
+        );
+        const result = await prisma.auditLog.deleteMany({
+          where: { projectId: project.id, createdAt: { lt: cutoff } },
+        });
+        if (result.count > 0) {
+          app.log.info(
+            {
+              projectId: project.id,
+              deleted: result.count,
+              cutoff: cutoff.toISOString(),
+            },
+            'audit retention cleanup',
+          );
+        }
+      }
+    } catch (error) {
+      app.log.error({ err: error }, 'audit retention cleanup failed');
+    } finally {
+      auditCleanupRunning = false;
+    }
+  };
+
+  setTimeout(() => {
+    void runAuditRetentionCleanup();
+  }, 60 * 1000);
+  setInterval(() => {
+    void runAuditRetentionCleanup();
+  }, 24 * 60 * 60 * 1000);
 
   return app;
 }
