@@ -6,31 +6,21 @@ import type {
 } from '@secrets/shared'
 import {
   Copy,
-  Eye,
-  EyeOff,
   History,
   Pencil,
   RotateCcw,
   Trash2,
   X,
 } from 'lucide-react'
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 import { formatDateTime, formatKeyPreview } from '../lib/format'
-import { AddSecretDialog } from './secrets/AddSecretDialog'
-import { MissingKeysCard } from './secrets/MissingKeysCard'
-import { MissingKeysDialog } from './secrets/MissingKeysDialog'
 import { SecretActionDialog } from './secrets/SecretActionDialog'
+import { SecretDiffDialog } from './secrets/SecretDiffDialog'
+import { MissingKeysSection } from './secrets/MissingKeysSection'
+import { SecretsTableHeader } from './secrets/SecretsTableHeader'
 import { useSecretsEditor } from './secrets/useSecretsEditor'
 import { SectionCard } from './SectionCard'
-import { ShortcutHint } from './ShortcutHint'
 import { Button } from './ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog'
 import { Input } from './ui/input'
 import {
   Table,
@@ -106,15 +96,6 @@ export const SecretsTable = ({
   const [dialogMode, setDialogMode] = useState<
     'rollback' | 'delete' | 'copy' | 'diff' | null
   >(null)
-  const [diffLoading, setDiffLoading] = useState(false)
-  const [diffError, setDiffError] = useState<string | null>(null)
-  const [diffData, setDiffData] = useState<SecretDiffResponse | null>(null)
-  const [missingDialogOpen, setMissingDialogOpen] = useState(false)
-  const [missingSourceEnvId, setMissingSourceEnvId] = useState<string | null>(
-    null,
-  )
-  const [missingCopying, setMissingCopying] = useState(false)
-  const [selectedMissingKeys, setSelectedMissingKeys] = useState<string[]>([])
 
   const openRollbackDialog = useCallback((secret: SecretDto) => {
     setActiveSecret(secret)
@@ -131,56 +112,15 @@ export const SecretsTable = ({
     setDialogMode('copy')
   }, [])
 
-  const openDiffDialog = useCallback(
-    async (secret: SecretDto) => {
-      setActiveSecret(secret)
-      setDialogMode('diff')
-      setDiffLoading(true)
-      setDiffError(null)
-      setDiffData(null)
-      try {
-        const data = await onDiff(secret.id)
-        setDiffData(data)
-      } catch (error) {
-        setDiffError(
-          error instanceof Error ? error.message : 'Unable to load diff.',
-        )
-      } finally {
-        setDiffLoading(false)
-      }
-    },
-    [onDiff],
-  )
+  const openDiffDialog = useCallback((secret: SecretDto) => {
+    setActiveSecret(secret)
+    setDialogMode('diff')
+  }, [])
 
   const closeDialog = () => {
     setDialogMode(null)
     setActiveSecret(null)
-    setDiffData(null)
-    setDiffError(null)
-    setDiffLoading(false)
   }
-
-  const closeMissingDialog = () => {
-    setMissingDialogOpen(false)
-    setMissingSourceEnvId(null)
-    setMissingCopying(false)
-    setSelectedMissingKeys([])
-  }
-
-  const missingSources = useMemo(() => {
-    return environments
-      .filter((env) => env.id !== environmentId)
-      .map((env) => {
-        const keys = missingKeysByEnvironment[env.id] ?? []
-        return { env, count: keys.length }
-      })
-      .filter((entry) => entry.count > 0)
-      .sort((a, b) => b.count - a.count)
-  }, [environmentId, environments, missingKeysByEnvironment])
-
-  const activeMissingKeys = missingSourceEnvId
-    ? (missingKeysByEnvironment[missingSourceEnvId] ?? [])
-    : []
 
   const {
     editingRows,
@@ -200,18 +140,6 @@ export const SecretsTable = ({
     onUpdateMany,
   })
 
-  const handleMissingCopy = async () => {
-    if (!missingSourceEnvId || missingCopying) return
-    if (selectedMissingKeys.length === 0) return
-    setMissingCopying(true)
-    try {
-      await onCopyMissing(missingSourceEnvId, selectedMissingKeys)
-      closeMissingDialog()
-    } finally {
-      setMissingCopying(false)
-    }
-  }
-
   const otherEnvironments = environments.filter(
     (env) => env.id !== environmentId,
   )
@@ -225,95 +153,29 @@ export const SecretsTable = ({
           </h3>
         </div>
       </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        {typeof searchValue === 'string' && onSearchChange ? (
-          <div className="flex max-w-80 flex-1 items-center gap-3">
-            <Input
-              value={searchValue}
-              onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Filter by key or value..."
-              size="xs"
-              className="flex-1"
-            />
-          </div>
-        ) : null}
-        <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs">
-          {pendingChangesCount > 0 ? (
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                {pendingChangesCount} pending
-              </span>
-              <Button
-                size="sm"
-                className="rounded-full px-4 text-xs"
-                onClick={saveChanges}
-                disabled={savingChanges}
-              >
-                {savingChanges ? 'Saving...' : 'Save changes'}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="rounded-full px-3 text-xs"
-                onClick={discardChanges}
-                disabled={savingChanges}
-              >
-                Discard
-              </Button>
-            </div>
-          ) : null}
-          <AddSecretDialog onCreate={onCreate} />
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => onToggleValues(!includeValues)}
-            className="bg-muted text-muted-foreground hover:bg-muted/80 flex h-9 items-center gap-2 rounded-full px-3 py-0 font-medium"
-          >
-            {includeValues ? (
-              <EyeOff className="h-3.5 w-3.5" />
-            ) : (
-              <Eye className="h-3.5 w-3.5" />
-            )}
-            {includeValues ? 'Hide values' : 'Show values'}
-            <ShortcutHint keys="v" />
-          </Button>
-        </div>
-      </div>
+      <SecretsTableHeader
+        searchValue={searchValue}
+        onSearchChange={onSearchChange}
+        pendingChangesCount={pendingChangesCount}
+        savingChanges={savingChanges}
+        onSaveChanges={saveChanges}
+        onDiscardChanges={discardChanges}
+        onCreate={onCreate}
+        includeValues={includeValues}
+        onToggleValues={onToggleValues}
+      />
       {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
       {topError ? (
         <p className="mt-3 text-sm text-rose-600">{topError}</p>
       ) : null}
 
-      <MissingKeysCard
-        loading={coverageLoading}
+      <MissingKeysSection
+        coverageLoading={coverageLoading}
         missingKeys={missingKeys}
-        missingSourcesCount={missingSources.length}
-        onOpenDialog={() => {
-          setMissingDialogOpen(true)
-          const first = missingSources[0]?.env.id ?? null
-          setMissingSourceEnvId(first)
-          setSelectedMissingKeys(
-            first ? (missingKeysByEnvironment[first] ?? []) : [],
-          )
-        }}
-      />
-
-      <MissingKeysDialog
-        open={missingDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) closeMissingDialog()
-        }}
-        missingSources={missingSources}
-        missingSourceEnvId={missingSourceEnvId}
-        onSelectSource={(envId) => {
-          setMissingSourceEnvId(envId)
-          setSelectedMissingKeys(missingKeysByEnvironment[envId] ?? [])
-        }}
-        activeMissingKeys={activeMissingKeys}
-        selectedMissingKeys={selectedMissingKeys}
-        setSelectedMissingKeys={setSelectedMissingKeys}
-        onConfirm={handleMissingCopy}
-        missingCopying={missingCopying}
+        missingKeysByEnvironment={missingKeysByEnvironment}
+        environments={environments}
+        environmentId={environmentId}
+        onCopyMissing={onCopyMissing}
       />
 
       <div
@@ -361,107 +223,13 @@ export const SecretsTable = ({
         onDelete={onDelete}
         onClose={closeDialog}
       />
-      <Dialog
+      <SecretDiffDialog
         open={dialogMode === 'diff'}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeDialog()
-          }
-        }}
-      >
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Secret diff</DialogTitle>
-            <DialogDescription>
-              Compare the latest value with the previous version.
-            </DialogDescription>
-          </DialogHeader>
-          {diffLoading ? (
-            <p className="text-muted-foreground text-sm">Loading diff...</p>
-          ) : diffError ? (
-            <p className="text-sm text-rose-600">{diffError}</p>
-          ) : diffData ? (
-            <DiffViewer diff={diffData} />
-          ) : null}
-        </DialogContent>
-      </Dialog>
+        secret={activeSecret}
+        onClose={closeDialog}
+        onDiff={onDiff}
+      />
     </SectionCard>
-  )
-}
-
-const DiffViewer = ({ diff }: { diff: SecretDiffResponse }) => {
-  const previousLines = diff.previous.value.split(/\r?\n/)
-  const currentLines = diff.current.value.split(/\r?\n/)
-  const max = Math.max(previousLines.length, currentLines.length)
-  const rows = Array.from({ length: max }, (_, index) => {
-    const prev = previousLines[index] ?? ''
-    const curr = currentLines[index] ?? ''
-    const status =
-      prev === curr
-        ? 'same'
-        : prev && !curr
-          ? 'removed'
-          : !prev && curr
-            ? 'added'
-            : 'changed'
-    return { prev, curr, status, index }
-  })
-
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <div className="border-border bg-muted/40 rounded-2xl border p-3">
-        <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-          Previous
-        </p>
-        <p className="text-muted-foreground mt-1 text-xs">
-          Version {diff.previous.versionId.slice(0, 6)} ·{' '}
-          {formatDateTime(diff.previous.createdAt)}
-        </p>
-        <div className="mt-3 space-y-1">
-          {rows.map((row) => (
-            <div
-              key={`prev-${row.index}`}
-              className={`text-foreground rounded-lg px-2 py-1 text-xs ${
-                row.status === 'removed' || row.status === 'changed'
-                  ? 'bg-rose-50 text-rose-700'
-                  : 'bg-background'
-              }`}
-            >
-              <span className="text-muted-foreground mr-2 inline-block w-4 text-right text-[10px]">
-                {row.index + 1}
-              </span>
-              {row.prev}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="border-border bg-muted/40 rounded-2xl border p-3">
-        <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-          Current
-        </p>
-        <p className="text-muted-foreground mt-1 text-xs">
-          Version {diff.current.versionId.slice(0, 6)} ·{' '}
-          {formatDateTime(diff.current.createdAt)}
-        </p>
-        <div className="mt-3 space-y-1">
-          {rows.map((row) => (
-            <div
-              key={`curr-${row.index}`}
-              className={`text-foreground rounded-lg px-2 py-1 text-xs ${
-                row.status === 'added' || row.status === 'changed'
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-background'
-              }`}
-            >
-              <span className="text-muted-foreground mr-2 inline-block w-4 text-right text-[10px]">
-                {row.index + 1}
-              </span>
-              {row.curr}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
   )
 }
 
