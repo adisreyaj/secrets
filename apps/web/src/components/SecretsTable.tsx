@@ -1,20 +1,16 @@
-import type { EnvironmentDto, SecretDto } from '@secrets/shared'
+import type { EnvironmentDto, SecretDiffResponse, SecretDto } from '@secrets/shared'
 import { memo, useCallback, useMemo, useState } from 'react'
-import { Copy, Eye, EyeOff, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react'
+import { Copy, Eye, EyeOff, History, Pencil, RotateCcw, Trash2, X } from 'lucide-react'
 import { formatDateTime, formatKeyPreview } from '../lib/format'
-import { useRegisterShortcut } from '../lib/shortcuts'
 import { SectionCard } from './SectionCard'
+import { AddSecretDialog } from './secrets/AddSecretDialog'
+import { MissingKeysCard } from './secrets/MissingKeysCard'
+import { MissingKeysDialog } from './secrets/MissingKeysDialog'
+import { SecretActionDialog } from './secrets/SecretActionDialog'
+import { useSecretsEditor } from './secrets/useSecretsEditor'
 import { ShortcutHint } from './ShortcutHint'
 import { Button } from './ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from './ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog'
 import { Input } from './ui/input'
 import {
   Table,
@@ -41,6 +37,7 @@ export const SecretsTable = ({
   onCreate,
   onUpdateMany,
   onRollback,
+  onDiff,
   onDelete,
   onCopy,
   onCopyMissing,
@@ -61,6 +58,7 @@ export const SecretsTable = ({
     changes: { id: string; key?: string; value?: string }[],
   ) => Promise<void>
   onRollback: (secretId: string) => Promise<void>
+  onDiff: (secretId: string) => Promise<SecretDiffResponse>
   onDelete: (secretId: string) => Promise<void>
   onCopy: (
     secretId: string,
@@ -73,131 +71,17 @@ export const SecretsTable = ({
   }>
   className?: string
 }) => {
-  const [form, setForm] = useState({ key: '', value: '' })
-  const [pasteLine, setPasteLine] = useState('')
-  const [pasteError, setPasteError] = useState<string | null>(null)
-  const [pasteHint, setPasteHint] = useState<string | null>(null)
-  const [showPasteInput, setShowPasteInput] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [activeSecret, setActiveSecret] = useState<SecretDto | null>(null)
   const [dialogMode, setDialogMode] = useState<
-    'rollback' | 'delete' | 'copy' | null
+    'rollback' | 'delete' | 'copy' | 'diff' | null
   >(null)
-  const [selectedTargets, setSelectedTargets] = useState<string[]>([])
-  const [overwriteExisting, setOverwriteExisting] = useState(false)
-  const [copying, setCopying] = useState(false)
-  const [copyResult, setCopyResult] = useState<string | null>(null)
+  const [diffLoading, setDiffLoading] = useState(false)
+  const [diffError, setDiffError] = useState<string | null>(null)
+  const [diffData, setDiffData] = useState<SecretDiffResponse | null>(null)
   const [missingDialogOpen, setMissingDialogOpen] = useState(false)
   const [missingSourceEnvId, setMissingSourceEnvId] = useState<string | null>(null)
   const [missingCopying, setMissingCopying] = useState(false)
   const [selectedMissingKeys, setSelectedMissingKeys] = useState<string[]>([])
-  const [editingRows, setEditingRows] = useState<
-    Record<
-      string,
-      { key: string; value: string; dirtyKey: boolean; dirtyValue: boolean }
-    >
-  >({})
-  const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
-  const [savingChanges, setSavingChanges] = useState(false)
-  const [topError, setTopError] = useState<string | null>(null)
-
-  useRegisterShortcut('n', () => setAddDialogOpen(true))
-
-  const secretById = useMemo(
-    () => new Map(secrets.map((secret) => [secret.id, secret])),
-    [secrets],
-  )
-
-  const startEditingRow = useCallback(
-    (secret: SecretDto) => {
-      setEditingRows((prev) => {
-        if (prev[secret.id]) {
-          return prev
-        }
-        return {
-          ...prev,
-          [secret.id]: {
-            key: secret.key,
-            value: includeValues ? secret.value ?? '' : '',
-            dirtyKey: false,
-            dirtyValue: false,
-          },
-        }
-      })
-      setRowErrors((prev) => {
-        if (!prev[secret.id]) return prev
-        const next = { ...prev }
-        delete next[secret.id]
-        return next
-      })
-      setTopError(null)
-    },
-    [includeValues],
-  )
-
-  const cancelEditingRow = useCallback((secretId: string) => {
-    setEditingRows((prev) => {
-      if (!prev[secretId]) return prev
-      const next = { ...prev }
-      delete next[secretId]
-      return next
-    })
-    setRowErrors((prev) => {
-      if (!prev[secretId]) return prev
-      const next = { ...prev }
-      delete next[secretId]
-      return next
-    })
-    setTopError(null)
-  }, [])
-
-  const handleRowKeyChange = useCallback(
-    (secretId: string, value: string) => {
-      const original = secretById.get(secretId)?.key ?? ''
-      setEditingRows((prev) => {
-        const current = prev[secretId]
-        if (!current) return prev
-        const dirtyKey = value.trim() !== original
-        return {
-          ...prev,
-          [secretId]: { ...current, key: value, dirtyKey },
-        }
-      })
-      setRowErrors((prev) => {
-        if (!prev[secretId]) return prev
-        const next = { ...prev }
-        delete next[secretId]
-        return next
-      })
-      setTopError(null)
-    },
-    [secretById],
-  )
-
-  const handleRowValueChange = useCallback(
-    (secretId: string, value: string) => {
-      const original = secretById.get(secretId)?.value ?? ''
-      const trimmed = value.trim()
-      const dirtyValue = trimmed.length > 0 && trimmed !== original
-      setEditingRows((prev) => {
-        const current = prev[secretId]
-        if (!current) return prev
-        return {
-          ...prev,
-          [secretId]: { ...current, value, dirtyValue },
-        }
-      })
-      setRowErrors((prev) => {
-        if (!prev[secretId]) return prev
-        const next = { ...prev }
-        delete next[secretId]
-        return next
-      })
-      setTopError(null)
-    },
-    [secretById],
-  )
 
   const openRollbackDialog = useCallback((secret: SecretDto) => {
     setActiveSecret(secret)
@@ -213,84 +97,37 @@ export const SecretsTable = ({
     (secret: SecretDto) => {
       setActiveSecret(secret)
       setDialogMode('copy')
-      setCopyResult(null)
-      setOverwriteExisting(false)
-      setSelectedTargets(
-        environments.filter((env) => env.id !== environmentId).map((env) => env.id),
-      )
     },
-    [environments, environmentId],
+    [],
   )
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (!form.key.trim() || !form.value.trim() || creating) return
-    setCreating(true)
-    try {
-      await onCreate({ key: form.key.trim(), value: form.value.trim() })
-      setForm({ key: '', value: '' })
-      setPasteLine('')
-      setPasteError(null)
-      setPasteHint(null)
-      setShowPasteInput(false)
-      setAddDialogOpen(false)
-    } finally {
-      setCreating(false)
-    }
-  }
-
-  const parsePasteLine = (raw: string) => {
-    const trimmed = raw.trim()
-    if (!trimmed) {
-      return { key: '', value: '', error: null }
-    }
-
-    const lines = trimmed.split(/\r?\n/).filter((line) => line.trim().length > 0)
-    if (lines.length === 0) {
-      return { key: '', value: '', error: null }
-    }
-
-    let line = lines[0].trim()
-    const hint = lines.length > 1 ? 'Only the first line was used.' : null
-
-    if (line.startsWith('export ')) {
-      line = line.slice('export '.length).trim()
-    }
-
-    const equalsIndex = line.indexOf('=')
-    if (equalsIndex === -1) {
-      return { key: '', value: '', error: 'Use the format KEY=VALUE.' }
-    }
-
-    const key = line.slice(0, equalsIndex).trim()
-    let value = line.slice(equalsIndex + 1).trim()
-    if (!key || !value) {
-      return { key: '', value: '', error: 'Both key and value are required.' }
-    }
-
-    const firstChar = value[0]
-    const lastChar = value[value.length - 1]
-    if (
-      (firstChar === '"' && lastChar === '"') ||
-      (firstChar === "'" && lastChar === "'")
-    ) {
-      value = value.slice(1, -1)
-    }
-
-    if (!value.trim()) {
-      return { key: '', value: '', error: 'Both key and value are required.' }
-    }
-
-    return { key, value, error: null, hint }
-  }
+  const openDiffDialog = useCallback(
+    async (secret: SecretDto) => {
+      setActiveSecret(secret)
+      setDialogMode('diff')
+      setDiffLoading(true)
+      setDiffError(null)
+      setDiffData(null)
+      try {
+        const data = await onDiff(secret.id)
+        setDiffData(data)
+      } catch (error) {
+        setDiffError(
+          error instanceof Error ? error.message : 'Unable to load diff.',
+        )
+      } finally {
+        setDiffLoading(false)
+      }
+    },
+    [onDiff],
+  )
 
   const closeDialog = () => {
     setDialogMode(null)
     setActiveSecret(null)
-    setSelectedTargets([])
-    setOverwriteExisting(false)
-    setCopying(false)
-    setCopyResult(null)
+    setDiffData(null)
+    setDiffError(null)
+    setDiffLoading(false)
   }
 
   const closeMissingDialog = () => {
@@ -315,88 +152,23 @@ export const SecretsTable = ({
     ? missingKeysByEnvironment[missingSourceEnvId] ?? []
     : []
 
-  const selectedKeyCount = selectedMissingKeys.length
-  const totalKeyCount = activeMissingKeys.length
-  const missingSelectionLabel =
-    selectedKeyCount === 0 ? '' : `Selected ${selectedKeyCount} of ${totalKeyCount}`
-  const pendingChanges = useMemo(
-    () =>
-      Object.entries(editingRows).filter(
-        ([, row]) => row.dirtyKey || row.dirtyValue,
-      ),
-    [editingRows],
-  )
-  const pendingChangesCount = pendingChanges.length
-
-  const discardChanges = () => {
-    setEditingRows({})
-    setRowErrors({})
-    setTopError(null)
-  }
-
-  const saveChanges = async () => {
-    if (savingChanges || pendingChangesCount === 0) return
-    const nextErrors: Record<string, string> = {}
-    const keyToIds = new Map<string, string[]>()
-    for (const secret of secrets) {
-      const edit = editingRows[secret.id]
-      const nextKey = edit ? edit.key.trim() : secret.key
-      if (edit?.dirtyKey && !nextKey) {
-        nextErrors[secret.id] = 'Key is required.'
-      }
-      if (nextKey) {
-        const list = keyToIds.get(nextKey) ?? []
-        list.push(secret.id)
-        keyToIds.set(nextKey, list)
-      }
-    }
-
-    for (const [key, ids] of keyToIds.entries()) {
-      if (ids.length < 2) continue
-      for (const id of ids) {
-        if (editingRows[id]) {
-          nextErrors[id] = `Key "${key}" is already used.`
-        }
-      }
-    }
-
-    for (const [id, row] of Object.entries(editingRows)) {
-      if (row.dirtyValue && !row.value.trim()) {
-        nextErrors[id] = 'Value is required.'
-      }
-    }
-
-    if (Object.keys(nextErrors).length > 0) {
-      setRowErrors(nextErrors)
-      setTopError('Fix the highlighted fields before saving.')
-      return
-    }
-
-    const changes = pendingChanges
-      .map(([id, row]) => {
-        const payload: { id: string; key?: string; value?: string } = { id }
-        if (row.dirtyKey) {
-          payload.key = row.key.trim()
-        }
-        if (row.dirtyValue) {
-          payload.value = row.value.trim()
-        }
-        return payload
-      })
-      .filter((change) => change.key !== undefined || change.value !== undefined)
-
-    if (changes.length === 0) return
-    setSavingChanges(true)
-    setTopError(null)
-    try {
-      await onUpdateMany(changes)
-      discardChanges()
-    } catch (error) {
-      setTopError(error instanceof Error ? error.message : 'Failed to save changes.')
-    } finally {
-      setSavingChanges(false)
-    }
-  }
+  const {
+    editingRows,
+    rowErrors,
+    savingChanges,
+    topError,
+    pendingChangesCount,
+    startEditingRow,
+    cancelEditingRow,
+    handleRowKeyChange,
+    handleRowValueChange,
+    discardChanges,
+    saveChanges,
+  } = useSecretsEditor({
+    secrets,
+    includeValues,
+    onUpdateMany,
+  })
 
   const handleMissingCopy = async () => {
     if (!missingSourceEnvId || missingCopying) return
@@ -410,40 +182,6 @@ export const SecretsTable = ({
     }
   }
 
-  const handleConfirm = async () => {
-    if (!activeSecret || !dialogMode) return
-    if (dialogMode === 'rollback') {
-      await onRollback(activeSecret.id)
-    }
-    if (dialogMode === 'delete') {
-      await onDelete(activeSecret.id)
-    }
-    if (dialogMode === 'copy') {
-      if (selectedTargets.length === 0 || copying) return
-      setCopying(true)
-      try {
-        const result = await onCopy(activeSecret.id, {
-          targetEnvironmentIds: selectedTargets,
-          overwrite: overwriteExisting,
-        })
-        const createdCount = result.created.length
-        const updatedCount = result.updated.length
-        const skippedCount = result.skipped.length
-        setCopyResult(
-          `Copied to ${createdCount + updatedCount} environment${
-            createdCount + updatedCount === 1 ? '' : 's'
-          }.${skippedCount ? ` Skipped ${skippedCount}.` : ''}`,
-        )
-      } finally {
-        setCopying(false)
-      }
-      return
-    }
-    closeDialog()
-  }
-
-  const missingPreview = missingKeys.slice(0, 6)
-  const missingOverflow = missingKeys.length - missingPreview.length
   const otherEnvironments = environments.filter((env) => env.id !== environmentId)
 
   return (
@@ -480,148 +218,7 @@ export const SecretsTable = ({
               </Button>
             </>
           ) : null}
-          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-2 rounded-full text-xs"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add secret
-                <ShortcutHint keys="n" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="rounded-3xl border-white/70 bg-white/95">
-              <DialogHeader className="text-left">
-                <DialogTitle>Add secret</DialogTitle>
-                <DialogDescription>
-                  Create a new secret key/value pair for this environment.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="grid gap-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Secret details
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 rounded-full px-3 text-xs"
-                    onClick={() => {
-                      setShowPasteInput((prev) => !prev)
-                      if (showPasteInput) {
-                        setPasteLine('')
-                        setPasteError(null)
-                        setPasteHint(null)
-                      }
-                    }}
-                  >
-                    {showPasteInput ? (
-                      <>
-                        <X className="mr-1 h-3.5 w-3.5" />
-                        Hide paste
-                      </>
-                    ) : (
-                      'Paste .env line'
-                    )}
-                  </Button>
-                </div>
-
-                {showPasteInput ? (
-                  <label className="grid gap-2 text-sm">
-                    <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                      Paste key=value
-                    </span>
-                    <Input
-                      value={pasteLine}
-                      onChange={(event) => {
-                        const next = event.target.value
-                        setPasteLine(next)
-                        if (!next.trim()) {
-                          setPasteError(null)
-                          setPasteHint(null)
-                          return
-                        }
-                        const parsed = parsePasteLine(next)
-                        setPasteError(parsed.error ?? null)
-                        setPasteHint(parsed.hint ?? null)
-                        if (!parsed.error && parsed.key && parsed.value) {
-                          setForm({ key: parsed.key, value: parsed.value })
-                        }
-                      }}
-                      placeholder="SECRET_KEY=secret-value"
-                      className="h-11 rounded-2xl bg-white px-4"
-                    />
-                    {pasteError ? (
-                      <span className="text-xs text-rose-600">{pasteError}</span>
-                    ) : null}
-                    {!pasteError && pasteHint ? (
-                      <span className="text-xs text-muted-foreground">
-                        {pasteHint}
-                      </span>
-                    ) : null}
-                    <span className="text-xs text-muted-foreground">
-                      We’ll split this into key and value automatically.
-                    </span>
-                  </label>
-                ) : null}
-
-                <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Secret key
-                  </span>
-                  <Input
-                    value={form.key}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        key: event.target.value,
-                      }))
-                    }
-                    placeholder="SECRET_KEY"
-                    className="h-11 rounded-2xl bg-white px-4"
-                  />
-                </label>
-                <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Secret value
-                  </span>
-                  <Input
-                    value={form.value}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        value: event.target.value,
-                      }))
-                    }
-                    placeholder="secret-value"
-                    className="h-11 rounded-2xl bg-white px-4"
-                  />
-                </label>
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="rounded-full px-4 text-sm"
-                    onClick={() => setAddDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="rounded-full bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
-                    disabled={
-                      creating || !form.key.trim() || !form.value.trim()
-                    }
-                  >
-                    {creating ? 'Saving...' : 'Add secret'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <AddSecretDialog onCreate={onCreate} />
           <Button
             variant="secondary"
             size="sm"
@@ -637,191 +234,35 @@ export const SecretsTable = ({
       {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
       {topError ? <p className="mt-3 text-sm text-rose-600">{topError}</p> : null}
 
-      <div className="mt-4 rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm">
-        {coverageLoading ? (
-          <p className="text-muted-foreground">Checking coverage across environments…</p>
-        ) : missingKeys.length > 0 ? (
-          <div className="space-y-2 text-muted-foreground">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-semibold text-foreground">Missing in this environment</p>
-                <p className="text-xs text-muted-foreground">
-                  These keys exist in other environments but not here.
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-full text-xs"
-                onClick={() => {
-                  setMissingDialogOpen(true)
-                  const first = missingSources[0]?.env.id ?? null
-                  setMissingSourceEnvId(first)
-                  setSelectedMissingKeys(
-                    first ? missingKeysByEnvironment[first] ?? [] : [],
-                  )
-                }}
-                disabled={missingSources.length === 0}
-              >
-                Add missing keys
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs">
-              {missingPreview.map((key) => (
-                <span
-                  key={key}
-                  className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700"
-                >
-                  {key}
-                </span>
-              ))}
-              {missingOverflow > 0 ? (
-                <span className="rounded-full border border-border bg-muted px-3 py-1 text-muted-foreground">
-                  +{missingOverflow} more
-                </span>
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <p className="text-muted-foreground">All environments share the same keys.</p>
-        )}
-      </div>
+      <MissingKeysCard
+        loading={coverageLoading}
+        missingKeys={missingKeys}
+        missingSourcesCount={missingSources.length}
+        onOpenDialog={() => {
+          setMissingDialogOpen(true)
+          const first = missingSources[0]?.env.id ?? null
+          setMissingSourceEnvId(first)
+          setSelectedMissingKeys(first ? missingKeysByEnvironment[first] ?? [] : [])
+        }}
+      />
 
-      <Dialog
+      <MissingKeysDialog
         open={missingDialogOpen}
         onOpenChange={(open) => {
           if (!open) closeMissingDialog()
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add missing keys</DialogTitle>
-            <DialogDescription>
-              Choose a source environment to copy missing keys from.
-            </DialogDescription>
-          </DialogHeader>
-          {missingSources.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No missing keys to copy.</p>
-          ) : (
-            <div className="space-y-4">
-              <div className="space-y-2 rounded-2xl border border-border/70 bg-card/80 p-3">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-                    1
-                  </span>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Source environment
-                  </p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Pick the environment that has the keys you want to copy.
-                </p>
-                {missingSources.map(({ env, count }) => (
-                  <label
-                    key={env.id}
-                    className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground"
-                  >
-                    <div>
-                      <p className="font-semibold text-foreground">{env.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {count} missing key{count === 1 ? '' : 's'} available
-                      </p>
-                    </div>
-                    <input
-                      type="radio"
-                      name="missing-source"
-                      value={env.id}
-                      checked={missingSourceEnvId === env.id}
-                      onChange={() => {
-                        setMissingSourceEnvId(env.id)
-                        setSelectedMissingKeys(missingKeysByEnvironment[env.id] ?? [])
-                      }}
-                      className="h-4 w-4 border-border text-foreground"
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="rounded-2xl border border-border/70 bg-card/80 p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
-                    2
-                  </span>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Keys to add
-                  </p>
-                  {missingSelectionLabel ? (
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {missingSelectionLabel}
-                    </span>
-                  ) : null}
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  This will only add keys that are missing in this environment.
-                </p>
-                {activeMissingKeys.length > 0 ? (
-                  <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                    {activeMissingKeys.map((key) => {
-                      const selected = selectedMissingKeys.includes(key)
-                      return (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() =>
-                            setSelectedMissingKeys((prev) =>
-                              prev.includes(key)
-                                ? prev.filter((item) => item !== key)
-                                : [...prev, key],
-                            )
-                          }
-                          className={`rounded-full border px-3 py-1 text-xs transition ${
-                            selected
-                              ? 'border-amber-300 bg-amber-100 text-amber-800'
-                              : 'border-border bg-muted text-muted-foreground'
-                          }`}
-                        >
-                          {key}
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : null}
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-7 rounded-full px-3 text-xs font-semibold text-muted-foreground"
-                    onClick={() => setSelectedMissingKeys(activeMissingKeys)}
-                    disabled={activeMissingKeys.length === 0}
-                  >
-                    Select all
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-7 rounded-full px-3 text-xs font-semibold text-muted-foreground"
-                    onClick={() => setSelectedMissingKeys([])}
-                    disabled={activeMissingKeys.length === 0}
-                  >
-                    Clear
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter className="mt-6">
-            <Button variant="ghost" onClick={closeMissingDialog} className="rounded-full">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleMissingCopy}
-              disabled={!missingSourceEnvId || missingCopying || selectedMissingKeys.length === 0}
-              className="rounded-full"
-            >
-              {missingCopying ? 'Adding...' : 'Add keys'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        missingSources={missingSources}
+        missingSourceEnvId={missingSourceEnvId}
+        onSelectSource={(envId) => {
+          setMissingSourceEnvId(envId)
+          setSelectedMissingKeys(missingKeysByEnvironment[envId] ?? [])
+        }}
+        activeMissingKeys={activeMissingKeys}
+        selectedMissingKeys={selectedMissingKeys}
+        setSelectedMissingKeys={setSelectedMissingKeys}
+        onConfirm={handleMissingCopy}
+        missingCopying={missingCopying}
+      />
 
       <div
         className="group mt-5 overflow-x-auto rounded-2xl border border-border"
@@ -844,6 +285,7 @@ export const SecretsTable = ({
             canCopy={otherEnvironments.length > 0}
             onOpenDelete={openDeleteDialog}
             onOpenRollback={openRollbackDialog}
+            onOpenDiff={openDiffDialog}
             onStartEdit={startEditingRow}
             onOpenCopy={openCopyDialog}
             editingRows={editingRows}
@@ -856,147 +298,63 @@ export const SecretsTable = ({
         </Table>
       </div>
 
+      <SecretActionDialog
+        mode={dialogMode === 'diff' ? null : dialogMode}
+        secret={activeSecret}
+        environments={environments}
+        environmentId={environmentId}
+        onCopy={onCopy}
+        onRollback={onRollback}
+        onDelete={onDelete}
+        onClose={closeDialog}
+      />
       <Dialog
-        open={dialogMode !== null}
+        open={dialogMode === 'diff'}
         onOpenChange={(open) => {
-          if (!open) closeDialog()
+          if (!open) {
+            closeDialog()
+          }
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>
-              {dialogMode === 'rollback'
-                ? 'Rollback secret'
-                : dialogMode === 'copy'
-                ? 'Copy secret'
-                : 'Delete secret'}
-            </DialogTitle>
+            <DialogTitle>Secret diff</DialogTitle>
             <DialogDescription>
-              {dialogMode === 'rollback'
-                ? 'This will restore the previous version for the selected key.'
-                : dialogMode === 'copy'
-                ? 'Choose which environments should receive this key.'
-                : 'This action cannot be undone.'}
+              Compare the latest value with the previous version.
             </DialogDescription>
           </DialogHeader>
-          {dialogMode === 'copy' ? (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-dashed border-border bg-muted p-3 text-xs text-muted-foreground">
-                Copying{' '}
-                <span className="font-semibold text-foreground">
-                  {activeSecret?.key}
-                </span>
-              </div>
-              {otherEnvironments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No other environments available.
+          {diffLoading ? (
+            <p className="text-sm text-muted-foreground">Loading diff...</p>
+          ) : diffError ? (
+            <p className="text-sm text-rose-600">{diffError}</p>
+          ) : diffData ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-border bg-muted/40 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Previous
                 </p>
-              ) : (
-                <>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="h-7 rounded-full px-3 text-xs font-semibold text-muted-foreground"
-                      onClick={() =>
-                        setSelectedTargets(otherEnvironments.map((env) => env.id))
-                      }
-                    >
-                      Select all
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="h-7 rounded-full px-3 text-xs font-semibold text-muted-foreground"
-                      onClick={() => setSelectedTargets([])}
-                    >
-                      Clear
-                    </Button>
-                    <span>
-                      Selected {selectedTargets.length} of {otherEnvironments.length}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {otherEnvironments.map((env) => {
-                      const checked = selectedTargets.includes(env.id)
-                      return (
-                        <label
-                          key={env.id}
-                          className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm text-muted-foreground"
-                        >
-                          <div>
-                            <p className="font-semibold text-foreground">{env.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              ID {env.id.slice(0, 6)}
-                            </p>
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(event) => {
-                              if (event.target.checked) {
-                                setSelectedTargets((prev) => [...prev, env.id])
-                              } else {
-                                setSelectedTargets((prev) => prev.filter((id) => id !== env.id))
-                              }
-                            }}
-                            className="h-4 w-4 rounded border-border text-foreground"
-                          />
-                        </label>
-                      )
-                    })}
-                  </div>
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={overwriteExisting}
-                      onChange={(event) => setOverwriteExisting(event.target.checked)}
-                      className="h-4 w-4 rounded border-border text-foreground"
-                    />
-                    Overwrite existing values for this key
-                  </label>
-                  {copyResult ? (
-                    <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                      {copyResult}
-                    </p>
-                  ) : null}
-                </>
-              )}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Version {diffData.previous.versionId.slice(0, 6)} ·{' '}
+                  {formatDateTime(diffData.previous.createdAt)}
+                </p>
+                <pre className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-background p-3 text-xs text-foreground">
+                  {diffData.previous.value}
+                </pre>
+              </div>
+              <div className="rounded-2xl border border-border bg-muted/40 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Current
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Version {diffData.current.versionId.slice(0, 6)} ·{' '}
+                  {formatDateTime(diffData.current.createdAt)}
+                </p>
+                <pre className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-background p-3 text-xs text-foreground">
+                  {diffData.current.value}
+                </pre>
+              </div>
             </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-border bg-muted p-3 text-xs text-muted-foreground">
-              Selected key{' '}
-              <span className="font-semibold text-foreground">
-                {activeSecret?.key}
-              </span>
-            </div>
-          )}
-          <DialogFooter className="mt-6">
-            <Button variant="ghost" onClick={closeDialog} className="rounded-full">
-              Cancel
-            </Button>
-            <Button
-              variant={dialogMode === 'delete' ? 'outline' : 'default'}
-              onClick={handleConfirm}
-              disabled={
-                (dialogMode === 'copy' &&
-                  (selectedTargets.length === 0 || copying || otherEnvironments.length === 0))
-              }
-              className={
-                dialogMode === 'delete'
-                  ? 'rounded-full border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700'
-                  : 'rounded-full'
-              }
-            >
-              {dialogMode === 'rollback'
-                ? 'Confirm rollback'
-                : dialogMode === 'copy'
-                ? copying
-                  ? 'Copying...'
-                  : 'Copy secret'
-                : 'Delete secret'}
-            </Button>
-          </DialogFooter>
+          ) : null}
         </DialogContent>
       </Dialog>
     </SectionCard>
@@ -1009,6 +367,7 @@ const SecretsTableBody = memo(
     loading,
     onStartEdit,
     onOpenRollback,
+    onOpenDiff,
     onOpenDelete,
     onOpenCopy,
     canCopy,
@@ -1023,6 +382,7 @@ const SecretsTableBody = memo(
     loading: boolean
     onStartEdit: (secret: SecretDto) => void
     onOpenRollback: (secret: SecretDto) => void
+    onOpenDiff: (secret: SecretDto) => void
     onOpenDelete: (secret: SecretDto) => void
     onOpenCopy: (secret: SecretDto) => void
     canCopy: boolean
@@ -1063,6 +423,7 @@ const SecretsTableBody = memo(
               onStartEdit={onStartEdit}
               onCancelRow={onCancelRow}
               onOpenRollback={onOpenRollback}
+              onOpenDiff={onOpenDiff}
               onOpenDelete={onOpenDelete}
               onRowKeyChange={onRowKeyChange}
               onRowValueChange={onRowValueChange}
@@ -1085,6 +446,7 @@ const SecretRow = memo(
     onStartEdit,
     onCancelRow,
     onOpenRollback,
+    onOpenDiff,
     onOpenDelete,
     onRowKeyChange,
     onRowValueChange,
@@ -1098,6 +460,7 @@ const SecretRow = memo(
     onStartEdit: (secret: SecretDto) => void
     onCancelRow: (secretId: string) => void
     onOpenRollback: (secret: SecretDto) => void
+    onOpenDiff: (secret: SecretDto) => void
     onOpenDelete: (secret: SecretDto) => void
     onRowKeyChange: (secretId: string, value: string) => void
     onRowValueChange: (secretId: string, value: string) => void
@@ -1122,12 +485,34 @@ const SecretRow = memo(
         </TableHead>
         <TableCell className="py-3">
           {isEditing ? (
-            <Input
-              value={editingRow?.value ?? ''}
-              onChange={(event) => onRowValueChange(secret.id, event.target.value)}
-              className="h-8 rounded-lg"
-              placeholder="New value"
-            />
+            <div className="flex items-center gap-2">
+              <Input
+                value={editingRow?.value ?? ''}
+                onChange={(event) => onRowValueChange(secret.id, event.target.value)}
+                className="h-8 rounded-lg"
+                placeholder="New value"
+              />
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full px-2 text-xs"
+                  onClick={() => onRowValueChange(secret.id, 'true')}
+                >
+                  true
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-full px-2 text-xs"
+                  onClick={() => onRowValueChange(secret.id, 'false')}
+                >
+                  false
+                </Button>
+              </div>
+            </div>
           ) : includeValues ? (
             <span>{formatKeyPreview(secret.value)}</span>
           ) : (
@@ -1200,6 +585,21 @@ const SecretRow = memo(
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Restore previous value</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => onOpenDiff(secret)}
+                  className="h-8 w-8 rounded-full"
+                  disabled={isEditing}
+                  aria-label="View diff"
+                >
+                  <History className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>View last change</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
