@@ -1,0 +1,28 @@
+providers = ['node']
+
+[variables]
+CI = 'true'
+NIXPACKS_METADATA = 'node'
+NODE_ENV = 'production'
+NPM_CONFIG_PRODUCTION = 'false'
+
+[phases.setup]
+nixPkgs = [
+    'nodejs_24'
+]
+nixOverlays = ['https://github.com/railwayapp/nix-npm-overlay/archive/main.tar.gz']
+nixpkgsArchive = 'cf93ceb06388f5714302b702cccf2c77f6064442'
+
+[phases.install]
+dependsOn = ['setup']
+cmds = ['corepack enable pnpm', 'pnpm install']
+cacheDirectories = ['/root/.local/share/pnpm/store', 'node_modules']
+paths = ['/app/node_modules/.bin']
+
+[phases.build]
+dependsOn = ['install']
+cmds = ['pnpm run prisma:generate', 'pnpm run build:server']
+cacheDirectories = ['node_modules/.cache']
+
+[start]
+cmd = 'pnpm -C apps/server start'
