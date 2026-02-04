@@ -53,6 +53,7 @@ export const EnvironmentPage = ({
     handleRollbackSecret,
     handleDeleteSecret,
     handleDiffSecret,
+    handleListSecretVersions,
     handleCopySecret,
     handleCopyMissingSecrets,
     handleExportEnv,
@@ -164,6 +165,7 @@ export const EnvironmentPage = ({
           onUpdateMany={handleUpdateSecrets}
           onRollback={handleRollbackSecret}
           onDiff={handleDiffSecret}
+          onListVersions={handleListSecretVersions}
           onDelete={handleDeleteSecret}
           onCopy={handleCopySecret}
           onCopyMissing={handleCopyMissingSecrets}

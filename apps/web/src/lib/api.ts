@@ -23,6 +23,7 @@ import type {
   RegisterRequest,
   SecretDto,
   SecretDiffResponse,
+  SecretVersionDto,
   AcceptInviteRequest,
   AcceptInviteResponse,
   UpdateMeRequest,
@@ -207,8 +208,14 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  getSecretDiff: (secretId: string) =>
-    apiFetch<SecretDiffResponse>(`/secrets/${secretId}/diff`),
+  getSecretDiff: (secretId: string, versions?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams({ secretId })
+    if (versions?.from) params.set('from', versions.from)
+    if (versions?.to) params.set('to', versions.to)
+    return apiFetch<SecretDiffResponse>(`/secrets/diff?${params.toString()}`)
+  },
+  listSecretVersions: (secretId: string) =>
+    apiFetch<SecretVersionDto[]>(`/secrets/${secretId}/versions`),
 
   listApprovalRules: (projectId: string) =>
     apiFetch<ApprovalRuleDto[]>(`/projects/${projectId}/approval-rules`),

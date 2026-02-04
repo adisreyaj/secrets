@@ -1,4 +1,4 @@
-import type { SecretDiffResponse, SecretDto } from '@secrets/shared'
+import type { SecretDiffResponse, SecretDto, SecretVersionDto } from '@secrets/shared'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDateTime } from '../../lib/format'
 import {
@@ -8,27 +8,84 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select'
 
 export const SecretDiffDialog = ({
   open,
   secret,
   onClose,
   onDiff,
+  onListVersions,
 }: {
   open: boolean
   secret: SecretDto | null
   onClose: () => void
-  onDiff: (secretId: string) => Promise<SecretDiffResponse>
+  onDiff: (
+    secretId: string,
+    versions?: { from?: string; to?: string },
+  ) => Promise<SecretDiffResponse>
+  onListVersions: (secretId: string) => Promise<SecretVersionDto[]>
 }) => {
   const [loading, setLoading] = useState(false)
+  const [versionsLoading, setVersionsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [diffData, setDiffData] = useState<SecretDiffResponse | null>(null)
+  const [versions, setVersions] = useState<SecretVersionDto[]>([])
+  const [fromVersionId, setFromVersionId] = useState<string>('')
+  const [toVersionId, setToVersionId] = useState<string>('')
 
   useEffect(() => {
     if (!open || !secret) {
       setLoading(false)
+      setVersionsLoading(false)
       setError(null)
       setDiffData(null)
+      setVersions([])
+      setFromVersionId('')
+      setToVersionId('')
+      return
+    }
+
+    let cancelled = false
+    setVersionsLoading(true)
+    setError(null)
+    setDiffData(null)
+
+    onListVersions(secret.id)
+      .then((data) => {
+        if (cancelled) return
+        setVersions(data)
+        const latest = data[0]
+        const previous = data[1]
+        setToVersionId(latest?.id ?? '')
+        setFromVersionId(previous?.id ?? '')
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setError(
+          error instanceof Error ? error.message : 'Unable to load versions.',
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setVersionsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, onListVersions, secret])
+
+  useEffect(() => {
+    if (!open || !secret) return
+    if (!fromVersionId || !toVersionId) return
+    if (fromVersionId === toVersionId) {
+      setError('Select two different versions to compare.')
       return
     }
 
@@ -37,7 +94,7 @@ export const SecretDiffDialog = ({
     setError(null)
     setDiffData(null)
 
-    onDiff(secret.id)
+    onDiff(secret.id, { from: fromVersionId, to: toVersionId })
       .then((data) => {
         if (!cancelled) setDiffData(data)
       })
@@ -52,7 +109,18 @@ export const SecretDiffDialog = ({
     return () => {
       cancelled = true
     }
-  }, [open, onDiff, secret])
+  }, [fromVersionId, onDiff, open, secret, toVersionId])
+
+  const versionOptions = useMemo(
+    () =>
+      versions.map((version) => ({
+        id: version.id,
+        label: `${version.id.slice(0, 6)} · ${formatDateTime(version.createdAt)}${
+          version.isActive ? ' (current)' : ''
+        }`,
+      })),
+    [versions],
+  )
 
   return (
     <Dialog
@@ -65,10 +133,68 @@ export const SecretDiffDialog = ({
         <DialogHeader>
           <DialogTitle>Secret diff</DialogTitle>
           <DialogDescription>
-            Compare the latest value with the previous version.
+            Compare any two versions of this secret.
           </DialogDescription>
         </DialogHeader>
-        {loading ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2">
+            <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+              From
+            </p>
+            <Select
+              value={fromVersionId}
+              onValueChange={(value) => setFromVersionId(value)}
+              disabled={versionsLoading || versions.length < 2}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select version" />
+              </SelectTrigger>
+              <SelectContent>
+                {versionOptions.map((version) => (
+                  <SelectItem
+                    key={`from-${version.id}`}
+                    value={version.id}
+                    disabled={version.id === toVersionId}
+                  >
+                    {version.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+              To
+            </p>
+            <Select
+              value={toVersionId}
+              onValueChange={(value) => setToVersionId(value)}
+              disabled={versionsLoading || versions.length < 2}
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Select version" />
+              </SelectTrigger>
+              <SelectContent>
+                {versionOptions.map((version) => (
+                  <SelectItem
+                    key={`to-${version.id}`}
+                    value={version.id}
+                    disabled={version.id === fromVersionId}
+                  >
+                    {version.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {versionsLoading ? (
+          <p className="text-muted-foreground text-sm">Loading versions...</p>
+        ) : versions.length < 2 ? (
+          <p className="text-muted-foreground text-sm">
+            Not enough versions to compare yet.
+          </p>
+        ) : loading ? (
           <p className="text-muted-foreground text-sm">Loading diff...</p>
         ) : error ? (
           <p className="text-sm text-rose-600">{error}</p>

@@ -2865,6 +2865,142 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
   });
 
+  app.get('/secrets/:id/versions', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: secretId } = request.params as { id: string };
+    const secret = await prisma.secret.findUnique({
+      include: { environment: true },
+      where: { id: secretId },
+    });
+    if (!secret) {
+      reply.code(404).send({ error: 'Secret not found' });
+      return;
+    }
+
+    const role = await requireProjectRole(
+      request,
+      reply,
+      secret.environment.projectId,
+      Role.VIEWER,
+    );
+    if (!role) {
+      return;
+    }
+
+    const versions = await prisma.secretVersion.findMany({
+      where: { secretId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, createdAt: true, isActive: true },
+    });
+
+    reply.send(
+      versions.map((version) => ({
+        id: version.id,
+        createdAt: version.createdAt.toISOString(),
+        isActive: version.isActive,
+      })),
+    );
+  });
+
+  app.get('/secrets/diff', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { secretId, from, to } = request.query as {
+      secretId?: string;
+      from?: string;
+      to?: string;
+    };
+
+    if (!secretId) {
+      reply.code(400).send({ error: 'secretId is required' });
+      return;
+    }
+
+    const secret = await prisma.secret.findUnique({
+      include: { environment: true },
+      where: { id: secretId },
+    });
+    if (!secret) {
+      reply.code(404).send({ error: 'Secret not found' });
+      return;
+    }
+
+    const role = await requireProjectRole(
+      request,
+      reply,
+      secret.environment.projectId,
+      Role.EDITOR,
+    );
+    if (!role) {
+      return;
+    }
+
+    let versions: Array<{
+      id: string;
+      ciphertext: string;
+      iv: string;
+      tag: string;
+      createdAt: Date;
+    }> = [];
+
+    if (from && to) {
+      versions = await prisma.secretVersion.findMany({
+        where: { id: { in: [from, to] }, secretId },
+        select: { id: true, ciphertext: true, iv: true, tag: true, createdAt: true },
+      });
+      if (versions.length !== 2) {
+        reply.code(400).send({ error: 'Invalid version ids for diff' });
+        return;
+      }
+    } else {
+      versions = await prisma.secretVersion.findMany({
+        where: { secretId },
+        orderBy: { createdAt: 'desc' },
+        take: 2,
+        select: { id: true, ciphertext: true, iv: true, tag: true, createdAt: true },
+      });
+      if (versions.length < 2) {
+        reply.code(400).send({ error: 'Not enough versions to diff' });
+        return;
+      }
+    }
+
+    const [first, second] = versions;
+    const current = from && to ? versions.find((v) => v.id === to)! : first;
+    const previous = from && to ? versions.find((v) => v.id === from)! : second;
+
+    const currentValue = decryptSecret(
+      { ciphertext: current.ciphertext, iv: current.iv, tag: current.tag },
+      masterKey,
+    );
+    const previousValue = decryptSecret(
+      { ciphertext: previous.ciphertext, iv: previous.iv, tag: previous.tag },
+      masterKey,
+    );
+
+    reply.send({
+      secretId,
+      key: secret.key,
+      current: {
+        versionId: current.id,
+        value: currentValue,
+        createdAt: current.createdAt.toISOString(),
+      },
+      previous: {
+        versionId: previous.id,
+        value: previousValue,
+        createdAt: previous.createdAt.toISOString(),
+      },
+    });
+  });
+
   app.delete('/secrets/:id', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {

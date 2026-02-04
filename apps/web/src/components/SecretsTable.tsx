@@ -3,6 +3,7 @@ import type {
   EnvironmentDto,
   SecretDiffResponse,
   SecretDto,
+  SecretVersionDto,
 } from '@secrets/shared'
 import {
   Copy,
@@ -49,6 +50,7 @@ export const SecretsTable = ({
   onUpdateMany,
   onRollback,
   onDiff,
+  onListVersions,
   onDelete,
   onCopy,
   onCopyMissing,
@@ -72,7 +74,11 @@ export const SecretsTable = ({
     changes: { id: string; key?: string; value?: string }[],
   ) => Promise<void>
   onRollback: (secretId: string) => Promise<void>
-  onDiff: (secretId: string) => Promise<SecretDiffResponse>
+  onDiff: (
+    secretId: string,
+    versions?: { from?: string; to?: string },
+  ) => Promise<SecretDiffResponse>
+  onListVersions: (secretId: string) => Promise<SecretVersionDto[]>
   onDelete: (secretId: string) => Promise<void>
   onCopy: (
     secretId: string,
@@ -228,6 +234,7 @@ export const SecretsTable = ({
         secret={activeSecret}
         onClose={closeDialog}
         onDiff={onDiff}
+        onListVersions={onListVersions}
       />
     </SectionCard>
   )

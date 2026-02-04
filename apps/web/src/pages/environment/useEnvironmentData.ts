@@ -223,8 +223,15 @@ export const useEnvironmentData = ({
     await loadSecrets(valuesLoaded)
   }
 
-  const handleDiffSecret = async (secretId: string) => {
-    return api.getSecretDiff(secretId)
+  const handleDiffSecret = async (
+    secretId: string,
+    versions?: { from?: string; to?: string },
+  ) => {
+    return api.getSecretDiff(secretId, versions)
+  }
+
+  const handleListSecretVersions = async (secretId: string) => {
+    return api.listSecretVersions(secretId)
   }
 
   const handleCopySecret = async (
@@ -391,6 +398,7 @@ export const useEnvironmentData = ({
     handleRollbackSecret,
     handleDeleteSecret,
     handleDiffSecret,
+    handleListSecretVersions,
     handleCopySecret,
     handleCopyMissingSecrets,
     handleExportEnv,

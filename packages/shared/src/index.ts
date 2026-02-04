@@ -264,6 +264,12 @@ export interface SecretDiffResponse {
   };
 }
 
+export interface SecretVersionDto {
+  id: string;
+  createdAt: string;
+  isActive: boolean;
+}
+
 export interface AddMemberRequest {
   email: string;
   role: Role;
