@@ -1,7 +1,8 @@
 import type { EnvironmentDto, SecretDto } from '@secrets/shared'
 import type { ChangeEvent, ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { api, ApiError } from '../lib/api'
+import { api } from '../lib/api'
+import { getErrorMessage } from '../lib/errors'
 import { parseDotenv, type DotenvEntry, type DotenvInvalidLine } from '../lib/parseDotenv'
 import { ImportDropzone } from './import/ImportDropzone'
 import { ImportPreviewList } from './import/ImportPreviewList'
@@ -18,9 +19,6 @@ import {
   DialogTrigger,
 } from './ui/dialog'
 import { Textarea } from './ui/textarea'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
 
 export const ImportEnvDialog = ({
   open,

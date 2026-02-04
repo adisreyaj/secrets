@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { formatShortDate } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { EmptyState } from './EmptyState'
+import { ErrorBanner } from './ErrorBanner'
 import { ShortcutHint } from './ShortcutHint'
 import { SectionCard, SectionHeader } from './SectionCard'
 import { Badge } from './ui/badge'
@@ -158,15 +160,15 @@ export const ProjectsSection = ({
           </Dialog>
         }
       />
-      {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
+      {error ? <ErrorBanner message={error} className="mt-4" /> : null}
       <ul className="mt-6 grid gap-4 md:grid-cols-3">
         {loading ? (
-          <li className="rounded-2xl border border-dashed border-border bg-card/70 p-6 text-sm text-muted-foreground">
-            Loading projects...
+          <li>
+            <EmptyState title="Loading projects..." />
           </li>
         ) : projects.length === 0 ? (
-          <li className="rounded-2xl border border-dashed border-border bg-card/70 p-6 text-sm text-muted-foreground">
-            No projects yet. Create one to get started.
+          <li>
+            <EmptyState title="No projects yet. Create one to get started." />
           </li>
         ) : (
           projects.map((project, index) => {

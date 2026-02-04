@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ErrorBanner } from './ErrorBanner'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Input } from './ui/input'
@@ -96,7 +97,7 @@ export const AuthPanel = ({
             autoComplete={passwordAutoComplete}
           />
         </label>
-        {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+        {error ? <ErrorBanner message={error} className="mt-3" /> : null}
         <Button
           type="submit"
           disabled={loading}

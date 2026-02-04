@@ -6,6 +6,8 @@ import type {
 } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { EmptyState } from '../components/EmptyState'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
@@ -31,12 +33,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '../components/ui/tooltip'
-import { api, ApiError } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { api } from '../lib/api'
+import { getErrorMessage } from '../lib/errors'
+import { formatDate } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { useAsyncResource } from '../lib/useAsyncResource'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const TeamPage = ({
   projectId,
@@ -45,9 +47,15 @@ export const TeamPage = ({
   projectId: string
   navigate: (path: string) => void
 }) => {
-  const { user, loading } = useAuth()
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
+  const { user } = useRequireAuth(navigate)
+  const {
+    data: projectsData,
+    error: projectsError,
+  } = useAsyncResource<ProjectDto[]>(
+    async () => (user ? api.listProjects() : []),
+    [user],
+  )
+  const projects = projectsData ?? []
 
   const [members, setMembers] = useState<ProjectMemberDto[]>([])
   const [membersLoading, setMembersLoading] = useState(false)
@@ -63,26 +71,10 @@ export const TeamPage = ({
   const [lastInviteLink, setLastInviteLink] = useState<string | null>(null)
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
-
   useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
   useRegisterShortcut('n', () => {
     if (isAdmin) setInviteDialogOpen(true)
   })
-
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    }
-  }, [])
 
   const loadMembers = useCallback(async () => {
     setMembersLoading(true)
@@ -116,10 +108,9 @@ export const TeamPage = ({
 
   useEffect(() => {
     if (user) {
-      void loadProjects()
       void loadMembers()
     }
-  }, [user, loadProjects, loadMembers])
+  }, [user, loadMembers])
 
   useEffect(() => {
     if (user && isAdmin) {
@@ -191,13 +182,11 @@ export const TeamPage = ({
           }
         />
         {membersError ? (
-          <p className="mt-3 text-sm text-rose-500">{membersError}</p>
+          <ErrorBanner message={membersError} className="mt-3" />
         ) : membersLoading ? (
-          <p className="text-muted-foreground mt-3 text-sm">
-            Loading members...
-          </p>
+          <EmptyState title="Loading members..." className="mt-3" />
         ) : members.length === 0 ? (
-          <p className="text-muted-foreground mt-3 text-sm">No members yet.</p>
+          <EmptyState title="No members yet." className="mt-3" />
         ) : (
           <div className="mt-4 space-y-2">
             {members.map((member) => (
@@ -231,7 +220,7 @@ export const TeamPage = ({
           </p>
         ) : null}
         {invitesError && isAdmin ? (
-          <p className="mt-3 text-sm text-rose-500">{invitesError}</p>
+          <ErrorBanner message={invitesError} className="mt-3" />
         ) : null}
 
         {lastInviteLink ? (
@@ -248,16 +237,11 @@ export const TeamPage = ({
             Pending invites
           </p>
           {invitesError && isAdmin ? (
-            <p className="mt-3 text-sm text-rose-500">{invitesError}</p>
+            <ErrorBanner message={invitesError} className="mt-3" />
           ) : invitesLoading ? (
-            <p className="text-muted-foreground mt-3 text-sm">
-              Loading invites...
-            </p>
-          ) : invites.filter((invite) => invite.status === 'PENDING').length ===
-            0 ? (
-            <p className="text-muted-foreground mt-3 text-sm">
-              No invites yet.
-            </p>
+            <EmptyState title="Loading invites..." className="mt-3" />
+          ) : invites.filter((invite) => invite.status === 'PENDING').length === 0 ? (
+            <EmptyState title="No invites yet." className="mt-3" />
           ) : (
             <div className="mt-3 space-y-2">
               {invites
@@ -273,7 +257,7 @@ export const TeamPage = ({
                       </p>
                       <p className="text-muted-foreground text-xs">
                         {invite.role} · {invite.status} · expires{' '}
-                        {new Date(invite.expiresAt).toLocaleDateString()}
+                        {formatDate(invite.expiresAt)}
                       </p>
                     </div>
                     {invite.status === 'PENDING' ? (
@@ -331,7 +315,7 @@ export const TeamPage = ({
             </Select>
           </div>
           {invitesError && isAdmin ? (
-            <p className="text-sm text-rose-500">{invitesError}</p>
+            <ErrorBanner message={invitesError} className="mt-3" />
           ) : null}
           <DialogFooter>
             <Button

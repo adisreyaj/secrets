@@ -10,6 +10,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from './ui/button'
+import { formatDate } from '../lib/format'
 
 const navItems: {
   key:
@@ -84,7 +85,7 @@ export const Sidebar = ({
           <>
             Updated{' '}
             <time dateTime={project.updatedAt}>
-              {new Date(project.updatedAt).toLocaleDateString()}
+              {formatDate(project.updatedAt)}
             </time>
           </>
         ) : (

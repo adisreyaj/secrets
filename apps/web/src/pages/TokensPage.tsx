@@ -1,16 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { ApiTokenDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { TokensPanel } from '../components/TokensPanel'
 import { Button } from '../components/ui/button'
-import { api, ApiError } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { api } from '../lib/api'
 import { useRegisterShortcut } from '../lib/shortcuts'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { useAsyncResource } from '../lib/useAsyncResource'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const TokensPage = ({
   projectId,
@@ -19,50 +18,26 @@ export const TokensPage = ({
   projectId: string
   navigate: (path: string) => void
 }) => {
-  const { user, loading } = useAuth()
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
-
-  const [tokens, setTokens] = useState<ApiTokenDto[]>([])
-  const [tokensLoading, setTokensLoading] = useState(false)
-  const [tokensError, setTokensError] = useState<string | null>(null)
+  const { user } = useRequireAuth(navigate)
+  const {
+    data: projectsData,
+    error: projectsError,
+  } = useAsyncResource<ProjectDto[]>(
+    async () => (user ? api.listProjects() : []),
+    [user],
+  )
+  const {
+    data: tokensData,
+    loading: tokensLoading,
+    error: tokensError,
+    reload: loadTokens,
+  } = useAsyncResource<ApiTokenDto[]>(
+    async () => (user ? api.listTokens(projectId) : []),
+    [projectId, user],
+  )
   const [lastToken, setLastToken] = useState<Awaited<ReturnType<typeof api.createToken>> | null>(null)
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
-
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    }
-  }, [])
-
-  const loadTokens = useCallback(async () => {
-    setTokensLoading(true)
-    setTokensError(null)
-    try {
-      const data = await api.listTokens(projectId)
-      setTokens(data)
-    } catch (error) {
-      setTokensError(getErrorMessage(error))
-    } finally {
-      setTokensLoading(false)
-    }
-  }, [projectId])
-
-  useEffect(() => {
-    if (user) {
-      void loadProjects()
-      void loadTokens()
-    }
-  }, [user, loadProjects, loadTokens])
+  const projects = projectsData ?? []
+  const tokens = tokensData ?? []
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -71,17 +46,17 @@ export const TokensPage = ({
 
   useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
 
-  const handleCreateToken = async (name: string, readOnly: boolean) => {
+  const handleCreateToken = useCallback(async (name: string, readOnly: boolean) => {
     const data = await api.createToken(projectId, { name, readOnly })
     setLastToken(data)
     await loadTokens()
     return data
-  }
+  }, [projectId, loadTokens])
 
-  const handleDeleteToken = async (tokenId: string) => {
+  const handleDeleteToken = useCallback(async (tokenId: string) => {
     await api.deleteToken(projectId, tokenId)
     await loadTokens()
-  }
+  }, [projectId, loadTokens])
 
   return (
     <section className="flex flex-col gap-6">
@@ -102,9 +77,7 @@ export const TokensPage = ({
       />
 
       {(projectsError || tokensError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || tokensError}
-        </div>
+        <ErrorBanner message={projectsError || tokensError} />
       )}
 
       <TokensPanel

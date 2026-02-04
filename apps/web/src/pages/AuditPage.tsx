@@ -4,6 +4,7 @@ import { ArrowLeft, CalendarIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { DateRange } from 'react-day-picker'
 import { AuditLog } from '../components/AuditLog'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
@@ -27,13 +28,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
-import { api, ApiError } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { api } from '../lib/api'
+import { getErrorMessage } from '../lib/errors'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { useAsyncResource } from '../lib/useAsyncResource'
+import { useRequireAuth } from '../lib/useRequireAuth'
 import { cn } from '../lib/utils'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
 
 type AuditFilterState = {
   action: string
@@ -51,9 +51,11 @@ export const AuditPage = ({
   projectId: string
   navigate: (path: string) => void
 }) => {
-  const { user, loading } = useAuth()
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
+  const { user } = useRequireAuth(navigate)
+  const { data: projectsData, error: projectsError } = useAsyncResource<
+    ProjectDto[]
+  >(async () => (user ? api.listProjects() : []), [user])
+  const projects = projectsData ?? []
 
   const [auditLogs, setAuditLogs] = useState<AuditLogDto[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
@@ -79,21 +81,6 @@ export const AuditPage = ({
   const [allActions, setAllActions] = useState<string[]>([])
   const [allResourceTypes, setAllResourceTypes] = useState<string[]>([])
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
-
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    }
-  }, [])
 
   const loadAudit = useCallback(
     async (activeFilters?: AuditLogFilters) => {
@@ -205,11 +192,10 @@ export const AuditPage = ({
 
   useEffect(() => {
     if (user) {
-      void loadProjects()
       void loadAudit(appliedFilters)
       void loadRetention()
     }
-  }, [user, loadProjects, loadAudit, loadRetention, appliedFilters])
+  }, [user, loadAudit, loadRetention, appliedFilters])
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -241,16 +227,12 @@ export const AuditPage = ({
       />
 
       {(projectsError || auditError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || auditError}
-        </div>
+        <ErrorBanner message={projectsError || auditError} />
       )}
 
       <SectionCard>
         <SectionHeader kicker="Retention" title="Retention policy" />
-        {retentionError ? (
-          <p className="mt-3 text-sm text-rose-600">{retentionError}</p>
-        ) : null}
+        {retentionError ? <ErrorBanner message={retentionError} className="mt-3" /> : null}
         <div className="mt-4 flex flex-wrap items-center gap-4">
           <div className="min-w-[220px]">
             <Select
@@ -289,9 +271,7 @@ export const AuditPage = ({
 
       <SectionCard>
         <SectionHeader kicker="Filters" title="Audit filters" />
-        {filterError ? (
-          <p className="mt-3 text-sm text-rose-600">{filterError}</p>
-        ) : null}
+        {filterError ? <ErrorBanner message={filterError} className="mt-3" /> : null}
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <div className="flex flex-col gap-2">
             <label className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">

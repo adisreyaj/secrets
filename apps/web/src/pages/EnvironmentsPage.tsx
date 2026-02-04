@@ -1,16 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
-import { api, ApiError } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { api } from '../lib/api'
 import { useRegisterShortcut } from '../lib/shortcuts'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { useAsyncResource } from '../lib/useAsyncResource'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const EnvironmentsPage = ({
   projectId,
@@ -19,49 +18,25 @@ export const EnvironmentsPage = ({
   projectId: string
   navigate: (path: string) => void
 }) => {
-  const { user, loading } = useAuth()
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
-
-  const [environments, setEnvironments] = useState<EnvironmentDto[]>([])
-  const [envLoading, setEnvLoading] = useState(false)
-  const [envError, setEnvError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
-
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    }
-  }, [])
-
-  const loadEnvironments = useCallback(async () => {
-    setEnvLoading(true)
-    setEnvError(null)
-    try {
-      const data = await api.listEnvironments(projectId)
-      setEnvironments(data)
-    } catch (error) {
-      setEnvError(getErrorMessage(error))
-    } finally {
-      setEnvLoading(false)
-    }
-  }, [projectId])
-
-  useEffect(() => {
-    if (user) {
-      void loadProjects()
-      void loadEnvironments()
-    }
-  }, [user, loadProjects, loadEnvironments])
+  const { user } = useRequireAuth(navigate)
+  const {
+    data: projectsData,
+    error: projectsError,
+  } = useAsyncResource<ProjectDto[]>(
+    async () => (user ? api.listProjects() : []),
+    [user],
+  )
+  const {
+    data: environmentsData,
+    loading: envLoading,
+    error: envError,
+    reload: loadEnvironments,
+  } = useAsyncResource<EnvironmentDto[]>(
+    async () => (user ? api.listEnvironments(projectId) : []),
+    [projectId, user],
+  )
+  const projects = projectsData ?? []
+  const environments = environmentsData ?? []
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -70,7 +45,7 @@ export const EnvironmentsPage = ({
 
   useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
 
-  const handleCreateEnvironment = async (payload: {
+  const handleCreateEnvironment = useCallback(async (payload: {
     name: string
     copyFromEnvironmentId?: string | null
   }) => {
@@ -79,7 +54,7 @@ export const EnvironmentsPage = ({
       copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
     })
     await loadEnvironments()
-  }
+  }, [projectId, loadEnvironments])
 
   return (
     <section className="flex flex-col gap-6">
@@ -100,9 +75,7 @@ export const EnvironmentsPage = ({
       />
 
       {(projectsError || envError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || envError}
-        </div>
+        <ErrorBanner message={projectsError || envError} />
       )}
 
       <EnvironmentsSection

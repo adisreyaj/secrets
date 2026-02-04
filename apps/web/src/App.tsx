@@ -3,7 +3,7 @@ import { Header } from './components/Header'
 import { ShortcutsHelpDialog } from './components/ShortcutsHelpDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useAuth } from './lib/auth'
-import { useHashRouter } from './lib/router'
+import { getEnvironmentId, getProjectId, useHashRouter } from './lib/router'
 import {
   ShortcutsProvider,
   ShortcutHintsProvider,
@@ -36,55 +36,22 @@ const AppShell = () => {
     !!user && match.name !== 'login' && match.name !== 'cli-login' && match.name !== 'invite'
 
   useEffect(() => {
-    if (match.name === 'project') {
-      setLastProjectId(match.projectId)
+    const projectId = getProjectId(match)
+    if (projectId) {
+      setLastProjectId(projectId)
     }
-    if (match.name === 'environments') {
-      setLastProjectId(match.projectId)
-    }
-    if (match.name === 'environment') {
-      setLastProjectId(match.projectId)
-      setLastEnvironmentId(match.projectId, match.environmentId)
-    }
-    if (match.name === 'audit') {
-      setLastProjectId(match.projectId)
-    }
-    if (match.name === 'approvals') {
-      setLastProjectId(match.projectId)
-    }
-    if (match.name === 'approval-rules') {
-      setLastProjectId(match.projectId)
-    }
-    if (match.name === 'team') {
-      setLastProjectId(match.projectId)
-    }
-    if (match.name === 'tokens') {
-      setLastProjectId(match.projectId)
-    }
-    if (match.name === 'service-accounts') {
-      setLastProjectId(match.projectId)
+    const environmentId = getEnvironmentId(match)
+    if (projectId && environmentId) {
+      setLastEnvironmentId(projectId, environmentId)
     }
   }, [match])
 
   const resolveProjectId = () =>
-    match.name === 'project' ||
-    match.name === 'environments' ||
-    match.name === 'environment' ||
-    match.name === 'audit' ||
-    match.name === 'approvals' ||
-    match.name === 'approval-rules' ||
-    match.name === 'team' ||
-    match.name === 'tokens' ||
-    match.name === 'service-accounts'
-      ? match.projectId
-      : getLastProjectId()
+    getProjectId(match) ?? getLastProjectId()
 
   const resolveEnvironmentId = (projectId: string | null) => {
     if (!projectId) return null
-    if (match.name === 'environment') {
-      return match.environmentId
-    }
-    return getLastEnvironmentId(projectId)
+    return getEnvironmentId(match) ?? getLastEnvironmentId(projectId)
   }
 
   useRegisterShortcut('?', () => setShortcutsOpen(true), {

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SecretsTable } from '../components/SecretsTable'
-import { useAuth } from '../lib/auth'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { useRequireAuth } from '../lib/useRequireAuth'
 import { EnvironmentHeaderActions } from './environment/EnvironmentHeaderActions'
 import { EnvironmentTabsCard } from './environment/EnvironmentTabsCard'
 import { useEnvironmentData } from './environment/useEnvironmentData'
@@ -16,15 +17,9 @@ export const EnvironmentPage = ({
   environmentId: string
   navigate: (path: string) => void
 }) => {
-  const { user, loading } = useAuth()
+  const { user } = useRequireAuth(navigate)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
 
   const {
     projectsError,
@@ -132,9 +127,9 @@ export const EnvironmentPage = ({
       />
 
       {(projectsError || envError || secretsError || coverageError || approvalsError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || envError || secretsError || coverageError || approvalsError}
-        </div>
+        <ErrorBanner
+          message={projectsError || envError || secretsError || coverageError || approvalsError}
+        />
       )}
 
       <section className="flex flex-col gap-0">

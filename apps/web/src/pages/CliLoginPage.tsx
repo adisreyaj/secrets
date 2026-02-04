@@ -1,6 +1,7 @@
 import type { ProjectDto } from '@secrets/shared'
 import { useEffect, useState } from 'react'
 import { AuthPanel } from '../components/AuthPanel'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard } from '../components/SectionCard'
 import { Button } from '../components/ui/button'
@@ -12,11 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
-import { api, ApiError } from '../lib/api'
+import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { getErrorMessage } from '../lib/errors'
 
 export const CliLoginPage = ({
   code,
@@ -97,9 +96,7 @@ export const CliLoginPage = ({
       />
 
       {(projectsError || issueError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || issueError}
-        </div>
+        <ErrorBanner message={projectsError || issueError} />
       )}
 
       <SectionCard>

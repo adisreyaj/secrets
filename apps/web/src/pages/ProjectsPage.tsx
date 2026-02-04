@@ -1,49 +1,29 @@
 import type { ProjectDto } from '@secrets/shared'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
 import { PageHeader } from '../components/PageHeader'
 import { ProjectsSection, type ProjectTemplate } from '../components/ProjectsSection'
-import { api, ApiError } from '../lib/api'
-import { useAuth } from '../lib/auth'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { api } from '../lib/api'
+import { useAsyncResource } from '../lib/useAsyncResource'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ProjectsPage = ({
   navigate,
 }: {
   navigate: (path: string) => void
 }) => {
-  const { user, loading } = useAuth()
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsLoading, setProjectsLoading] = useState(false)
-  const [projectsError, setProjectsError] = useState<string | null>(null)
+  const { user } = useRequireAuth(navigate)
+  const {
+    data: projectsData,
+    loading: projectsLoading,
+    error: projectsError,
+    reload: loadProjects,
+  } = useAsyncResource<ProjectDto[]>(
+    async () => (user ? api.listProjects() : []),
+    [user],
+  )
+  const projects = projectsData ?? []
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
-
-  const loadProjects = useCallback(async () => {
-    setProjectsLoading(true)
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    } finally {
-      setProjectsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (user) {
-      void loadProjects()
-    }
-  }, [user, loadProjects])
-
-  const handleCreate = async (payload: { name: string; template: ProjectTemplate }) => {
+  const handleCreate = useCallback(async (payload: { name: string; template: ProjectTemplate }) => {
     const project = await api.createProject({ name: payload.name })
     const templates: Record<ProjectTemplate, string[]> = {
       starter: ['development', 'prod'],
@@ -60,7 +40,7 @@ export const ProjectsPage = ({
       )
     }
     await loadProjects()
-  }
+  }, [loadProjects])
 
   return (
     <section className="flex flex-col gap-6">

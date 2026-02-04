@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { AuthPanel } from '../components/AuthPanel'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard } from '../components/SectionCard'
 import { Button } from '../components/ui/button'
-import { api, ApiError } from '../lib/api'
+import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { getErrorMessage } from '../lib/errors'
 
 export const InvitePage = ({
   token,
@@ -67,9 +66,7 @@ export const InvitePage = ({
       />
       <SectionCard>
         {acceptError ? (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-            {acceptError}
-          </div>
+          <ErrorBanner message={acceptError} />
         ) : status === 'accepting' ? (
           <p className="text-sm text-muted-foreground">Accepting invite...</p>
         ) : (

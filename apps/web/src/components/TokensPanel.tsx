@@ -1,6 +1,8 @@
 import type { ApiTokenDto, CreateTokenResponse } from '@secrets/shared'
 import { useState } from 'react'
 import { X } from 'lucide-react'
+import { EmptyState } from './EmptyState'
+import { ErrorBanner } from './ErrorBanner'
 import { SectionCard, SectionHeader } from './SectionCard'
 import { Button } from './ui/button'
 import { CreateTokenDialog } from './tokens/CreateTokenDialog'
@@ -56,7 +58,7 @@ export const TokensPanel = ({
           />
         }
       />
-      {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
+      {error ? <ErrorBanner message={error} className="mt-4" /> : null}
       {lastCreated ? (
         <aside className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
           <div className="flex items-start justify-between gap-4">
@@ -79,12 +81,12 @@ export const TokensPanel = ({
       ) : null}
       <ul className="mt-5 space-y-3">
         {loading ? (
-          <li className="rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm text-muted-foreground">
-            Loading tokens...
+          <li>
+            <EmptyState title="Loading tokens..." />
           </li>
         ) : tokens.length === 0 ? (
-          <li className="rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm text-muted-foreground">
-            No API tokens yet.
+          <li>
+            <EmptyState title="No API tokens yet." />
           </li>
         ) : (
           tokens.map((token) => (

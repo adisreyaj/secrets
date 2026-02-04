@@ -13,8 +13,9 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { formatDateTime, formatKeyPreview } from '../lib/format'
+import { ErrorBanner } from './ErrorBanner'
 import { SecretActionDialog } from './secrets/SecretActionDialog'
 import { SecretDiffDialog } from './secrets/SecretDiffDialog'
 import { MissingKeysSection } from './secrets/MissingKeysSection'
@@ -146,8 +147,9 @@ export const SecretsTable = ({
     onUpdateMany,
   })
 
-  const otherEnvironments = environments.filter(
-    (env) => env.id !== environmentId,
+  const otherEnvironments = useMemo(
+    () => environments.filter((env) => env.id !== environmentId),
+    [environments, environmentId],
   )
 
   return (
@@ -170,10 +172,8 @@ export const SecretsTable = ({
         includeValues={includeValues}
         onToggleValues={onToggleValues}
       />
-      {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
-      {topError ? (
-        <p className="mt-3 text-sm text-rose-600">{topError}</p>
-      ) : null}
+      {error ? <ErrorBanner message={error} className="mt-4" /> : null}
+      {topError ? <ErrorBanner message={topError} className="mt-3" /> : null}
 
       <MissingKeysSection
         coverageLoading={coverageLoading}

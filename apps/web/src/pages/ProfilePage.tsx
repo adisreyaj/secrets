@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { ArrowLeft } from 'lucide-react'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { useAuth } from '../lib/auth'
@@ -134,7 +135,7 @@ export const ProfilePage = ({
               {profileSaving ? 'Saving...' : 'Save changes'}
             </Button>
             {profileError ? (
-              <p className="text-sm text-rose-600">{profileError}</p>
+              <ErrorBanner message={profileError} className="mt-3" />
             ) : null}
             {profileSuccess ? (
               <p className="text-sm text-emerald-600">{profileSuccess}</p>
@@ -187,7 +188,7 @@ export const ProfilePage = ({
               {passwordSaving ? 'Updating...' : 'Update password'}
             </Button>
             {passwordError ? (
-              <p className="text-sm text-rose-600">{passwordError}</p>
+              <ErrorBanner message={passwordError} className="mt-3" />
             ) : null}
             {passwordSuccess ? (
               <p className="text-sm text-emerald-600">{passwordSuccess}</p>

@@ -81,6 +81,23 @@ const parseRoute = (hash: string): RouteMatch => {
   return { name: 'projects' }
 }
 
+export const isProjectScopedRoute = (match: RouteMatch) =>
+  match.name === 'project' ||
+  match.name === 'environments' ||
+  match.name === 'environment' ||
+  match.name === 'audit' ||
+  match.name === 'approvals' ||
+  match.name === 'approval-rules' ||
+  match.name === 'team' ||
+  match.name === 'tokens' ||
+  match.name === 'service-accounts'
+
+export const getProjectId = (match: RouteMatch) =>
+  isProjectScopedRoute(match) ? match.projectId : null
+
+export const getEnvironmentId = (match: RouteMatch) =>
+  match.name === 'environment' ? match.environmentId : null
+
 export const useHashRouter = () => {
   const [hash, setHash] = useState(() => window.location.hash || '#/')
 

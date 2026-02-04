@@ -1,17 +1,19 @@
 import type { ApprovalRequestDto, ApprovalStatus, EnvironmentDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft, Check, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { EmptyState } from '../components/EmptyState'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
-import { api, ApiError } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { api } from '../lib/api'
+import { getErrorMessage } from '../lib/errors'
+import { formatDateTime } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { useAsyncResource } from '../lib/useAsyncResource'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ApprovalsPage = ({
   projectId,
@@ -20,11 +22,23 @@ export const ApprovalsPage = ({
   projectId: string
   navigate: (path: string) => void
 }) => {
-  const { user, loading } = useAuth()
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
-  const [environments, setEnvironments] = useState<EnvironmentDto[]>([])
-  const [envError, setEnvError] = useState<string | null>(null)
+  const { user } = useRequireAuth(navigate)
+  const {
+    data: projectsData,
+    error: projectsError,
+  } = useAsyncResource<ProjectDto[]>(
+    async () => (user ? api.listProjects() : []),
+    [user],
+  )
+  const {
+    data: environmentsData,
+    error: envError,
+  } = useAsyncResource<EnvironmentDto[]>(
+    async () => (user ? api.listEnvironments(projectId) : []),
+    [projectId, user],
+  )
+  const projects = projectsData ?? []
+  const environments = environmentsData ?? []
   const [approvals, setApprovals] = useState<ApprovalRequestDto[]>([])
   const [approvalsLoading, setApprovalsLoading] = useState(false)
   const [approvalsError, setApprovalsError] = useState<string | null>(null)
@@ -32,32 +46,6 @@ export const ApprovalsPage = ({
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detail, setDetail] = useState<ApprovalRequestDto | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
-
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    }
-  }, [])
-
-  const loadEnvironments = useCallback(async () => {
-    setEnvError(null)
-    try {
-      const data = await api.listEnvironments(projectId)
-      setEnvironments(data)
-    } catch (error) {
-      setEnvError(getErrorMessage(error))
-    }
-  }, [projectId])
 
   const loadApprovals = useCallback(async () => {
     setApprovalsLoading(true)
@@ -74,11 +62,9 @@ export const ApprovalsPage = ({
 
   useEffect(() => {
     if (user) {
-      void loadProjects()
-      void loadEnvironments()
       void loadApprovals()
     }
-  }, [user, loadProjects, loadEnvironments, loadApprovals])
+  }, [user, loadApprovals])
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -147,9 +133,7 @@ export const ApprovalsPage = ({
       />
 
       {(projectsError || envError || approvalsError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || envError || approvalsError}
-        </div>
+        <ErrorBanner message={projectsError || envError || approvalsError} />
       )}
 
       <div className="flex flex-wrap items-center gap-3">
@@ -180,13 +164,9 @@ export const ApprovalsPage = ({
 
       <div className="grid gap-4">
         {approvalsLoading ? (
-          <div className="rounded-2xl border border-border/60 bg-card/60 p-6 text-sm text-muted-foreground">
-            Loading approvals...
-          </div>
+          <EmptyState title="Loading approvals..." />
         ) : approvals.length === 0 ? (
-          <div className="rounded-2xl border border-border/60 bg-card/60 p-6 text-sm text-muted-foreground">
-            No approvals for this filter.
-          </div>
+          <EmptyState title="No approvals for this filter." />
         ) : (
           approvals.map((approval) => (
             <div
@@ -202,7 +182,7 @@ export const ApprovalsPage = ({
                     Env: {envById.get(approval.environmentId) ?? approval.environmentId.slice(0, 6)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Requested {new Date(approval.createdAt).toLocaleString()}
+                    Requested {formatDateTime(approval.createdAt)}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">

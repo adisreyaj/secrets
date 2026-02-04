@@ -6,6 +6,8 @@ import type {
 } from '@secrets/shared'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { EmptyState } from '../components/EmptyState'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
@@ -26,12 +28,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
-import { api, ApiError } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { api } from '../lib/api'
+import { getErrorMessage } from '../lib/errors'
 import { useRegisterShortcut } from '../lib/shortcuts'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { useAsyncResource } from '../lib/useAsyncResource'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ApprovalRulesPage = ({
   projectId,
@@ -40,11 +41,23 @@ export const ApprovalRulesPage = ({
   projectId: string
   navigate: (path: string) => void
 }) => {
-  const { user, loading } = useAuth()
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
-  const [environments, setEnvironments] = useState<EnvironmentDto[]>([])
-  const [envError, setEnvError] = useState<string | null>(null)
+  const { user } = useRequireAuth(navigate)
+  const {
+    data: projectsData,
+    error: projectsError,
+  } = useAsyncResource<ProjectDto[]>(
+    async () => (user ? api.listProjects() : []),
+    [user],
+  )
+  const {
+    data: environmentsData,
+    error: envError,
+  } = useAsyncResource<EnvironmentDto[]>(
+    async () => (user ? api.listEnvironments(projectId) : []),
+    [projectId, user],
+  )
+  const projects = projectsData ?? []
+  const environments = environmentsData ?? []
   const [rules, setRules] = useState<ApprovalRuleDto[]>([])
   const [rulesLoading, setRulesLoading] = useState(false)
   const [rulesError, setRulesError] = useState<string | null>(null)
@@ -56,32 +69,6 @@ export const ApprovalRulesPage = ({
     'UPDATE',
   ])
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
-
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    }
-  }, [])
-
-  const loadEnvironments = useCallback(async () => {
-    setEnvError(null)
-    try {
-      const data = await api.listEnvironments(projectId)
-      setEnvironments(data)
-    } catch (error) {
-      setEnvError(getErrorMessage(error))
-    }
-  }, [projectId])
 
   const loadRules = useCallback(async () => {
     setRulesLoading(true)
@@ -98,11 +85,9 @@ export const ApprovalRulesPage = ({
 
   useEffect(() => {
     if (user) {
-      void loadProjects()
-      void loadEnvironments()
       void loadRules()
     }
-  }, [user, loadProjects, loadEnvironments, loadRules])
+  }, [user, loadRules])
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -176,9 +161,7 @@ export const ApprovalRulesPage = ({
       />
 
       {(projectsError || envError || rulesError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || envError || rulesError}
-        </div>
+        <ErrorBanner message={projectsError || envError || rulesError} />
       )}
 
       <section className="border-border/60 bg-card/70 shadow-soft rounded-3xl border p-6">
@@ -200,9 +183,9 @@ export const ApprovalRulesPage = ({
         />
         <div className="mt-4 space-y-3">
           {rulesLoading ? (
-            <p className="text-muted-foreground text-sm">Loading rules...</p>
+            <EmptyState title="Loading rules..." />
           ) : rules.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No rules yet.</p>
+            <EmptyState title="No rules yet." />
           ) : (
             rules.map((rule) => (
               <div

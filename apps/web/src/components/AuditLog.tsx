@@ -1,4 +1,6 @@
 import type { AuditLogDto } from '@secrets/shared'
+import { ErrorBanner } from './ErrorBanner'
+import { EmptyState } from './EmptyState'
 import { formatDateTime } from '../lib/format'
 import { SectionCard, SectionHeader } from './SectionCard'
 
@@ -16,15 +18,15 @@ export const AuditLog = ({
   const content = (
     <>
       <SectionHeader kicker="Audit log" title="Recent activity" />
-      {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
+      {error ? <ErrorBanner message={error} className="mt-4" /> : null}
       <ul className="mt-5 space-y-4">
         {loading ? (
-          <li className="rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm text-muted-foreground">
-            Loading audit log...
+          <li>
+            <EmptyState title="Loading audit log..." />
           </li>
         ) : audits.length === 0 ? (
-          <li className="rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm text-muted-foreground">
-            No audit events yet.
+          <li>
+            <EmptyState title="No audit events yet." />
           </li>
         ) : (
           audits.slice(0, 6).map((audit) => (

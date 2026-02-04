@@ -1,9 +1,8 @@
 import type { ApprovalRequestDto, EnvironmentDto, ProjectDto, SecretDto } from '@secrets/shared'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, ApiError } from '../../lib/api'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { api } from '../../lib/api'
+import { getErrorMessage } from '../../lib/errors'
+import { useAsyncResource } from '../../lib/useAsyncResource'
 
 const toSlug = (value: string) =>
   value
@@ -22,12 +21,24 @@ export const useEnvironmentData = ({
   environmentId: string
   enabled: boolean
 }) => {
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
-
-  const [environments, setEnvironments] = useState<EnvironmentDto[]>([])
-  const [envLoading, setEnvLoading] = useState(false)
-  const [envError, setEnvError] = useState<string | null>(null)
+  const {
+    data: projectsData,
+    error: projectsError,
+  } = useAsyncResource<ProjectDto[]>(
+    async () => (enabled ? api.listProjects() : []),
+    [enabled],
+  )
+  const {
+    data: environmentsData,
+    loading: envLoading,
+    error: envError,
+    reload: loadEnvironments,
+  } = useAsyncResource<EnvironmentDto[]>(
+    async () => (enabled ? api.listEnvironments(projectId) : []),
+    [enabled, projectId],
+  )
+  const projects = projectsData ?? []
+  const environments = environmentsData ?? []
 
   const [secrets, setSecrets] = useState<SecretDto[]>([])
   const [secretsLoading, setSecretsLoading] = useState(false)
@@ -42,29 +53,6 @@ export const useEnvironmentData = ({
   const [approvals, setApprovals] = useState<ApprovalRequestDto[]>([])
   const [approvalsLoading, setApprovalsLoading] = useState(false)
   const [approvalsError, setApprovalsError] = useState<string | null>(null)
-
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    }
-  }, [])
-
-  const loadEnvironments = useCallback(async () => {
-    setEnvLoading(true)
-    setEnvError(null)
-    try {
-      const data = await api.listEnvironments(projectId)
-      setEnvironments(data)
-    } catch (error) {
-      setEnvError(getErrorMessage(error))
-    } finally {
-      setEnvLoading(false)
-    }
-  }, [projectId])
 
   const loadSecrets = useCallback(
     async (include: boolean) => {
@@ -126,13 +114,6 @@ export const useEnvironmentData = ({
       setCoverageLoading(false)
     }
   }, [environments])
-
-  useEffect(() => {
-    if (enabled) {
-      void loadProjects()
-      void loadEnvironments()
-    }
-  }, [enabled, loadProjects, loadEnvironments])
 
   useEffect(() => {
     if (enabled) {

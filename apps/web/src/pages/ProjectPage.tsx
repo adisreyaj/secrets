@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useState } from 'react'
 import type {
   ApiTokenDto,
   AuditLogDto,
@@ -10,6 +10,7 @@ import type {
 } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
 import { AuditLog } from '../components/AuditLog'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
 import { Hero } from '../components/Hero'
 import { ProjectsSection, type ProjectTemplate } from '../components/ProjectsSection'
@@ -24,11 +25,10 @@ import {
   SelectValue,
 } from '../components/ui/select'
 import { SectionCard } from '../components/SectionCard'
-import { api, ApiError } from '../lib/api'
+import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { getErrorMessage } from '../lib/errors'
+import { formatDate, formatDateTime } from '../lib/format'
 
 export const ProjectPage = ({
   projectId,
@@ -47,6 +47,7 @@ export const ProjectPage = ({
   const [envError, setEnvError] = useState<string | null>(null)
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const deferredSearchQuery = useDeferredValue(searchQuery)
   const [searchEnvFilter, setSearchEnvFilter] = useState<string | null>(null)
   const [searchResults, setSearchResults] = useState<SecretSearchResultDto[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
@@ -159,7 +160,7 @@ export const ProjectPage = ({
 
   useEffect(() => {
     if (!user) return
-    const trimmed = searchQuery.trim()
+    const trimmed = deferredSearchQuery.trim()
     if (!trimmed) {
       setSearchResults([])
       setSearchError(null)
@@ -184,7 +185,7 @@ export const ProjectPage = ({
     }, 250)
 
     return () => window.clearTimeout(handle)
-  }, [projectId, searchEnvFilter, searchQuery, user])
+  }, [projectId, searchEnvFilter, deferredSearchQuery, user])
 
   const handleCreateProject = async (payload: { name: string; template: ProjectTemplate }) => {
     const project = await api.createProject({ name: payload.name })
@@ -344,11 +345,7 @@ export const ProjectPage = ({
           ))}
         </div>
 
-        {searchError ? (
-          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-            {searchError}
-          </div>
-        ) : null}
+        {searchError ? <ErrorBanner message={searchError} className="mt-4" /> : null}
 
         <div className="mt-4 space-y-2">
           {searchLoading ? (
@@ -375,7 +372,7 @@ export const ProjectPage = ({
                   <p className="font-semibold text-foreground">{secret.key}</p>
                   <p className="text-xs text-muted-foreground">
                     {secret.environmentName} · updated{' '}
-                    {new Date(secret.updatedAt).toLocaleString()}
+                    {formatDateTime(secret.updatedAt)}
                   </p>
                 </div>
                 {secret.value ? (
@@ -430,9 +427,7 @@ export const ProjectPage = ({
         </div>
 
         {(invitesError && !invitesLoading) ? (
-          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-            {invitesError}
-          </div>
+          <ErrorBanner message={invitesError} className="mt-4" />
         ) : null}
 
         <div className="mt-4 grid gap-4 md:grid-cols-[1.2fr_0.6fr_auto]">
@@ -488,7 +483,7 @@ export const ProjectPage = ({
                     <p className="font-semibold text-foreground">{invite.email}</p>
                     <p className="text-xs text-muted-foreground">
                       {invite.role} · {invite.status} · expires{' '}
-                      {new Date(invite.expiresAt).toLocaleDateString()}
+                      {formatDate(invite.expiresAt)}
                     </p>
                   </div>
                   {invite.status === 'PENDING' ? (

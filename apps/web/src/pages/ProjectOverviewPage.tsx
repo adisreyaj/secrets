@@ -1,15 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft, Layers, ShieldCheck, KeyRound, Users, Shield, CheckCircle, Key } from 'lucide-react'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
-import { api, ApiError } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { api } from '../lib/api'
 import { useRegisterShortcut } from '../lib/shortcuts'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { useAsyncResource } from '../lib/useAsyncResource'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ProjectOverviewPage = ({
   projectId,
@@ -18,46 +17,23 @@ export const ProjectOverviewPage = ({
   projectId: string
   navigate: (path: string) => void
 }) => {
-  const { user, loading } = useAuth()
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
-  const [environments, setEnvironments] = useState<EnvironmentDto[]>([])
-  const [envError, setEnvError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
-
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    }
-  }, [])
-
-  const loadEnvironments = useCallback(async () => {
-    setEnvError(null)
-    try {
-      const data = await api.listEnvironments(projectId)
-      setEnvironments(data)
-    } catch (error) {
-      setEnvError(getErrorMessage(error))
-    }
-  }, [projectId])
-
-
-  useEffect(() => {
-    if (user) {
-      void loadProjects()
-      void loadEnvironments()
-      // approvals and rules are on their own pages
-    }
-  }, [user, loadProjects, loadEnvironments])
+  const { user } = useRequireAuth(navigate)
+  const {
+    data: projectsData,
+    error: projectsError,
+  } = useAsyncResource<ProjectDto[]>(
+    async () => (user ? api.listProjects() : []),
+    [user],
+  )
+  const {
+    data: environmentsData,
+    error: envError,
+  } = useAsyncResource<EnvironmentDto[]>(
+    async () => (user ? api.listEnvironments(projectId) : []),
+    [projectId, user],
+  )
+  const projects = projectsData ?? []
+  const environments = environmentsData ?? []
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -91,9 +67,7 @@ export const ProjectOverviewPage = ({
       />
 
       {(projectsError || envError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || envError}
-        </div>
+        <ErrorBanner message={projectsError || envError} />
       )}
 
       <ul className="grid gap-4 md:grid-cols-2">

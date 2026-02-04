@@ -7,6 +7,7 @@ import type {
 import { ArrowLeft, Copy, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PageHeader } from '../components/PageHeader'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
@@ -21,12 +22,12 @@ import {
   DialogTitle,
 } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
-import { api, ApiError } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { api } from '../lib/api'
+import { getErrorMessage } from '../lib/errors'
+import { formatDate } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { useAsyncResource } from '../lib/useAsyncResource'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ServiceAccountsPage = ({
   projectId,
@@ -35,12 +36,23 @@ export const ServiceAccountsPage = ({
   projectId: string
   navigate: (path: string) => void
 }) => {
-  const { user, loading } = useAuth()
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
-
-  const [environments, setEnvironments] = useState<EnvironmentDto[]>([])
-  const [envError, setEnvError] = useState<string | null>(null)
+  const { user } = useRequireAuth(navigate)
+  const {
+    data: projectsData,
+    error: projectsError,
+  } = useAsyncResource<ProjectDto[]>(
+    async () => (user ? api.listProjects() : []),
+    [user],
+  )
+  const {
+    data: environmentsData,
+    error: envError,
+  } = useAsyncResource<EnvironmentDto[]>(
+    async () => (user ? api.listEnvironments(projectId) : []),
+    [projectId, user],
+  )
+  const projects = projectsData ?? []
+  const environments = environmentsData ?? []
 
   const [accounts, setAccounts] = useState<ServiceAccountDto[]>([])
   const [accountsLoading, setAccountsLoading] = useState(false)
@@ -71,32 +83,6 @@ export const ServiceAccountsPage = ({
     token: ServiceAccountTokenDto
   } | null>(null)
 
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
-
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    }
-  }, [])
-
-  const loadEnvironments = useCallback(async () => {
-    setEnvError(null)
-    try {
-      const data = await api.listEnvironments(projectId)
-      setEnvironments(data)
-    } catch (error) {
-      setEnvError(getErrorMessage(error))
-    }
-  }, [projectId])
-
   const loadAccounts = useCallback(async () => {
     setAccountsLoading(true)
     setAccountsError(null)
@@ -119,11 +105,9 @@ export const ServiceAccountsPage = ({
 
   useEffect(() => {
     if (user) {
-      void loadProjects()
-      void loadEnvironments()
       void loadAccounts()
     }
-  }, [user, loadProjects, loadEnvironments, loadAccounts])
+  }, [user, loadAccounts])
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -224,9 +208,7 @@ export const ServiceAccountsPage = ({
       />
 
       {(projectsError || envError || accountsError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || envError || accountsError}
-        </div>
+        <ErrorBanner message={projectsError || envError || accountsError} />
       )}
 
       <SectionCard>
@@ -305,7 +287,7 @@ export const ServiceAccountsPage = ({
                           <p>
                             {token.readOnly ? 'Read-only' : 'Read/write'} ·
                             created{' '}
-                            {new Date(token.createdAt).toLocaleDateString()}
+                            {formatDate(token.createdAt)}
                           </p>
                         </div>
                         <Button

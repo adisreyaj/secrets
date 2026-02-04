@@ -3,6 +3,8 @@ import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDateTime } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { EmptyState } from './EmptyState'
+import { ErrorBanner } from './ErrorBanner'
 import { ShortcutHint } from './ShortcutHint'
 import { SectionCard, SectionHeader } from './SectionCard'
 import { Badge } from './ui/badge'
@@ -176,15 +178,15 @@ export const EnvironmentsSection = ({
           </Dialog>
         }
       />
-      {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
+      {error ? <ErrorBanner message={error} className="mt-4" /> : null}
       <ul className="mt-5 space-y-3">
         {loading ? (
-          <li className="rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm text-muted-foreground">
-            Loading environments...
+          <li>
+            <EmptyState title="Loading environments..." />
           </li>
         ) : environments.length === 0 ? (
-          <li className="rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm text-muted-foreground">
-            Create your first environment.
+          <li>
+            <EmptyState title="Create your first environment." />
           </li>
         ) : (
           environments.map((env, index) => {
