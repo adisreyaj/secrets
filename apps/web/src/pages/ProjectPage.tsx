@@ -1,37 +1,43 @@
 import type {
-    ApiTokenDto,
-    AuditLogDto,
-    EnvironmentDto,
-    ProjectDto,
-    ProjectInviteDto,
-    Role,
-    SecretSearchResultDto,
+  ApiTokenDto,
+  AuditLogDto,
+  EnvironmentDto,
+  ProjectDto,
+  ProjectInviteDto,
+  Role,
+  SecretSearchResultDto,
 } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
-import { useCallback, useDeferredValue, useEffect, useState } from 'react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { AuditLog } from '../components/AuditLog'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { Hero } from '../components/Hero'
 import {
-    ProjectsSection,
-    type ProjectTemplate,
+  ProjectsSection,
+  type ProjectTemplate,
 } from '../components/ProjectsSection'
 import { SectionCard } from '../components/SectionCard'
 import { TokensPanel } from '../components/TokensPanel'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
-import { environmentPath, projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate, formatDateTime } from '../lib/format'
+import { environmentPath, projectPath } from '../lib/paths'
 import { useAsyncResource } from '../lib/useAsyncResource'
 import { useRequireAuth } from '../lib/useRequireAuth'
 

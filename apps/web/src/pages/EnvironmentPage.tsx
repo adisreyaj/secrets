@@ -144,11 +144,11 @@ export const EnvironmentPage = ({
         approvalsError) && (
         <ErrorBanner
           message={
-            projectsError ||
-            envError ||
-            secretsError ||
-            coverageError ||
-            approvalsError
+            (projectsError ||
+              envError ||
+              secretsError ||
+              coverageError ||
+              approvalsError) as string
           }
         />
       )}

@@ -83,14 +83,16 @@ export const SecretActionDialog = ({
           setCopyResult('Approval requested for copy.')
           return
         }
-        const createdCount = result.created.length
-        const updatedCount = result.updated.length
-        const skippedCount = result.skipped.length
-        setCopyResult(
-          `Copied to ${createdCount + updatedCount} environment${
-            createdCount + updatedCount === 1 ? '' : 's'
-          }.${skippedCount ? ` Skipped ${skippedCount}.` : ''}`,
-        )
+        if ('created' in result) {
+          const createdCount = result.created.length
+          const updatedCount = result.updated.length
+          const skippedCount = result.skipped.length
+          setCopyResult(
+            `Copied to ${createdCount + updatedCount} environment${
+              createdCount + updatedCount === 1 ? '' : 's'
+            }.${skippedCount ? ` Skipped ${skippedCount}.` : ''}`,
+          )
+        }
       } finally {
         setCopying(false)
       }

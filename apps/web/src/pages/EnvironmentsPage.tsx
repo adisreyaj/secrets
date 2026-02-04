@@ -79,7 +79,7 @@ export const EnvironmentsPage = ({
       />
 
       {(projectsError || envError) && (
-        <ErrorBanner message={projectsError || envError} />
+        <ErrorBanner message={(projectsError || envError) as string} />
       )}
 
       <EnvironmentsSection
