@@ -279,12 +279,14 @@ export const ServiceAccountsPage = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     variant="outline"
+                    size="sm"
                     onClick={() => openTokenDialog(account)}
                   >
                     Issue token
                   </Button>
                   <Button
                     variant="destructive"
+                    size="sm"
                     onClick={() => handleDeleteAccount(account)}
                   >
                     Delete
@@ -330,8 +332,8 @@ export const ServiceAccountsPage = ({
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <Button
-                            variant="outline"
-                            className="rounded-full"
+                            variant="destructive"
+                            size="sm"
                             onClick={() => setRevokeTarget({ account, token })}
                           >
                             Revoke

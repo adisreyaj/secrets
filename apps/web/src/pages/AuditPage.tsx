@@ -293,16 +293,19 @@ export const AuditPage = ({
             <div className="grid gap-2">
               <p className="muted-label">Action</p>
               <Select
-                value={filters.action}
+                value={filters.action || 'all'}
                 onValueChange={(value) =>
-                  setFilters((prev) => ({ ...prev, action: value }))
+                  setFilters((prev) => ({
+                    ...prev,
+                    action: value === 'all' ? '' : value,
+                  }))
                 }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="All actions" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
                   {actionOptions.map((action) => (
                     <SelectItem key={action} value={action}>
                       {action}
@@ -315,16 +318,19 @@ export const AuditPage = ({
             <div className="grid gap-2">
               <p className="muted-label">Resource type</p>
               <Select
-                value={filters.resourceType}
+                value={filters.resourceType || 'all'}
                 onValueChange={(value) =>
-                  setFilters((prev) => ({ ...prev, resourceType: value }))
+                  setFilters((prev) => ({
+                    ...prev,
+                    resourceType: value === 'all' ? '' : value,
+                  }))
                 }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="All types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
                   {resourceTypeOptions.map((type) => (
                     <SelectItem key={type} value={type}>
                       {type}
@@ -403,34 +409,7 @@ export const AuditPage = ({
         </div>
       </SectionCard>
 
-      <SectionCard>
-        <SectionHeader
-          kicker="Log"
-          title="Latest events"
-          action={
-            <Button
-              variant="outline"
-              className="flex items-center gap-2 py-2"
-              onClick={() => refetchAudit()}
-            >
-              Refresh
-            </Button>
-          }
-        />
-        <div className="mt-4">
-          {auditLoading ? (
-            <p className="text-muted-foreground text-sm">
-              Loading audit log...
-            </p>
-          ) : auditLogs.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              No audit events yet.
-            </p>
-          ) : (
-            <AuditLog logs={auditLogs} />
-          )}
-        </div>
-      </SectionCard>
+      <AuditLog audits={auditLogs} loading={auditLoading} error={auditError} />
 
       <SectionCard>
         <SectionHeader
