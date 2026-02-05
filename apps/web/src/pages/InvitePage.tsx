@@ -58,11 +58,7 @@ export const InvitePage = ({
         title="Accept invite"
         subtitle="Join your team workspace."
         actions={
-          <Button
-            variant="outline"
-            className="rounded-full px-4 text-sm"
-            onClick={() => navigate('/projects')}
-          >
+          <Button variant="outline" onClick={() => navigate('/projects')}>
             Back to projects
           </Button>
         }

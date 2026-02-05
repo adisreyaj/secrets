@@ -101,11 +101,7 @@ export const AuthPanel = ({
           />
         </label>
         {error ? <ErrorBanner message={error} className="mt-3" /> : null}
-        <Button
-          type="submit"
-          disabled={loading}
-          className="bg-foreground text-background hover:bg-foreground/90 h-11 w-full rounded-full text-sm font-semibold"
-        >
+        <Button type="submit" disabled={loading} className="w-full">
           {loading
             ? 'Loading...'
             : mode === 'login'
@@ -116,7 +112,6 @@ export const AuthPanel = ({
       <Button
         variant="ghost"
         onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-        className="text-muted-foreground mt-4 h-auto px-0 text-xs font-semibold hover:bg-transparent"
       >
         {mode === 'login'
           ? 'Need an account? Register'

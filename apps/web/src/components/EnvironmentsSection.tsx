@@ -128,10 +128,7 @@ export const EnvironmentsSection = ({
         action={
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="border-border text-foreground hover:border-foreground/40 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
-              >
+              <Button variant="outline" className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
                 New environment
                 <ShortcutHint keys="n" />
@@ -183,16 +180,11 @@ export const EnvironmentsSection = ({
                   <Button
                     type="button"
                     variant="ghost"
-                    className="rounded-full px-4 text-sm"
                     onClick={() => setDialogOpen(false)}
                   >
                     Cancel
                   </Button>
-                  <Button
-                    type="submit"
-                    className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-6 text-sm font-semibold"
-                    disabled={creating || !name.trim()}
-                  >
+                  <Button type="submit" disabled={creating || !name.trim()}>
                     {creating ? 'Creating...' : 'Create environment'}
                   </Button>
                 </DialogFooter>

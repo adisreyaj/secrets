@@ -85,11 +85,7 @@ export const CliLoginPage = ({
         title="CLI login"
         subtitle="Finish the browser login to issue a CLI token."
         actions={
-          <Button
-            variant="outline"
-            className="rounded-full px-4 text-sm"
-            onClick={() => navigate('/projects')}
-          >
+          <Button variant="outline" onClick={() => navigate('/projects')}>
             Back to projects
           </Button>
         }
@@ -99,7 +95,7 @@ export const CliLoginPage = ({
         <ErrorBanner message={projectsError || issueError} />
       )}
 
-        <SectionCard>
+      <SectionCard>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="grid gap-2 text-sm">
             <span className="muted-label">Login code</span>
@@ -135,7 +131,6 @@ export const CliLoginPage = ({
         </div>
         <div className="mt-6 flex items-center gap-3">
           <Button
-            className="rounded-full px-6 text-sm font-semibold"
             onClick={handleIssue}
             disabled={
               issuing || !loginCode.trim() || selectedProject === 'none'

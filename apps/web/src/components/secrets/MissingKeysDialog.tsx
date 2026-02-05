@@ -141,7 +141,6 @@ export const MissingKeysDialog = ({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="text-muted-foreground h-7 rounded-full px-3 text-xs font-semibold"
                   onClick={() => setSelectedMissingKeys(activeMissingKeys)}
                   disabled={activeMissingKeys.length === 0}
                 >
@@ -150,7 +149,6 @@ export const MissingKeysDialog = ({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="text-muted-foreground h-7 rounded-full px-3 text-xs font-semibold"
                   onClick={() => setSelectedMissingKeys([])}
                   disabled={activeMissingKeys.length === 0}
                 >
@@ -182,11 +180,7 @@ export const MissingKeysDialog = ({
           </div>
         )}
         <DialogFooter className="mt-6">
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            className="rounded-full"
-          >
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
@@ -196,7 +190,6 @@ export const MissingKeysDialog = ({
               missingCopying ||
               selectedMissingKeys.length === 0
             }
-            className="rounded-full"
           >
             {missingCopying ? 'Adding...' : 'Add keys'}
           </Button>

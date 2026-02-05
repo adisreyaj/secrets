@@ -62,10 +62,7 @@ export const CreateTokenDialog = ({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
-        >
+        <Button variant="outline" className="flex items-center gap-2 py-2">
           <KeyRound className="h-4 w-4" />
           New token
           <ShortcutHint keys="n" />
@@ -109,7 +106,6 @@ export const CreateTokenDialog = ({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-9 w-9 rounded-full p-0"
                       onClick={async () => {
                         if (!issuedToken) return
                         await navigator.clipboard.writeText(issuedToken)
@@ -129,17 +125,12 @@ export const CreateTokenDialog = ({
             <Button
               type="button"
               variant="ghost"
-              className="rounded-full px-4 text-sm"
               onClick={() => setOpen(false)}
             >
               {issuedToken ? 'Close' : 'Cancel'}
             </Button>
             {issuedToken ? null : (
-              <Button
-                type="submit"
-                className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-6 text-sm font-semibold"
-                disabled={creating || !name.trim()}
-              >
+              <Button type="submit" disabled={creating || !name.trim()}>
                 {creating ? 'Creating...' : 'Create token'}
               </Button>
             )}

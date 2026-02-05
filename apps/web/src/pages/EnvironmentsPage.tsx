@@ -1,19 +1,19 @@
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
-import { environmentPath, projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
-import { useRegisterShortcut } from '../lib/shortcuts'
+import { environmentPath, projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
+import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
-import { toast } from 'sonner'
 
 export const EnvironmentsPage = ({
   projectId,
@@ -79,7 +79,7 @@ export const EnvironmentsPage = ({
         actions={
           <Button
             variant="outline"
-            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
+            className="flex items-center gap-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }

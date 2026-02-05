@@ -34,7 +34,6 @@ export const MissingKeysCard = ({
             <Button
               variant="outline"
               size="sm"
-              className="rounded-full text-xs"
               onClick={onOpenDialog}
               disabled={missingSourcesCount === 0}
             >

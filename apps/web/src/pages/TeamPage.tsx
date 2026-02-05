@@ -1,12 +1,13 @@
 import type {
-    ProjectDto,
-    ProjectInviteDto,
-    ProjectMemberDto,
-    Role,
+  ProjectDto,
+  ProjectInviteDto,
+  ProjectMemberDto,
+  Role,
 } from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -14,25 +15,25 @@ import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '../components/ui/select'
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from '../components/ui/tooltip'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
@@ -41,7 +42,6 @@ import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
-import { toast } from 'sonner'
 
 export const TeamPage = ({
   projectId,
@@ -144,7 +144,7 @@ export const TeamPage = ({
         actions={
           <Button
             variant="outline"
-            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
+            className="flex items-center gap-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }
@@ -165,7 +165,7 @@ export const TeamPage = ({
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
-                  className="border-border text-foreground hover:border-foreground/40 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
+                  className="flex items-center gap-2"
                   onClick={() => setInviteDialogOpen(true)}
                   disabled={!isAdmin}
                 >
@@ -261,7 +261,6 @@ export const TeamPage = ({
                           <Button
                             variant="outline"
                             size="sm"
-                            className="rounded-full px-4 text-xs"
                             onClick={() => handleRevokeInvite(invite.id)}
                             disabled={!isAdmin}
                           >
@@ -315,14 +314,12 @@ export const TeamPage = ({
             <Button
               type="button"
               variant="ghost"
-              className="rounded-full px-4 text-sm"
               onClick={() => setInviteDialogOpen(false)}
             >
               Close
             </Button>
             <Button
               onClick={handleCreateInvite}
-              className="rounded-full px-6 text-sm font-semibold"
               disabled={!isAdmin || inviteCreating || !inviteEmail.trim()}
             >
               {inviteCreating ? 'Inviting...' : 'Send invite'}

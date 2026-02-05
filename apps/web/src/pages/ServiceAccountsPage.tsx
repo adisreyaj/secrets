@@ -4,9 +4,10 @@ import type {
   ServiceAccountDto,
   ServiceAccountTokenDto,
 } from '@secrets/shared'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Copy, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
@@ -22,15 +23,13 @@ import {
   DialogTitle,
 } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
-import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { api } from '../lib/api'
-import { projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
-import { useRegisterShortcut } from '../lib/shortcuts'
+import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
+import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
-import { toast } from 'sonner'
 
 export const ServiceAccountsPage = ({
   projectId,
@@ -221,7 +220,7 @@ export const ServiceAccountsPage = ({
         actions={
           <Button
             variant="outline"
-            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
+            className="flex items-center gap-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }
@@ -244,7 +243,7 @@ export const ServiceAccountsPage = ({
           action={
             <Button
               variant="outline"
-              className="border-border text-foreground hover:border-foreground/40 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
+              className="flex items-center gap-2"
               onClick={() => setCreateDialogOpen(true)}
             >
               <Plus className="h-4 w-4" />
@@ -280,14 +279,12 @@ export const ServiceAccountsPage = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     variant="outline"
-                    className="rounded-full"
                     onClick={() => openTokenDialog(account)}
                   >
                     Issue token
                   </Button>
                   <Button
-                    variant="outline"
-                    className="rounded-full border-rose-200 text-rose-600 hover:border-rose-300 hover:text-rose-700"
+                    variant="destructive"
                     onClick={() => handleDeleteAccount(account)}
                   >
                     Delete
@@ -335,9 +332,7 @@ export const ServiceAccountsPage = ({
                           <Button
                             variant="outline"
                             className="rounded-full"
-                            onClick={() =>
-                              setRevokeTarget({ account, token })
-                            }
+                            onClick={() => setRevokeTarget({ account, token })}
                           >
                             Revoke
                           </Button>
@@ -369,10 +364,7 @@ export const ServiceAccountsPage = ({
             />
             <div className="grid gap-2">
               {environments.map((env) => (
-                <label
-                  key={env.id}
-                  className="flex items-center gap-2 text-sm"
-                >
+                <label key={env.id} className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={createEnvIds.includes(env.id)}
                     onCheckedChange={() => toggleEnvSelection(env.id)}
@@ -420,10 +412,7 @@ export const ServiceAccountsPage = ({
             </label>
             <div className="grid gap-2">
               {environments.map((env) => (
-                <label
-                  key={env.id}
-                  className="flex items-center gap-2 text-sm"
-                >
+                <label key={env.id} className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={tokenEnvIds.includes(env.id)}
                     onCheckedChange={() =>
@@ -442,7 +431,7 @@ export const ServiceAccountsPage = ({
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
                 <p className="font-semibold">Token issued</p>
                 <div className="mt-2 flex items-center gap-2">
-                  <code className="bg-emerald-100 rounded px-2 py-1 text-xs">
+                  <code className="rounded bg-emerald-100 px-2 py-1 text-xs">
                     {lastIssuedToken}
                   </code>
                   <Button
@@ -469,13 +458,14 @@ export const ServiceAccountsPage = ({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(revokeTarget)} onOpenChange={() => setRevokeTarget(null)}>
+      <Dialog
+        open={Boolean(revokeTarget)}
+        onOpenChange={() => setRevokeTarget(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Revoke token</DialogTitle>
-            <DialogDescription>
-              This action cannot be undone.
-            </DialogDescription>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRevokeTarget(null)}>

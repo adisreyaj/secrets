@@ -1,25 +1,25 @@
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
+import { useQuery } from '@tanstack/react-query'
 import {
-    ArrowLeft,
-    CheckCircle,
-    Key,
-    KeyRound,
-    Layers,
-    Shield,
-    ShieldCheck,
-    Users,
+  ArrowLeft,
+  CheckCircle,
+  Key,
+  KeyRound,
+  Layers,
+  Shield,
+  ShieldCheck,
+  Users,
 } from 'lucide-react'
 import { useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
-import { environmentsPath, projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
-import { useRegisterShortcut } from '../lib/shortcuts'
+import { environmentsPath, projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
+import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ProjectOverviewPage = ({
@@ -79,7 +79,7 @@ export const ProjectOverviewPage = ({
         actions={
           <Button
             variant="outline"
-            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
+            className="flex items-center gap-2"
             onClick={() => navigate('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -167,7 +167,11 @@ export const ProjectOverviewPage = ({
             variant="outline"
             onClick={() =>
               navigate(
-                projectPath(projectId, selectedProject?.slug, 'service-accounts'),
+                projectPath(
+                  projectId,
+                  selectedProject?.slug,
+                  'service-accounts',
+                ),
               )
             }
             className="border-border bg-card shadow-soft hover:border-foreground/30 h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal"
@@ -212,7 +216,9 @@ export const ProjectOverviewPage = ({
           <Button
             variant="outline"
             onClick={() =>
-              navigate(projectPath(projectId, selectedProject?.slug, 'approvals'))
+              navigate(
+                projectPath(projectId, selectedProject?.slug, 'approvals'),
+              )
             }
             className="border-border bg-card shadow-soft hover:border-foreground/30 h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal"
           >

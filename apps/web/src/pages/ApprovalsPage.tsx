@@ -1,36 +1,36 @@
 import type {
-    ApprovalRequestDto,
-    ApprovalStatus,
-    EnvironmentDto,
-    ProjectDto,
+  ApprovalRequestDto,
+  ApprovalStatus,
+  EnvironmentDto,
+  ProjectDto,
 } from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
 } from '../components/ui/dialog'
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { formatDateTime } from '../lib/format'
 import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
-import { toast } from 'sonner'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
@@ -152,7 +152,7 @@ export const ApprovalsPage = ({
         actions={
           <Button
             variant="outline"
-            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
+            className="flex items-center gap-2 py-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }
@@ -191,7 +191,7 @@ export const ApprovalsPage = ({
         </div>
         <Button
           variant="outline"
-          className="rounded-full"
+          className="flex items-center gap-2 py-2"
           onClick={() => refetchApprovals()}
         >
           Refresh
@@ -226,7 +226,7 @@ export const ApprovalsPage = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     variant="outline"
-                    className="rounded-full"
+                    className="flex items-center gap-2 py-2"
                     onClick={() => openDetail(approval.id)}
                   >
                     Details
@@ -234,7 +234,7 @@ export const ApprovalsPage = ({
                   {approval.status === 'PENDING' && isAdmin ? (
                     <>
                       <Button
-                        className="rounded-full"
+                        className="flex items-center gap-2 py-2"
                         onClick={() => handleApprove(approval.id)}
                       >
                         <Check className="h-4 w-4" />
@@ -242,7 +242,7 @@ export const ApprovalsPage = ({
                       </Button>
                       <Button
                         variant="outline"
-                        className="rounded-full border-rose-200 text-rose-600 hover:border-rose-300 hover:text-rose-700"
+                        className="flex items-center gap-2 py-2"
                         onClick={() => handleDeny(approval.id)}
                       >
                         <X className="h-4 w-4" />
@@ -254,7 +254,7 @@ export const ApprovalsPage = ({
                   approval.requestedBy === user?.id ? (
                     <Button
                       variant="outline"
-                      className="rounded-full"
+                      className="flex items-center gap-2 py-2"
                       onClick={() => handleCancel(approval.id)}
                     >
                       Cancel

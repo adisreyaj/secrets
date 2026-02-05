@@ -1,8 +1,8 @@
 import { Eye, EyeOff } from 'lucide-react'
-import { AddSecretDialog } from './AddSecretDialog'
 import { ShortcutHint } from '../ShortcutHint'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
+import { AddSecretDialog } from './AddSecretDialog'
 
 export const SecretsTableHeader = ({
   searchValue,
@@ -44,18 +44,12 @@ export const SecretsTableHeader = ({
             <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
               {pendingChangesCount} pending
             </span>
-            <Button
-              size="sm"
-              className="rounded-full px-4 text-xs"
-              onClick={onSaveChanges}
-              disabled={savingChanges}
-            >
+            <Button size="sm" onClick={onSaveChanges} disabled={savingChanges}>
               {savingChanges ? 'Saving...' : 'Save changes'}
             </Button>
             <Button
               size="sm"
               variant="ghost"
-              className="rounded-full px-3 text-xs"
               onClick={onDiscardChanges}
               disabled={savingChanges}
             >
@@ -68,7 +62,6 @@ export const SecretsTableHeader = ({
           variant="secondary"
           size="sm"
           onClick={() => onToggleValues(!includeValues)}
-          className="bg-muted text-muted-foreground hover:bg-muted/80 flex h-9 items-center gap-2 rounded-full px-3 py-0 font-medium"
         >
           {includeValues ? (
             <EyeOff className="h-3.5 w-3.5" />

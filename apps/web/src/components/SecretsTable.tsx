@@ -413,7 +413,6 @@ const SecretRow = memo(
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-7 rounded-full px-2 text-xs"
                   onClick={() => onRowValueChange(secret.id, 'true')}
                 >
                   true
@@ -422,7 +421,6 @@ const SecretRow = memo(
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-7 rounded-full px-2 text-xs"
                   onClick={() => onRowValueChange(secret.id, 'false')}
                 >
                   false
@@ -451,7 +449,6 @@ const SecretRow = memo(
                   size="icon"
                   variant="outline"
                   onClick={() => onOpenCopy(secret)}
-                  className="h-8 w-8 rounded-full"
                   disabled={!canCopy || isEditing || isPending}
                   aria-label="Copy secret"
                 >
@@ -468,7 +465,6 @@ const SecretRow = memo(
                   size="icon"
                   variant="outline"
                   onClick={() => onStartEdit(secret)}
-                  className="h-8 w-8 rounded-full"
                   disabled={isEditing || isPending}
                   aria-label="Edit secret"
                 >
@@ -484,7 +480,6 @@ const SecretRow = memo(
                     size="icon"
                     variant="ghost"
                     onClick={() => onCancelRow(secret.id)}
-                    className="h-8 w-8 rounded-full"
                     aria-label="Cancel edits"
                   >
                     <X className="h-4 w-4" />
@@ -499,7 +494,6 @@ const SecretRow = memo(
                   size="icon"
                   variant="outline"
                   onClick={() => onOpenRollback(secret)}
-                  className="h-8 w-8 rounded-full"
                   disabled={isEditing || isPending}
                   aria-label="Rollback secret"
                 >
@@ -514,7 +508,6 @@ const SecretRow = memo(
                   size="icon"
                   variant="outline"
                   onClick={() => onOpenDiff(secret)}
-                  className="h-8 w-8 rounded-full"
                   disabled={isEditing}
                   aria-label="View diff"
                 >
@@ -527,9 +520,8 @@ const SecretRow = memo(
               <TooltipTrigger asChild>
                 <Button
                   size="icon"
-                  variant="outline"
+                  variant="destructive"
                   onClick={() => onOpenDelete(secret)}
-                  className="h-8 w-8 rounded-full border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700"
                   disabled={isEditing || isPending}
                   aria-label="Delete secret"
                 >

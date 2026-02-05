@@ -16,6 +16,7 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { toast } from 'sonner'
 import { AuditLog } from '../components/AuditLog'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
 import { ErrorBanner } from '../components/ErrorBanner'
@@ -41,7 +42,6 @@ import { formatDate, formatDateTime } from '../lib/format'
 import { environmentPath, projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
-import { toast } from 'sonner'
 
 export const ProjectPage = ({
   projectId,
@@ -300,7 +300,7 @@ export const ProjectPage = ({
         actions={
           <Button
             variant="outline"
-            className="border-border text-foreground hover:border-foreground/40 gap-2 rounded-full px-6 py-3 text-sm font-semibold transition"
+            className="flex items-center gap-2"
             onClick={() => navigate('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -363,7 +363,6 @@ export const ProjectPage = ({
           <Button
             variant={searchEnvFilter ? 'outline' : 'default'}
             size="sm"
-            className="rounded-full px-4 text-xs"
             onClick={() => setSearchEnvFilter(null)}
           >
             All
@@ -373,7 +372,6 @@ export const ProjectPage = ({
               key={env.id}
               variant={searchEnvFilter === env.id ? 'default' : 'outline'}
               size="sm"
-              className="rounded-full px-4 text-xs"
               onClick={() => setSearchEnvFilter(env.id)}
             >
               {env.name}
@@ -509,7 +507,6 @@ export const ProjectPage = ({
           </Select>
           <Button
             onClick={handleCreateInvite}
-            className="h-11 rounded-full px-6 text-sm font-semibold"
             disabled={inviteCreating || !inviteEmail.trim()}
           >
             {inviteCreating ? 'Inviting...' : 'Send invite'}
@@ -555,7 +552,6 @@ export const ProjectPage = ({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="rounded-full px-4 text-xs"
                       onClick={() => handleRevokeInvite(invite.id)}
                     >
                       Revoke

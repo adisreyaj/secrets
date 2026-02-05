@@ -1,6 +1,7 @@
 import type { EnvironmentDto, SecretDto } from '@secrets/shared'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import {
@@ -11,7 +12,6 @@ import {
 import { ErrorBanner } from './ErrorBanner'
 import { ImportDropzone } from './import/ImportDropzone'
 import { ImportPreviewList } from './import/ImportPreviewList'
-import { toast } from 'sonner'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import {
@@ -54,7 +54,7 @@ export const ImportEnvDialog = ({
   const [importError, setImportError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [importOverwrite, setImportOverwrite] = useState(false)
-  const [importPreviewed, setImportPreviewed] = useState(false)
+  const [, setImportPreviewed] = useState(false)
   const [step, setStep] = useState<'input' | 'preview'>('input')
 
   useEffect(() => {
@@ -179,7 +179,9 @@ export const ImportEnvDialog = ({
             <>
               <ImportPreviewList
                 entries={importEntries}
-                conflictKeys={new Set(importConflicts.map((entry) => entry.key))}
+                conflictKeys={
+                  new Set(importConflicts.map((entry) => entry.key))
+                }
                 duplicateKeys={importDuplicateKeys}
                 invalidLines={importInvalidLines}
               />
@@ -191,7 +193,9 @@ export const ImportEnvDialog = ({
               <label className="flex items-center gap-3 text-sm">
                 <Checkbox
                   checked={importOverwrite}
-                  onCheckedChange={(value) => setImportOverwrite(Boolean(value))}
+                  onCheckedChange={(value) =>
+                    setImportOverwrite(Boolean(value))
+                  }
                 />
                 <span>Overwrite existing keys in this environment</span>
               </label>
@@ -206,7 +210,6 @@ export const ImportEnvDialog = ({
           <Button
             type="button"
             variant="ghost"
-            className="rounded-full px-4 text-sm"
             onClick={() => {
               if (step === 'preview') {
                 setStep('input')
@@ -220,7 +223,6 @@ export const ImportEnvDialog = ({
           </Button>
           <Button
             type="button"
-            className="rounded-full bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
             onClick={step === 'preview' ? handleImportEnv : handlePreviewImport}
             disabled={
               importing ||

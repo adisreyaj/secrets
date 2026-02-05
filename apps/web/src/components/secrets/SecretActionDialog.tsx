@@ -141,7 +141,6 @@ export const SecretActionDialog = ({
                   <Button
                     type="button"
                     variant="ghost"
-                    className="text-muted-foreground h-7 rounded-full px-3 text-xs font-semibold"
                     onClick={() =>
                       setSelectedTargets(otherEnvironments.map((env) => env.id))
                     }
@@ -151,7 +150,6 @@ export const SecretActionDialog = ({
                   <Button
                     type="button"
                     variant="ghost"
-                    className="text-muted-foreground h-7 rounded-full px-3 text-xs font-semibold"
                     onClick={() => setSelectedTargets([])}
                   >
                     Clear
@@ -232,11 +230,6 @@ export const SecretActionDialog = ({
               (selectedTargets.length === 0 ||
                 copying ||
                 otherEnvironments.length === 0)
-            }
-            className={
-              mode === 'delete'
-                ? 'rounded-full border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700'
-                : 'rounded-full'
             }
           >
             {mode === 'rollback'

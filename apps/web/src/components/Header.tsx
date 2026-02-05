@@ -65,10 +65,7 @@ export const Header = ({
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="bg-muted text-foreground hover:bg-muted/80 h-10 w-10 rounded-full p-0"
-                  >
+                  <Button variant="ghost">
                     {user.name ? user.name[0]?.toUpperCase() : 'U'}
                   </Button>
                 </DropdownMenuTrigger>

@@ -116,7 +116,7 @@ export const AddSecretDialog = ({
         <Button
           variant="outline"
           size="sm"
-          className="flex h-9 items-center gap-2 rounded-full text-xs"
+          className="flex h-9 items-center gap-2"
         >
           <Plus className="h-3.5 w-3.5" />
           Add secret
@@ -137,7 +137,6 @@ export const AddSecretDialog = ({
               type="button"
               variant="outline"
               size="sm"
-              className="h-8 rounded-full px-3 text-xs"
               onClick={() => {
                 setShowPasteInput((prev) => !prev)
                 if (showPasteInput) {
@@ -225,7 +224,7 @@ export const AddSecretDialog = ({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 rounded-full px-3 text-xs"
+                className="h-7"
                 onClick={() => setForm((prev) => ({ ...prev, value: 'true' }))}
               >
                 true
@@ -234,7 +233,7 @@ export const AddSecretDialog = ({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 rounded-full px-3 text-xs"
+                className="h-7"
                 onClick={() => setForm((prev) => ({ ...prev, value: 'false' }))}
               >
                 false
@@ -245,14 +244,12 @@ export const AddSecretDialog = ({
             <Button
               type="button"
               variant="ghost"
-              className="rounded-full px-4 text-sm"
               onClick={() => setOpen(false)}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              className="rounded-full px-6 text-sm font-semibold"
               disabled={creating || !form.key.trim() || !form.value.trim()}
             >
               {creating ? 'Saving...' : 'Add secret'}

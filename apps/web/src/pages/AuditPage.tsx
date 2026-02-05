@@ -4,6 +4,7 @@ import { endOfDay, startOfDay } from 'date-fns'
 import { ArrowLeft, CalendarIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { DateRange } from 'react-day-picker'
+import { toast } from 'sonner'
 import { AuditLog } from '../components/AuditLog'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -11,11 +12,6 @@ import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { Calendar } from '../components/ui/calendar'
-import {
-  controlBaseClasses,
-  controlSizeClasses,
-  controlVariantClasses,
-} from '../components/ui/control-classes'
 import { Input } from '../components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
 import {
@@ -31,13 +27,10 @@ import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
-import { cn } from '../lib/utils'
-import { toast } from 'sonner'
 
 type AuditActorType = 'user' | 'service'
 
 type AuditFilterState = {
-  action: string
   resourceType: string
   resourceId: string
   actorType: AuditActorType
@@ -227,7 +220,7 @@ export const AuditPage = ({
         actions={
           <Button
             variant="outline"
-            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
+            className="flex items-center gap-2 py-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }
@@ -252,7 +245,7 @@ export const AuditPage = ({
           action={
             <Button
               variant="outline"
-              className="rounded-full"
+              className="flex items-center gap-2 py-2"
               onClick={() => refetchAudit()}
             >
               Refresh
@@ -268,12 +261,7 @@ export const AuditPage = ({
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className={cn(
-                      controlBaseClasses,
-                      controlSizeClasses.md,
-                      controlVariantClasses.outline,
-                      'justify-between text-left font-normal',
-                    )}
+                    className="flex items-center gap-2 py-2"
                   >
                     {filters.dateRange?.from ? (
                       filters.dateRange.to ? (
@@ -399,14 +387,14 @@ export const AuditPage = ({
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
-              className="rounded-full"
+              className="flex items-center gap-2 py-2"
               onClick={handleApplyFilters}
             >
               Apply filters
             </Button>
             <Button
               variant="ghost"
-              className="rounded-full"
+              className="flex items-center gap-2 py-2"
               onClick={handleClearFilters}
             >
               Clear filters
@@ -422,7 +410,7 @@ export const AuditPage = ({
           action={
             <Button
               variant="outline"
-              className="rounded-full"
+              className="flex items-center gap-2 py-2"
               onClick={() => refetchAudit()}
             >
               Refresh
@@ -451,7 +439,7 @@ export const AuditPage = ({
           action={
             <Button
               variant="outline"
-              className="rounded-full"
+              className="flex items-center gap-2 py-2"
               onClick={handleSaveRetention}
               disabled={!retentionDirty || retentionSaving || !isAdmin}
             >

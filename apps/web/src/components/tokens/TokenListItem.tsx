@@ -35,12 +35,7 @@ export const TokenListItem = ({
             {formatDateTime(token.lastUsedAt)}
           </time>
         </span>
-        <Button
-          size="sm"
-          variant="destructive"
-          onClick={() => onDelete(token)}
-          className="h-7"
-        >
+        <Button size="sm" variant="destructive" onClick={() => onDelete(token)}>
           <Trash2 className="h-3.5 w-3.5" />
           Delete
         </Button>

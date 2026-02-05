@@ -1,12 +1,13 @@
 import type {
-    ApprovalAction,
-    ApprovalRuleDto,
-    EnvironmentDto,
-    ProjectDto,
+  ApprovalAction,
+  ApprovalRuleDto,
+  EnvironmentDto,
+  ProjectDto,
 } from '@secrets/shared'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -14,28 +15,27 @@ import { SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
-import { projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
-import { useRegisterShortcut } from '../lib/shortcuts'
+import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
+import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
-import { toast } from 'sonner'
 
 export const ApprovalRulesPage = ({
   projectId,
@@ -164,7 +164,7 @@ export const ApprovalRulesPage = ({
         actions={
           <Button
             variant="outline"
-            className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold"
+            className="flex items-center gap-2 py-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }
@@ -192,7 +192,7 @@ export const ApprovalRulesPage = ({
           action={
             <Button
               variant="outline"
-              className="border-border text-foreground hover:border-foreground/40 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
+              className="flex items-center gap-2 py-2"
               onClick={() => setCreateDialogOpen(true)}
               disabled={!isAdmin}
             >
@@ -231,7 +231,7 @@ export const ApprovalRulesPage = ({
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    className="rounded-full"
+                    className="flex items-center gap-2 py-2"
                     onClick={() => handleToggleRule(rule)}
                     disabled={!isAdmin}
                   >
@@ -239,7 +239,7 @@ export const ApprovalRulesPage = ({
                   </Button>
                   <Button
                     variant="outline"
-                    className="rounded-full border-rose-200 text-rose-600 hover:border-rose-300 hover:text-rose-700"
+                    className="flex items-center gap-2 py-2"
                     onClick={() => handleDeleteRule(rule.id)}
                     disabled={!isAdmin}
                   >
@@ -353,16 +353,11 @@ export const ApprovalRulesPage = ({
             <Button
               type="button"
               variant="ghost"
-              className="rounded-full px-4 text-sm"
               onClick={() => setCreateDialogOpen(false)}
             >
               Close
             </Button>
-            <Button
-              onClick={handleCreateRule}
-              className="rounded-full"
-              disabled={!isAdmin}
-            >
+            <Button onClick={handleCreateRule} disabled={!isAdmin}>
               Create rule
             </Button>
           </DialogFooter>

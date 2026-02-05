@@ -81,7 +81,7 @@ export const ProfilePage = ({
         actions={
           <Button
             variant="outline"
-            className="border-border text-foreground hover:border-foreground/40 gap-2 rounded-full px-4 py-2 text-sm font-semibold"
+            className="flex items-center gap-2"
             onClick={() => navigate('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -126,11 +126,7 @@ export const ProfilePage = ({
             </span>
           </label>
           <div className="flex flex-wrap items-center gap-3 md:col-span-2">
-            <Button
-              type="submit"
-              disabled={profileSaving}
-              className="bg-foreground text-background hover:bg-foreground/90 h-11 rounded-full px-6 text-sm font-semibold"
-            >
+            <Button type="submit" disabled={profileSaving}>
               {profileSaving ? 'Saving...' : 'Save changes'}
             </Button>
             {profileError ? (
@@ -178,11 +174,7 @@ export const ProfilePage = ({
             />
           </label>
           <div className="flex flex-wrap items-center gap-3 md:col-span-2">
-            <Button
-              type="submit"
-              disabled={passwordSaving}
-              className="bg-foreground text-background hover:bg-foreground/90 h-11 rounded-full px-6 text-sm font-semibold"
-            >
+            <Button type="submit" disabled={passwordSaving}>
               {passwordSaving ? 'Updating...' : 'Update password'}
             </Button>
             {passwordError ? (
