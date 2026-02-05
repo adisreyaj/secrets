@@ -5,7 +5,7 @@ import type {
   Role,
 } from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { EmptyState } from '../components/EmptyState'
@@ -167,6 +167,7 @@ export const TeamPage = ({
                   onClick={() => setInviteDialogOpen(true)}
                   disabled={!isAdmin}
                 >
+                  <Plus className="h-4 w-4" />
                   Invite
                   <ShortcutHint keys="n" />
                 </Button>

@@ -1,5 +1,5 @@
 import type { CreateTokenResponse } from '@secrets/shared'
-import { Copy, KeyRound } from 'lucide-react'
+import { Copy, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useRegisterShortcut } from '../../lib/shortcuts'
 import { ShortcutHint } from '../ShortcutHint'
@@ -63,7 +63,7 @@ export const CreateTokenDialog = ({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline">
-          <KeyRound className="h-4 w-4" />
+          <Plus className="h-4 w-4" />
           New token
           <ShortcutHint keys="n" />
         </Button>

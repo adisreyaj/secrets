@@ -5,7 +5,7 @@ import type {
   ProjectDto,
 } from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Check, X } from 'lucide-react'
+import { ArrowLeft, Check, RefreshCcw, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { EmptyState } from '../components/EmptyState'
@@ -176,7 +176,9 @@ export const ApprovalsPage = ({
           <div className="min-w-[220px]">
             <Select
               value={statusFilter}
-              onValueChange={(value) => setStatusFilter(value as ApprovalStatus)}
+              onValueChange={(value) =>
+                setStatusFilter(value as ApprovalStatus)
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Status" />
@@ -189,10 +191,8 @@ export const ApprovalsPage = ({
               </SelectContent>
             </Select>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => refetchApprovals()}
-          >
+          <Button variant="outline" onClick={() => refetchApprovals()}>
+            <RefreshCcw className="h-4 w-4" />
             Refresh
           </Button>
         </div>
@@ -231,9 +231,7 @@ export const ApprovalsPage = ({
                     </Button>
                     {approval.status === 'PENDING' && isAdmin ? (
                       <>
-                        <Button
-                          onClick={() => handleApprove(approval.id)}
-                        >
+                        <Button onClick={() => handleApprove(approval.id)}>
                           <Check className="h-4 w-4" />
                           Approve
                         </Button>
