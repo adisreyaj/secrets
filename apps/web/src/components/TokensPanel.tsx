@@ -20,7 +20,7 @@ export const TokensPanel = ({
   onCreate: (
     name: string,
     readOnly: boolean,
-  ) => Promise<CreateTokenResponse | null>
+  ) => Promise<CreateTokenResponse | undefined>
   onDelete: (tokenId: string) => Promise<void>
 }) => {
   const [activeToken, setActiveToken] = useState<ApiTokenDto | null>(null)
@@ -47,9 +47,7 @@ export const TokensPanel = ({
       <SectionHeader
         kicker="API tokens"
         title="Programmatic access"
-        action={
-          <CreateTokenDialog onCreate={onCreate} />
-        }
+        action={<CreateTokenDialog onCreate={onCreate} />}
       />
       {error ? <ErrorBanner message={error} className="mt-4" /> : null}
       <ul className="mt-5 space-y-3">

@@ -215,6 +215,7 @@ export const ProjectPage = ({
         return data
       } catch (error) {
         toast.error(getErrorMessage(error))
+        return undefined
       }
     },
     [projectId, queryClient],

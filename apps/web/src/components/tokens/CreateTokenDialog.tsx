@@ -23,7 +23,7 @@ export const CreateTokenDialog = ({
   onCreate: (
     name: string,
     readOnly: boolean,
-  ) => Promise<CreateTokenResponse | null>
+  ) => Promise<CreateTokenResponse | undefined>
 }) => {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')

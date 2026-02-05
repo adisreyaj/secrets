@@ -36,6 +36,7 @@ export const SecretActionDialog = ({
         approvalRequestId?: string
         approvalRequestIds?: string[]
       }
+    | undefined
   >
   onRollback: (secretId: string) => Promise<void>
   onDelete: (secretId: string) => Promise<void>
@@ -79,11 +80,11 @@ export const SecretActionDialog = ({
           targetEnvironmentIds: selectedTargets,
           overwrite: overwriteExisting,
         })
-        if ('status' in result && result.status === 'pending') {
+        if (result && 'status' in result && result.status === 'pending') {
           setCopyResult('Approval requested for copy.')
           return
         }
-        if ('created' in result) {
+        if (result && 'created' in result) {
           const createdCount = result.created.length
           const updatedCount = result.updated.length
           const skippedCount = result.skipped.length

@@ -33,6 +33,7 @@ export const MissingKeysSection = ({
         approvalRequestId?: string
         approvalRequestIds?: string[]
       }
+    | undefined
   >
 }) => {
   const [missingDialogOpen, setMissingDialogOpen] = useState(false)
@@ -76,9 +77,9 @@ export const MissingKeysSection = ({
         selectedMissingKeys,
         overwriteExisting,
       )
-      if ('status' in result && result.status === 'pending') {
+      if (result && 'status' in result && result.status === 'pending') {
         toast.info('Copy submitted for approval.')
-      } else {
+      } else if (result && 'created' in result) {
         const created = result.created.length
         const updated = result.updated.length
         const skipped = result.skipped.length
@@ -140,25 +141,25 @@ export const MissingKeysSection = ({
         }}
       />
 
-        <MissingKeysDialog
-          open={missingDialogOpen}
-          onOpenChange={(open) => {
-            if (!open) closeMissingDialog()
-          }}
-          missingSources={missingSources}
-          missingSourceEnvId={missingSourceEnvId}
-          onSelectSource={(envId) => {
-            setMissingSourceEnvId(envId)
-            setSelectedMissingKeys(missingKeysByEnvironment[envId] ?? [])
-          }}
-          activeMissingKeys={activeMissingKeys}
-          selectedMissingKeys={selectedMissingKeys}
-          setSelectedMissingKeys={setSelectedMissingKeys}
-          overwriteExisting={overwriteExisting}
-          setOverwriteExisting={setOverwriteExisting}
-          onConfirm={handleMissingCopy}
-          missingCopying={missingCopying}
-        />
+      <MissingKeysDialog
+        open={missingDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) closeMissingDialog()
+        }}
+        missingSources={missingSources}
+        missingSourceEnvId={missingSourceEnvId}
+        onSelectSource={(envId) => {
+          setMissingSourceEnvId(envId)
+          setSelectedMissingKeys(missingKeysByEnvironment[envId] ?? [])
+        }}
+        activeMissingKeys={activeMissingKeys}
+        selectedMissingKeys={selectedMissingKeys}
+        setSelectedMissingKeys={setSelectedMissingKeys}
+        overwriteExisting={overwriteExisting}
+        setOverwriteExisting={setOverwriteExisting}
+        onConfirm={handleMissingCopy}
+        missingCopying={missingCopying}
+      />
     </>
   )
 }

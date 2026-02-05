@@ -13,8 +13,7 @@ import { Header } from './components/Header'
 import { ShortcutsHelpDialog } from './components/ShortcutsHelpDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useAuth } from './lib/auth'
-import { api } from './lib/api'
-import { projectPath, environmentPath, environmentsPath } from './lib/paths'
+import { environmentPath, environmentsPath, projectPath } from './lib/paths'
 import {
   getEnvironmentId,
   getProjectId,
@@ -196,7 +195,6 @@ const AppShell = () => {
     () => getRouteMatch(location.pathname, location.search),
     [location.pathname, location.search],
   )
-  const path = `${location.pathname}${location.search}`
 
   const shortcutsEnabled =
     !!user &&

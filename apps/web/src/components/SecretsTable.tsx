@@ -84,6 +84,7 @@ export const SecretsTable = ({
         approvalRequestId?: string
         approvalRequestIds?: string[]
       }
+    | undefined
   >
   onCopyMissing: (
     sourceEnvironmentId: string,
@@ -101,6 +102,7 @@ export const SecretsTable = ({
         approvalRequestId?: string
         approvalRequestIds?: string[]
       }
+    | undefined
   >
   searchValue?: string
   onSearchChange?: (value: string) => void

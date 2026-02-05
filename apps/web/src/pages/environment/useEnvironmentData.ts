@@ -4,9 +4,9 @@ import type {
   ProjectDto,
   SecretDto,
 } from '@secrets/shared'
-import { useCallback, useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { api } from '../../lib/api'
 import { getErrorMessage } from '../../lib/errors'
 import { queryKeys } from '../../lib/queryKeys'
@@ -377,7 +377,6 @@ export const useEnvironmentData = ({
   }, [secretKeyIndex])
 
   const missingKeys = useMemo(() => {
-    const activeEnvId = resolvedEnvironmentId ?? environmentId
     const currentKeys = new Set(secrets.map((secret) => secret.key))
     const missing: string[] = []
     for (const key of allSecretKeys) {
@@ -462,11 +461,12 @@ export const useEnvironmentData = ({
     URL.revokeObjectURL(url)
   }
 
-  const loadSecrets = async (include: boolean) => {
-    if (!resolvedEnvironmentId) return
+  const loadSecrets = async (include: boolean): Promise<boolean> => {
+    if (!resolvedEnvironmentId) return false
     await queryClient.invalidateQueries({
       queryKey: queryKeys.secrets(resolvedEnvironmentId, include),
     })
+    return true
   }
 
   const loadSecretCoverage = async () => {
