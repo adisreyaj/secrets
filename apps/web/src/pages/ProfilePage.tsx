@@ -97,9 +97,7 @@ export const ProfilePage = ({
           className="grid items-start gap-4 md:grid-cols-2"
         >
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Full name
-            </span>
+            <span className="muted-label">Full name</span>
             <Input
               value={profileForm.name}
               onChange={(event) =>
@@ -115,9 +113,7 @@ export const ProfilePage = ({
             </span>
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Email
-            </span>
+            <span className="muted-label">Email</span>
             <Input
               type="email"
               value={user?.email ?? ''}
@@ -154,9 +150,7 @@ export const ProfilePage = ({
           className="grid gap-4 md:grid-cols-2"
         >
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Current password
-            </span>
+            <span className="muted-label">Current password</span>
             <Input
               type="password"
               value={passwordForm.currentPassword}
@@ -170,9 +164,7 @@ export const ProfilePage = ({
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              New password
-            </span>
+            <span className="muted-label">New password</span>
             <Input
               type="password"
               value={passwordForm.newPassword}

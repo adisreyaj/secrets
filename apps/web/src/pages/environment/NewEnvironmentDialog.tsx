@@ -83,9 +83,7 @@ export const NewEnvironmentDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Environment name
-            </span>
+            <span className="muted-label">Environment name</span>
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
@@ -93,9 +91,7 @@ export const NewEnvironmentDialog = ({
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Copy keys from
-            </span>
+            <span className="muted-label">Copy keys from</span>
             <Select
               value={copyFromId}
               onValueChange={setCopyFromId}

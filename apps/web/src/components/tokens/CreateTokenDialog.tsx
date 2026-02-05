@@ -1,6 +1,6 @@
 import type { CreateTokenResponse } from '@secrets/shared'
-import { useEffect, useRef, useState } from 'react'
 import { Copy, KeyRound } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useRegisterShortcut } from '../../lib/shortcuts'
 import { ShortcutHint } from '../ShortcutHint'
 import { Button } from '../ui/button'
@@ -80,9 +80,7 @@ export const CreateTokenDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Token name
-            </span>
+            <span className="muted-label">Token name</span>
             <Input
               ref={nameInputRef}
               value={name}

@@ -14,6 +14,10 @@
     font-family: 'Fraunces', 'Times New Roman', serif;
   }
 
+  .muted-label {
+    @apply text-muted-foreground text-xs font-semibold tracking-[0.1em] uppercase;
+  }
+
   .bg-cream {
     background: hsl(var(--background));
   }

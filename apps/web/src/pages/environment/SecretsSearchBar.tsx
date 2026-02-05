@@ -11,9 +11,7 @@ export const SecretsSearchBar = ({
   return (
     <SectionCard className="-mb-px rounded-none border-y-0 px-4 py-3">
       <div className="flex flex-wrap items-center gap-3">
-        <label className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-          Search secrets
-        </label>
+        <label className="muted-label">Search secrets</label>
         <Input
           value={value}
           onChange={(event) => onChange(event.target.value)}

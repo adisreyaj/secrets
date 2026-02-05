@@ -4,9 +4,9 @@ import type {
     ProjectMemberDto,
     Role,
 } from '@secrets/shared'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -35,11 +35,11 @@ import {
     TooltipTrigger,
 } from '../components/ui/tooltip'
 import { api } from '../lib/api'
-import { projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
-import { useRegisterShortcut } from '../lib/shortcuts'
+import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
+import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const TeamPage = ({
@@ -220,9 +220,7 @@ export const TeamPage = ({
         ) : null}
 
         <div className="mt-6">
-          <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-            Pending invites
-          </p>
+          <p className="muted-label">Pending invites</p>
           {invitesError && isAdmin ? (
             <ErrorBanner message={invitesError} className="mt-3" />
           ) : invitesLoading ? (

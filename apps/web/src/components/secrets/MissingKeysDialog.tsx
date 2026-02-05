@@ -66,9 +66,7 @@ export const MissingKeysDialog = ({
                 <span className="bg-muted text-muted-foreground inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold">
                   1
                 </span>
-                <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                  Source environment
-                </p>
+                <p className="muted-label">Source environment</p>
               </div>
               <p className="text-muted-foreground text-xs">
                 Pick the environment that has the keys you want to copy.
@@ -100,9 +98,7 @@ export const MissingKeysDialog = ({
                 <span className="bg-muted text-muted-foreground inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold">
                   2
                 </span>
-                <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                  Keys to add
-                </p>
+                <p className="muted-label">Keys to add</p>
                 {missingSelectionLabel ? (
                   <span className="text-muted-foreground ml-auto text-xs">
                     {missingSelectionLabel}
@@ -167,17 +163,18 @@ export const MissingKeysDialog = ({
                 <span className="bg-muted text-muted-foreground inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold">
                   3
                 </span>
-                <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                  Overwrite existing
-                </p>
+                <p className="muted-label">Overwrite existing</p>
               </div>
               <p className="text-muted-foreground mt-2 text-xs">
-                If a key was deleted but still reserved, overwrite will restore it.
+                If a key was deleted but still reserved, overwrite will restore
+                it.
               </p>
               <label className="mt-3 flex items-center gap-2 text-sm">
                 <Checkbox
                   checked={overwriteExisting}
-                  onCheckedChange={(value) => setOverwriteExisting(Boolean(value))}
+                  onCheckedChange={(value) =>
+                    setOverwriteExisting(Boolean(value))
+                  }
                 />
                 Overwrite existing keys
               </label>

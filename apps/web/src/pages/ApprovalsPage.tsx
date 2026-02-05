@@ -4,9 +4,9 @@ import type {
     EnvironmentDto,
     ProjectDto,
 } from '@secrets/shared'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -26,11 +26,11 @@ import {
     SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
-import { projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
 import { formatDateTime } from '../lib/format'
-import { useRegisterShortcut } from '../lib/shortcuts'
+import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
+import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ApprovalsPage = ({
@@ -275,9 +275,7 @@ export const ApprovalsPage = ({
               </p>
               {detail.currentValue !== undefined ? (
                 <div>
-                  <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                    Current value
-                  </p>
+                  <p className="muted-label">Current value</p>
                   <pre className="bg-muted mt-2 rounded-lg p-3 text-xs whitespace-pre-wrap">
                     {detail.currentValue ?? '—'}
                   </pre>
@@ -285,9 +283,7 @@ export const ApprovalsPage = ({
               ) : null}
               {detail.proposedValue !== undefined ? (
                 <div>
-                  <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                    Proposed value
-                  </p>
+                  <p className="muted-label">Proposed value</p>
                   <pre className="bg-muted mt-2 rounded-lg p-3 text-xs whitespace-pre-wrap">
                     {detail.proposedValue ?? '—'}
                   </pre>

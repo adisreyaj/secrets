@@ -23,9 +23,7 @@ export const EnvironmentTabsCard = ({
 }) => {
   return (
     <SectionCard className="-mb-px rounded-b-none border-b-0 p-4">
-      <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-        Environments
-      </p>
+      <p className="muted-label">Environments</p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           {envLoading ? (

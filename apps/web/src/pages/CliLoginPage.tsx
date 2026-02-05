@@ -99,12 +99,10 @@ export const CliLoginPage = ({
         <ErrorBanner message={projectsError || issueError} />
       )}
 
-      <SectionCard>
+        <SectionCard>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Login code
-            </span>
+            <span className="muted-label">Login code</span>
             <Input
               value={loginCode}
               onChange={(event) => setLoginCode(event.target.value)}
@@ -112,9 +110,7 @@ export const CliLoginPage = ({
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Project
-            </span>
+            <span className="muted-label">Project</span>
             <Select value={selectedProject} onValueChange={setSelectedProject}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a project" />
@@ -129,9 +125,7 @@ export const CliLoginPage = ({
             </Select>
           </label>
           <label className="grid gap-2 text-sm md:col-span-2">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Token name
-            </span>
+            <span className="muted-label">Token name</span>
             <Input
               value={tokenName}
               onChange={(event) => setTokenName(event.target.value)}

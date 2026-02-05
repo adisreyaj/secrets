@@ -62,9 +62,7 @@ export const AuthPanel = ({
       <form onSubmit={handleSubmit} className="mt-6 space-y-3">
         {mode === 'register' ? (
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Full name
-            </span>
+            <span className="muted-label">Full name</span>
             <Input
               id="auth-name"
               value={form.name}
@@ -77,9 +75,7 @@ export const AuthPanel = ({
           </label>
         ) : null}
         <label className="grid gap-2 text-sm">
-          <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-            Email
-          </span>
+          <span className="muted-label">Email</span>
           <Input
             id="auth-email"
             value={form.email}
@@ -92,9 +88,7 @@ export const AuthPanel = ({
           />
         </label>
         <label className="grid gap-2 text-sm">
-          <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-            Password
-          </span>
+          <span className="muted-label">Password</span>
           <Input
             id="auth-password"
             value={form.password}

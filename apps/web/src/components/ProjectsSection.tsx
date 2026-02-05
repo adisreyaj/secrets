@@ -1,12 +1,12 @@
 import type { ProjectDto } from '@secrets/shared'
-import { useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatShortDate } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { EmptyState } from './EmptyState'
 import { ErrorBanner } from './ErrorBanner'
-import { ShortcutHint } from './ShortcutHint'
 import { SectionCard, SectionHeader } from './SectionCard'
+import { ShortcutHint } from './ShortcutHint'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import {
@@ -119,9 +119,7 @@ export const ProjectsSection = ({
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4">
                 <label className="grid gap-2 text-sm">
-                  <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                    Project name
-                  </span>
+                  <span className="muted-label">Project name</span>
                   <Input
                     value={name}
                     onChange={(event) => setName(event.target.value)}
@@ -129,9 +127,7 @@ export const ProjectsSection = ({
                   />
                 </label>
                 <label className="grid gap-2 text-sm">
-                  <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                    Environment template
-                  </span>
+                  <span className="muted-label">Environment template</span>
                   <Select
                     value={template}
                     onValueChange={(value) =>
@@ -201,7 +197,7 @@ export const ProjectsSection = ({
                       : 'border-border bg-card text-card-foreground hover:bg-card'
                   }`}
                 >
-                  <div className="flex w-full items-center justify-between text-xs tracking-[0.2em] uppercase">
+                  <div className="flex w-full items-center justify-between text-xs tracking-[0.1em] uppercase">
                     <time
                       className={
                         isSelected

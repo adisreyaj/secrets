@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { Plus, X } from 'lucide-react'
+import { useState } from 'react'
 import { useRegisterShortcut } from '../../lib/shortcuts'
 import { ShortcutHint } from '../ShortcutHint'
 import { Button } from '../ui/button'
@@ -132,9 +132,7 @@ export const AddSecretDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="flex items-center justify-between">
-            <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Secret details
-            </p>
+            <p className="muted-label">Secret details</p>
             <Button
               type="button"
               variant="outline"
@@ -162,9 +160,7 @@ export const AddSecretDialog = ({
 
           {showPasteInput ? (
             <label className="grid gap-2 text-sm">
-              <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                Paste key=value
-              </span>
+              <span className="muted-label">Paste key=value</span>
               <Input
                 value={pasteLine}
                 onChange={(event) => {
@@ -199,9 +195,7 @@ export const AddSecretDialog = ({
           ) : null}
 
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Secret key
-            </span>
+            <span className="muted-label">Secret key</span>
             <Input
               value={form.key}
               onChange={(event) =>
@@ -214,9 +208,7 @@ export const AddSecretDialog = ({
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Secret value
-            </span>
+            <span className="muted-label">Secret value</span>
             <Input
               value={form.value}
               onChange={(event) =>

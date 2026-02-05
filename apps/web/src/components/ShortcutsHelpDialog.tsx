@@ -1,5 +1,5 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import type { RouteMatch } from '../lib/router'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 
 type ShortcutItem = { keys: string; label: string }
 
@@ -90,16 +90,12 @@ export const ShortcutsHelpDialog = ({
         </DialogHeader>
         <div className="space-y-5 text-sm">
           <section className="space-y-2">
-            <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Global
-            </p>
+            <p className="muted-label">Global</p>
             <ShortcutList items={globalShortcuts} />
           </section>
           {currentShortcuts.length > 0 ? (
             <section className="space-y-2">
-              <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                This page
-              </p>
+              <p className="muted-label">This page</p>
               <ShortcutList items={currentShortcuts} />
             </section>
           ) : null}

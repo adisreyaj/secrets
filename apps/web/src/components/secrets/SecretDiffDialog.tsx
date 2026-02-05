@@ -145,9 +145,7 @@ export const SecretDiffDialog = ({
         </DialogHeader>
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-2">
-            <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              From
-            </p>
+            <p className="muted-label">From</p>
             <Select
               value={fromVersionId}
               onValueChange={(value) => setFromVersionId(value)}
@@ -170,9 +168,7 @@ export const SecretDiffDialog = ({
             </Select>
           </div>
           <div className="space-y-2">
-            <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              To
-            </p>
+            <p className="muted-label">To</p>
             <Select
               value={toVersionId}
               onValueChange={(value) => setToVersionId(value)}
@@ -236,9 +232,7 @@ const DiffViewer = ({ diff }: { diff: SecretDiffResponse }) => {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <div className="border-border bg-muted/40 rounded-2xl border p-3">
-        <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-          Previous
-        </p>
+        <p className="muted-label">Previous</p>
         <p className="text-muted-foreground mt-1 text-xs">
           Version {diff.previous.versionId.slice(0, 6)} ·{' '}
           {formatDateTime(diff.previous.createdAt)}
@@ -262,9 +256,7 @@ const DiffViewer = ({ diff }: { diff: SecretDiffResponse }) => {
         </div>
       </div>
       <div className="border-border bg-muted/40 rounded-2xl border p-3">
-        <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-          Current
-        </p>
+        <p className="muted-label">Current</p>
         <p className="text-muted-foreground mt-1 text-xs">
           Version {diff.current.versionId.slice(0, 6)} ·{' '}
           {formatDateTime(diff.current.createdAt)}

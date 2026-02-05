@@ -5,8 +5,8 @@ import { formatDateTime } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { EmptyState } from './EmptyState'
 import { ErrorBanner } from './ErrorBanner'
-import { ShortcutHint } from './ShortcutHint'
 import { SectionCard, SectionHeader } from './SectionCard'
+import { ShortcutHint } from './ShortcutHint'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import {
@@ -147,9 +147,7 @@ export const EnvironmentsSection = ({
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4">
                 <label className="grid gap-2 text-sm">
-                  <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                    Environment name
-                  </span>
+                  <span className="muted-label">Environment name</span>
                   <Input
                     value={name}
                     onChange={(event) => setName(event.target.value)}
@@ -157,9 +155,7 @@ export const EnvironmentsSection = ({
                   />
                 </label>
                 <label className="grid gap-2 text-sm">
-                  <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                    Copy keys from
-                  </span>
+                  <span className="muted-label">Copy keys from</span>
                   <Select
                     value={copyFromId}
                     onValueChange={setCopyFromId}

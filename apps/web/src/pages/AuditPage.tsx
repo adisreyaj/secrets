@@ -1,9 +1,9 @@
 import type { AuditLogDto, AuditLogFilters, ProjectDto } from '@secrets/shared'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, startOfDay } from 'date-fns'
 import { ArrowLeft, CalendarIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { DateRange } from 'react-day-picker'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AuditLog } from '../components/AuditLog'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -26,10 +26,10 @@ import {
   SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
-import { projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
-import { useRegisterShortcut } from '../lib/shortcuts'
+import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
+import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 import { cn } from '../lib/utils'
 
@@ -237,7 +237,9 @@ export const AuditPage = ({
       />
 
       {(projectsError || auditError || filterError || retentionError) && (
-        <ErrorBanner message={projectsError || auditError || filterError || retentionError} />
+        <ErrorBanner
+          message={projectsError || auditError || filterError || retentionError}
+        />
       )}
 
       <SectionCard>
@@ -258,9 +260,7 @@ export const AuditPage = ({
         <div className="mt-4 grid gap-4">
           <div className="grid gap-3 md:grid-cols-2">
             <div className="grid gap-2">
-              <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                Date range
-              </p>
+              <p className="muted-label">Date range</p>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -290,7 +290,9 @@ export const AuditPage = ({
                     mode="range"
                     defaultMonth={filters.dateRange?.from}
                     selected={filters.dateRange}
-                    onSelect={(range) => setFilters((prev) => ({ ...prev, dateRange: range }))}
+                    onSelect={(range) =>
+                      setFilters((prev) => ({ ...prev, dateRange: range }))
+                    }
                     numberOfMonths={2}
                   />
                 </PopoverContent>
@@ -298,9 +300,7 @@ export const AuditPage = ({
             </div>
 
             <div className="grid gap-2">
-              <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                Action
-              </p>
+              <p className="muted-label">Action</p>
               <Select
                 value={filters.action}
                 onValueChange={(value) =>
@@ -322,9 +322,7 @@ export const AuditPage = ({
             </div>
 
             <div className="grid gap-2">
-              <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                Resource type
-              </p>
+              <p className="muted-label">Resource type</p>
               <Select
                 value={filters.resourceType}
                 onValueChange={(value) =>
@@ -346,26 +344,28 @@ export const AuditPage = ({
             </div>
 
             <div className="grid gap-2">
-              <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                Resource ID
-              </p>
+              <p className="muted-label">Resource ID</p>
               <Input
                 value={filters.resourceId}
                 onChange={(event) =>
-                  setFilters((prev) => ({ ...prev, resourceId: event.target.value }))
+                  setFilters((prev) => ({
+                    ...prev,
+                    resourceId: event.target.value,
+                  }))
                 }
                 placeholder="Optional ID"
               />
             </div>
 
             <div className="grid gap-2">
-              <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                Actor type
-              </p>
+              <p className="muted-label">Actor type</p>
               <Select
                 value={filters.actorType}
                 onValueChange={(value) =>
-                  setFilters((prev) => ({ ...prev, actorType: value as AuditActorType }))
+                  setFilters((prev) => ({
+                    ...prev,
+                    actorType: value as AuditActorType,
+                  }))
                 }
               >
                 <SelectTrigger>
@@ -379,13 +379,14 @@ export const AuditPage = ({
             </div>
 
             <div className="grid gap-2">
-              <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-                Actor ID
-              </p>
+              <p className="muted-label">Actor ID</p>
               <Input
                 value={filters.actorId}
                 onChange={(event) =>
-                  setFilters((prev) => ({ ...prev, actorId: event.target.value }))
+                  setFilters((prev) => ({
+                    ...prev,
+                    actorId: event.target.value,
+                  }))
                 }
                 placeholder="Optional ID"
               />
@@ -393,10 +394,18 @@ export const AuditPage = ({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" className="rounded-full" onClick={handleApplyFilters}>
+            <Button
+              variant="outline"
+              className="rounded-full"
+              onClick={handleApplyFilters}
+            >
               Apply filters
             </Button>
-            <Button variant="ghost" className="rounded-full" onClick={handleClearFilters}>
+            <Button
+              variant="ghost"
+              className="rounded-full"
+              onClick={handleClearFilters}
+            >
               Clear filters
             </Button>
           </div>
@@ -419,9 +428,13 @@ export const AuditPage = ({
         />
         <div className="mt-4">
           {auditLoading ? (
-            <p className="text-muted-foreground text-sm">Loading audit log...</p>
+            <p className="text-muted-foreground text-sm">
+              Loading audit log...
+            </p>
           ) : auditLogs.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No audit events yet.</p>
+            <p className="text-muted-foreground text-sm">
+              No audit events yet.
+            </p>
           ) : (
             <AuditLog logs={auditLogs} />
           )}

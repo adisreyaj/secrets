@@ -7,9 +7,15 @@ import type {
   Role,
   SecretSearchResultDto,
 } from '@secrets/shared'
-import { ArrowLeft } from 'lucide-react'
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft } from 'lucide-react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { AuditLog } from '../components/AuditLog'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
 import { ErrorBanner } from '../components/ErrorBanner'
@@ -491,9 +497,7 @@ export const ProjectPage = ({
         ) : null}
 
         <div className="mt-6">
-          <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-            Pending invites
-          </p>
+          <p className="muted-label">Pending invites</p>
           {invitesLoading ? (
             <p className="text-muted-foreground mt-3 text-sm">
               Loading invites...

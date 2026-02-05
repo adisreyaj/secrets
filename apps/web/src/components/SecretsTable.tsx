@@ -9,9 +9,9 @@ import { Copy, History, Pencil, RotateCcw, Trash2, X } from 'lucide-react'
 import { memo, useCallback, useMemo, useState } from 'react'
 import { formatDateTime, formatKeyPreview } from '../lib/format'
 import { ErrorBanner } from './ErrorBanner'
+import { MissingKeysSection } from './secrets/MissingKeysSection'
 import { SecretActionDialog } from './secrets/SecretActionDialog'
 import { SecretDiffDialog } from './secrets/SecretDiffDialog'
-import { MissingKeysSection } from './secrets/MissingKeysSection'
 import { SecretsTableHeader } from './secrets/SecretsTableHeader'
 import { useSecretsEditor } from './secrets/useSecretsEditor'
 import { SectionCard } from './SectionCard'
@@ -198,7 +198,7 @@ export const SecretsTable = ({
         <Table className="min-w-190 border-separate border-spacing-0">
           <TableCaption className="sr-only">Secrets list</TableCaption>
           <TableHeader className="bg-muted">
-            <TableRow className="text-muted-foreground text-xs tracking-[0.2em] uppercase">
+            <TableRow className="text-muted-foreground text-xs tracking-[0.1em] uppercase">
               <TableHead>Key</TableHead>
               <TableHead>Value</TableHead>
               <TableHead>Version</TableHead>
@@ -390,7 +390,7 @@ const SecretRow = memo(
             <div className="flex items-center gap-2">
               <p>{secret.key}</p>
               {isPending ? (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-[0.2em] text-amber-700 uppercase">
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-[0.1em] text-amber-700 uppercase">
                   Pending
                 </span>
               ) : null}
