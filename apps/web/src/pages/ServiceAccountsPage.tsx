@@ -30,6 +30,7 @@ import { formatDate } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import { toast } from 'sonner'
 
 export const ServiceAccountsPage = ({
   projectId,
@@ -133,18 +134,25 @@ export const ServiceAccountsPage = ({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.serviceAccounts(projectId),
       })
+      toast.success('Service account created.')
     } catch (error) {
       setCreateError(getErrorMessage(error))
+      toast.error(getErrorMessage(error))
     } finally {
       setCreating(false)
     }
   }
 
   const handleDeleteAccount = async (account: ServiceAccountDto) => {
-    await api.deleteServiceAccount(projectId, account.id)
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.serviceAccounts(projectId),
-    })
+    try {
+      await api.deleteServiceAccount(projectId, account.id)
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.serviceAccounts(projectId),
+      })
+      toast.success('Service account deleted.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    }
   }
 
   const openTokenDialog = (account: ServiceAccountDto) => {
@@ -171,8 +179,10 @@ export const ServiceAccountsPage = ({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.serviceAccounts(projectId),
       })
+      toast.success('Service account token issued.')
     } catch (error) {
       setTokenError(getErrorMessage(error))
+      toast.error(getErrorMessage(error))
     } finally {
       setTokenCreating(false)
     }
@@ -180,14 +190,19 @@ export const ServiceAccountsPage = ({
 
   const handleDeleteToken = async () => {
     if (!revokeTarget) return
-    await api.deleteServiceAccountToken(
-      revokeTarget.account.id,
-      revokeTarget.token.id,
-    )
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.serviceAccounts(projectId),
-    })
-    setRevokeTarget(null)
+    try {
+      await api.deleteServiceAccountToken(
+        revokeTarget.account.id,
+        revokeTarget.token.id,
+      )
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.serviceAccounts(projectId),
+      })
+      setRevokeTarget(null)
+      toast.success('Token revoked.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    }
   }
 
   const projectsError = projectsErrorRaw

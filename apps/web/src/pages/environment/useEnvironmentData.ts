@@ -5,6 +5,7 @@ import type {
   SecretDto,
 } from '@secrets/shared'
 import { useCallback, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { getErrorMessage } from '../../lib/errors'
@@ -161,13 +162,18 @@ export const useEnvironmentData = ({
     name: string
     copyFromEnvironmentId?: string | null
   }) => {
-    await api.createEnvironment(projectId, {
-      name: payload.name,
-      copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
-    })
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.environments(projectId),
-    })
+    try {
+      await api.createEnvironment(projectId, {
+        name: payload.name,
+        copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.environments(projectId),
+      })
+      toast.success('Environment created.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    }
   }
 
   const handleCreateSecret = async (payload: {
@@ -175,77 +181,110 @@ export const useEnvironmentData = ({
     value: string
   }) => {
     if (!resolvedEnvironmentId) return
-    const result = await api.createSecret(resolvedEnvironmentId, payload)
-    if ('status' in result && result.status === 'pending') {
+    try {
+      const result = await api.createSecret(resolvedEnvironmentId, payload)
+      if ('status' in result && result.status === 'pending') {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+        })
+        toast.info('Approval requested for secret.')
+        return
+      }
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+        queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
       })
-      return
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.secretCoverage(projectId),
+      })
+      toast.success('Secret created.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
     }
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
-    })
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.secretCoverage(projectId),
-    })
   }
 
   const handleUpdateSecrets = async (
     changes: { id: string; key?: string; value?: string }[],
   ) => {
     let keyUpdated = false
-    for (const change of changes) {
-      if (change.key !== undefined) {
-        keyUpdated = true
-      }
-      const result = await api.updateSecret(change.id, {
-        key: change.key,
-        value: change.value,
-      })
-      if ('status' in result && result.status === 'pending') {
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+    let pendingCount = 0
+    try {
+      for (const change of changes) {
+        if (change.key !== undefined) {
+          keyUpdated = true
+        }
+        const result = await api.updateSecret(change.id, {
+          key: change.key,
+          value: change.value,
         })
-        continue
+        if ('status' in result && result.status === 'pending') {
+          pendingCount += 1
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+          })
+          continue
+        }
       }
-    }
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
-    })
-    if (keyUpdated) {
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.secretCoverage(projectId),
+        queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
       })
+      if (keyUpdated) {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.secretCoverage(projectId),
+        })
+      }
+      const updatedCount = Math.max(changes.length - pendingCount, 0)
+      if (updatedCount > 0) {
+        toast.success(`Updated ${updatedCount} secret${updatedCount === 1 ? '' : 's'}.`)
+      }
+      if (pendingCount > 0) {
+        toast.info(
+          `Approval requested for ${pendingCount} change${pendingCount === 1 ? '' : 's'}.`,
+        )
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error))
     }
   }
 
   const handleRollbackSecret = async (secretId: string) => {
-    const result = await api.rollbackSecret(secretId)
-    if ('status' in result && result.status === 'pending') {
+    try {
+      const result = await api.rollbackSecret(secretId)
+      if ('status' in result && result.status === 'pending') {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+        })
+        toast.info('Rollback submitted for approval.')
+        return
+      }
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+        queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
       })
-      return
+      toast.success('Secret rolled back.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
     }
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
-    })
   }
 
   const handleDeleteSecret = async (secretId: string) => {
-    const result = await api.deleteSecret(secretId)
-    if ('status' in result && result.status === 'pending') {
+    try {
+      const result = await api.deleteSecret(secretId)
+      if ('status' in result && result.status === 'pending') {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+        })
+        toast.info('Delete submitted for approval.')
+        return
+      }
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+        queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
       })
-      return
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.secretCoverage(projectId),
+      })
+      toast.success('Secret deleted.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
     }
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
-    })
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.secretCoverage(projectId),
-    })
   }
 
   const handleDiffSecret = async (
@@ -263,17 +302,28 @@ export const useEnvironmentData = ({
     secretId: string,
     payload: { targetEnvironmentIds: string[]; overwrite: boolean },
   ) => {
-    const result = await api.copySecret(secretId, payload)
-    if ('status' in result && result.status === 'pending') {
+    try {
+      const result = await api.copySecret(secretId, payload)
+      if ('status' in result && result.status === 'pending') {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+        })
+        toast.info('Copy submitted for approval.')
+        return result
+      }
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+        queryKey: queryKeys.secretCoverage(projectId),
       })
+      if ('created' in result) {
+        const total = result.created.length + result.updated.length
+        toast.success(
+          `Copied to ${total} environment${total === 1 ? '' : 's'}.`,
+        )
+      }
       return result
+    } catch (error) {
+      toast.error(getErrorMessage(error))
     }
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.secretCoverage(projectId),
-    })
-    return result
   }
 
   const handleCopyMissingSecrets = async (
@@ -282,24 +332,28 @@ export const useEnvironmentData = ({
     overwrite: boolean,
   ) => {
     if (!resolvedEnvironmentId) return
-    const result = await api.copySecretsFromEnvironment(resolvedEnvironmentId, {
-      sourceEnvironmentId,
-      keys,
-      overwrite,
-    })
-    if ('status' in result && result.status === 'pending') {
+    try {
+      const result = await api.copySecretsFromEnvironment(resolvedEnvironmentId, {
+        sourceEnvironmentId,
+        keys,
+        overwrite,
+      })
+      if ('status' in result && result.status === 'pending') {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+        })
+        return result
+      }
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+        queryKey: queryKeys.secretCoverage(projectId),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
       })
       return result
+    } catch (error) {
+      toast.error(getErrorMessage(error))
     }
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.secretCoverage(projectId),
-    })
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
-    })
-    return result
   }
 
   const selectedEnvironment =

@@ -41,6 +41,7 @@ import { formatDate, formatDateTime } from '../lib/format'
 import { environmentPath, projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import { toast } from 'sonner'
 
 export const ProjectPage = ({
   projectId,
@@ -157,22 +158,27 @@ export const ProjectPage = ({
 
   const handleCreateProject = useCallback(
     async (payload: { name: string; template: ProjectTemplate }) => {
-      const project = await api.createProject({ name: payload.name })
-      const templates: Record<ProjectTemplate, string[]> = {
-        starter: ['development', 'prod'],
-        full: ['development', 'staging', 'prod'],
-        empty: [],
-      }
+      try {
+        const project = await api.createProject({ name: payload.name })
+        const templates: Record<ProjectTemplate, string[]> = {
+          starter: ['development', 'prod'],
+          full: ['development', 'staging', 'prod'],
+          empty: [],
+        }
 
-      const envNames = templates[payload.template] ?? []
-      if (envNames.length > 0) {
-        await Promise.all(
-          envNames.map((envName) =>
-            api.createEnvironment(project.id, { name: envName }),
-          ),
-        )
+        const envNames = templates[payload.template] ?? []
+        if (envNames.length > 0) {
+          await Promise.all(
+            envNames.map((envName) =>
+              api.createEnvironment(project.id, { name: envName }),
+            ),
+          )
+        }
+        await queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+        toast.success('Project created.')
+      } catch (error) {
+        toast.error(getErrorMessage(error))
       }
-      await queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
     },
     [queryClient],
   )
@@ -182,34 +188,49 @@ export const ProjectPage = ({
       name: string
       copyFromEnvironmentId?: string | null
     }) => {
-      await api.createEnvironment(projectId, {
-        name: payload.name,
-        copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
-      })
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.environments(projectId),
-      })
+      try {
+        await api.createEnvironment(projectId, {
+          name: payload.name,
+          copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
+        })
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.environments(projectId),
+        })
+        toast.success('Environment created.')
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      }
     },
     [projectId, queryClient],
   )
 
   const handleCreateToken = useCallback(
     async (name: string, readOnly: boolean) => {
-      const data = await api.createToken(projectId, { name, readOnly })
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.tokens(projectId),
-      })
-      return data
+      try {
+        const data = await api.createToken(projectId, { name, readOnly })
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.tokens(projectId),
+        })
+        toast.success('Token created.')
+        return data
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      }
     },
     [projectId, queryClient],
   )
 
   const handleDeleteToken = useCallback(
     async (tokenId: string) => {
-      await api.deleteToken(projectId, tokenId)
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.tokens(projectId),
-      })
+      try {
+        await api.deleteToken(projectId, tokenId)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.tokens(projectId),
+        })
+        toast.success('Token deleted.')
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      }
     },
     [projectId, queryClient],
   )
@@ -230,6 +251,9 @@ export const ProjectPage = ({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.invites(projectId),
       })
+      toast.success('Invite sent.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
     } finally {
       setInviteCreating(false)
     }
@@ -237,10 +261,15 @@ export const ProjectPage = ({
 
   const handleRevokeInvite = useCallback(
     async (inviteId: string) => {
-      await api.revokeInvite(projectId, inviteId)
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.invites(projectId),
-      })
+      try {
+        await api.revokeInvite(projectId, inviteId)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.invites(projectId),
+        })
+        toast.success('Invite revoked.')
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      }
     },
     [projectId, queryClient],
   )

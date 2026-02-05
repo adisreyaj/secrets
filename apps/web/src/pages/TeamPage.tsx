@@ -41,6 +41,7 @@ import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import { toast } from 'sonner'
 
 export const TeamPage = ({
   projectId,
@@ -117,14 +118,22 @@ export const TeamPage = ({
       setLastInviteLink(link)
       setInviteEmail('')
       await queryClient.invalidateQueries({ queryKey: queryKeys.invites(projectId) })
+      toast.success('Invite sent.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
     } finally {
       setInviteCreating(false)
     }
   }
 
   const handleRevokeInvite = async (inviteId: string) => {
-    await api.revokeInvite(projectId, inviteId)
-    await queryClient.invalidateQueries({ queryKey: queryKeys.invites(projectId) })
+    try {
+      await api.revokeInvite(projectId, inviteId)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.invites(projectId) })
+      toast.success('Invite revoked.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    }
   }
 
   return (

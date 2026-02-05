@@ -11,6 +11,7 @@ import { getErrorMessage } from '../lib/errors'
 import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import { toast } from 'sonner'
 
 export const ProjectsPage = ({
   navigate,
@@ -58,7 +59,12 @@ export const ProjectsPage = ({
 
   const handleCreate = useCallback(
     async (payload: { name: string; template: ProjectTemplate }) => {
-      await createProjectMutation.mutateAsync(payload)
+      try {
+        await createProjectMutation.mutateAsync(payload)
+        toast.success('Project created.')
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      }
     },
     [createProjectMutation],
   )

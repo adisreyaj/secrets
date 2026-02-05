@@ -13,6 +13,7 @@ import { getErrorMessage } from '../lib/errors'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import { toast } from 'sonner'
 
 export const EnvironmentsPage = ({
   projectId,
@@ -54,13 +55,18 @@ export const EnvironmentsPage = ({
       name: string
       copyFromEnvironmentId?: string | null
     }) => {
-      await api.createEnvironment(projectId, {
-        name: payload.name,
-        copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
-      })
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.environments(projectId),
-      })
+      try {
+        await api.createEnvironment(projectId, {
+          name: payload.name,
+          copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
+        })
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.environments(projectId),
+        })
+        toast.success('Environment created.')
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      }
     },
     [projectId, queryClient],
   )

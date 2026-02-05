@@ -13,6 +13,7 @@ import { getErrorMessage } from '../lib/errors'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import { toast } from 'sonner'
 
 export const TokensPage = ({
   projectId,
@@ -51,21 +52,31 @@ export const TokensPage = ({
 
   const handleCreateToken = useCallback(
     async (name: string, readOnly: boolean) => {
-      const data = await api.createToken(projectId, { name, readOnly })
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.tokens(projectId),
-      })
-      return data
+      try {
+        const data = await api.createToken(projectId, { name, readOnly })
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.tokens(projectId),
+        })
+        toast.success('Token created.')
+        return data
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      }
     },
     [projectId, queryClient],
   )
 
   const handleDeleteToken = useCallback(
     async (tokenId: string) => {
-      await api.deleteToken(projectId, tokenId)
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.tokens(projectId),
-      })
+      try {
+        await api.deleteToken(projectId, tokenId)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.tokens(projectId),
+        })
+        toast.success('Token deleted.')
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+      }
     },
     [projectId, queryClient],
   )

@@ -30,6 +30,7 @@ import { getErrorMessage } from '../lib/errors'
 import { formatDateTime } from '../lib/format'
 import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
+import { toast } from 'sonner'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
@@ -104,24 +105,39 @@ export const ApprovalsPage = ({
   }
 
   const handleApprove = async (approvalId: string) => {
-    await api.approveRequest(approvalId)
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.approvals(projectId, statusFilter),
-    })
+    try {
+      await api.approveRequest(approvalId)
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.approvals(projectId, statusFilter),
+      })
+      toast.success('Approval granted.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    }
   }
 
   const handleDeny = async (approvalId: string) => {
-    await api.denyRequest(approvalId)
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.approvals(projectId, statusFilter),
-    })
+    try {
+      await api.denyRequest(approvalId)
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.approvals(projectId, statusFilter),
+      })
+      toast.success('Request denied.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    }
   }
 
   const handleCancel = async (approvalId: string) => {
-    await api.cancelRequest(approvalId)
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.approvals(projectId, statusFilter),
-    })
+    try {
+      await api.cancelRequest(approvalId)
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.approvals(projectId, statusFilter),
+      })
+      toast.success('Request canceled.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    }
   }
 
   useRegisterShortcut('b', () =>

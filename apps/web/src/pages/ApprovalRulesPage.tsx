@@ -35,6 +35,7 @@ import { getErrorMessage } from '../lib/errors'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import { toast } from 'sonner'
 
 export const ApprovalRulesPage = ({
   projectId,
@@ -105,34 +106,49 @@ export const ApprovalRulesPage = ({
       setRulesError('Rule name, pattern, and at least one action are required.')
       return
     }
-    await api.createApprovalRule(projectId, {
-      name: ruleName.trim(),
-      environmentId: ruleEnvironmentId === 'all' ? null : ruleEnvironmentId,
-      keyPattern: rulePattern.trim(),
-      actions: ruleActions,
-      isActive: true,
-    })
-    setRuleName('')
-    setRulePattern('*')
-    setRuleEnvironmentId('all')
-    setRuleActions(['CREATE', 'UPDATE'])
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.approvalRules(projectId),
-    })
+    try {
+      await api.createApprovalRule(projectId, {
+        name: ruleName.trim(),
+        environmentId: ruleEnvironmentId === 'all' ? null : ruleEnvironmentId,
+        keyPattern: rulePattern.trim(),
+        actions: ruleActions,
+        isActive: true,
+      })
+      setRuleName('')
+      setRulePattern('*')
+      setRuleEnvironmentId('all')
+      setRuleActions(['CREATE', 'UPDATE'])
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.approvalRules(projectId),
+      })
+      toast.success('Approval rule created.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    }
   }
 
   const handleToggleRule = async (rule: ApprovalRuleDto) => {
-    await api.updateApprovalRule(rule.id, { isActive: !rule.isActive })
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.approvalRules(projectId),
-    })
+    try {
+      await api.updateApprovalRule(rule.id, { isActive: !rule.isActive })
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.approvalRules(projectId),
+      })
+      toast.success(rule.isActive ? 'Rule disabled.' : 'Rule enabled.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    }
   }
 
   const handleDeleteRule = async (ruleId: string) => {
-    await api.deleteApprovalRule(ruleId)
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.approvalRules(projectId),
-    })
+    try {
+      await api.deleteApprovalRule(ruleId)
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.approvalRules(projectId),
+      })
+      toast.success('Approval rule deleted.')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    }
   }
 
   useRegisterShortcut('b', () =>

@@ -32,6 +32,7 @@ import { queryKeys } from '../lib/queryKeys'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 import { cn } from '../lib/utils'
+import { toast } from 'sonner'
 
 type AuditActorType = 'user' | 'service'
 
@@ -191,7 +192,9 @@ export const AuditPage = ({
     setRetentionSaving(true)
     try {
       await updateRetentionMutation.mutateAsync(retentionValue)
+      toast.success('Retention settings saved.')
     } catch {
+      toast.error('Failed to save retention settings.')
       // error handled via mutation state
     } finally {
       setRetentionSaving(false)
