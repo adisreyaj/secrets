@@ -431,8 +431,37 @@ function requireAuth(request: FastifyRequest, reply: FastifyReply): AuthContext 
 }
 
 export async function buildApp(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: {
+      transport: {
+        target: 'pino-pretty',
+        options: { singleLine: true },
+      },
+    },
+    disableRequestLogging: true,
+  });
   const masterKey = loadMasterKey();
+
+  const buildErrorContext = (request: FastifyRequest, statusCode: number) => {
+    const route =
+      request.routeOptions?.url ?? (request as { routerPath?: string }).routerPath ?? 'unknown';
+    return {
+      requestId: request.id,
+      method: request.method,
+      url: request.url,
+      route,
+      statusCode,
+      ip: request.ip,
+      auth: request.auth
+        ? {
+            userId: request.auth.user?.id ?? null,
+            serviceAccountId: request.auth.serviceAccountId ?? null,
+            projectId: request.auth.projectId ?? null,
+            viaToken: request.auth.viaToken,
+          }
+        : null,
+    };
+  };
 
   await app.register(cookie);
   await app.register(helmet, {
@@ -456,6 +485,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
   await app.register(rateLimit, { global: false });
+
+  app.addHook('onRequest', async (request, reply) => {
+    reply.header('x-request-id', request.id);
+  });
 
   app.addHook('preHandler', async (request) => {
     const sessionToken = request.cookies[SESSION_COOKIE_NAME];
@@ -544,6 +577,25 @@ export async function buildApp(): Promise<FastifyInstance> {
           });
         }
       }
+    }
+  });
+
+  app.setErrorHandler((error, request, reply) => {
+    const statusCode = error.statusCode ?? reply.statusCode ?? 500;
+    if (statusCode >= 500) {
+      app.log.error(
+        { err: error, ...buildErrorContext(request, statusCode) },
+        'request failed',
+      );
+      request.errorLogged = true;
+    }
+    reply.send(error);
+  });
+
+  app.addHook('onResponse', async (request, reply) => {
+    if (reply.statusCode >= 500 && !request.errorLogged) {
+      app.log.error(buildErrorContext(request, reply.statusCode), 'request failed');
+      request.errorLogged = true;
     }
   });
 
