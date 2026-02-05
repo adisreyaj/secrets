@@ -279,12 +279,13 @@ export const useEnvironmentData = ({
   const handleCopyMissingSecrets = async (
     sourceEnvironmentId: string,
     keys: string[],
+    overwrite: boolean,
   ) => {
     if (!resolvedEnvironmentId) return
     const result = await api.copySecretsFromEnvironment(resolvedEnvironmentId, {
       sourceEnvironmentId,
       keys,
-      overwrite: false,
+      overwrite,
     })
     if ('status' in result && result.status === 'pending') {
       await queryClient.invalidateQueries({
@@ -323,7 +324,7 @@ export const useEnvironmentData = ({
 
   const missingKeys = useMemo(() => {
     const activeEnvId = resolvedEnvironmentId ?? environmentId
-    const currentKeys = new Set(secretKeyIndex[activeEnvId] ?? [])
+    const currentKeys = new Set(secrets.map((secret) => secret.key))
     const missing: string[] = []
     for (const key of allSecretKeys) {
       if (!currentKeys.has(key)) {
@@ -332,11 +333,11 @@ export const useEnvironmentData = ({
     }
     missing.sort((a, b) => a.localeCompare(b))
     return missing
-  }, [allSecretKeys, environmentId, resolvedEnvironmentId, secretKeyIndex])
+  }, [allSecretKeys, environmentId, resolvedEnvironmentId, secrets])
 
   const missingKeysByEnvironment = useMemo(() => {
     const activeEnvId = resolvedEnvironmentId ?? environmentId
-    const currentKeys = new Set(secretKeyIndex[activeEnvId] ?? [])
+    const currentKeys = new Set(secrets.map((secret) => secret.key))
     const map: Record<string, string[]> = {}
     for (const env of environments) {
       if (env.id === activeEnvId) continue

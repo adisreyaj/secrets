@@ -88,8 +88,14 @@ export const SecretsTable = ({
   onCopyMissing: (
     sourceEnvironmentId: string,
     keys: string[],
+    overwrite: boolean,
   ) => Promise<
-    | { created: string[]; updated: string[]; skipped: string[] }
+    | {
+        created: string[]
+        updated: string[]
+        skipped: string[]
+        skippedDetails?: { key: string; reason: string; code: string }[]
+      }
     | {
         status: 'pending'
         approvalRequestId?: string

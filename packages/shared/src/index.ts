@@ -207,6 +207,11 @@ export interface CopyEnvironmentSecretsResponse {
   created: string[];
   updated: string[];
   skipped: string[];
+  skippedDetails?: {
+    key: string;
+    reason: string;
+    code: string;
+  }[];
 }
 
 export interface ApprovalRequestResponse {

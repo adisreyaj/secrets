@@ -1,5 +1,6 @@
 import type { EnvironmentDto } from '@secrets/shared'
 import { Button } from '../ui/button'
+import { Checkbox } from '../ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,8 @@ export const MissingKeysDialog = ({
   setSelectedMissingKeys,
   onConfirm,
   missingCopying,
+  overwriteExisting,
+  setOverwriteExisting,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -33,6 +36,8 @@ export const MissingKeysDialog = ({
   setSelectedMissingKeys: (keys: string[]) => void
   onConfirm: () => void
   missingCopying: boolean
+  overwriteExisting: boolean
+  setOverwriteExisting: (value: boolean) => void
 }) => {
   const selectedKeyCount = selectedMissingKeys.length
   const totalKeyCount = activeMissingKeys.length
@@ -156,6 +161,26 @@ export const MissingKeysDialog = ({
                   Clear
                 </Button>
               </div>
+            </div>
+            <div className="border-border/70 bg-card/80 rounded-2xl border p-3">
+              <div className="flex items-center gap-2">
+                <span className="bg-muted text-muted-foreground inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold">
+                  3
+                </span>
+                <p className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
+                  Overwrite existing
+                </p>
+              </div>
+              <p className="text-muted-foreground mt-2 text-xs">
+                If a key was deleted but still reserved, overwrite will restore it.
+              </p>
+              <label className="mt-3 flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={overwriteExisting}
+                  onCheckedChange={(value) => setOverwriteExisting(Boolean(value))}
+                />
+                Overwrite existing keys
+              </label>
             </div>
           </div>
         )}

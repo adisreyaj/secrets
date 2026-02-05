@@ -3168,7 +3168,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     if (sourceSecrets.length === 0) {
-      reply.send({ created: [], updated: [], skipped: [] });
+      const skippedDetails =
+        keys?.length
+          ? keys.map((key) => ({
+              key,
+              reason: 'Source environment does not contain this key.',
+              code: 'SOURCE_MISSING',
+            }))
+          : [];
+      reply.send({ created: [], updated: [], skipped: keys ?? [], skippedDetails });
       return;
     }
 
@@ -3235,12 +3243,34 @@ export async function buildApp(): Promise<FastifyInstance> {
     const created: string[] = [];
     const updated: string[] = [];
     const skipped: string[] = [];
+    const skippedDetails: { key: string; reason: string; code: string }[] = [];
     const keyVersion = masterKeyVersion();
+
+    const requestedKeys = keys?.length ? new Set(keys) : null;
+    if (requestedKeys) {
+      const foundKeys = new Set(sourceSecrets.map((secret) => secret.key));
+      for (const key of requestedKeys) {
+        if (!foundKeys.has(key)) {
+          skipped.push(key);
+          skippedDetails.push({
+            key,
+            reason: 'Source environment does not contain this key.',
+            code: 'SOURCE_MISSING',
+          });
+        }
+      }
+    }
 
     await prisma.$transaction(async (tx) => {
       for (const sourceSecret of sourceSecrets) {
         const version = sourceSecret.versions[0];
         if (!version) {
+          skipped.push(sourceSecret.key);
+          skippedDetails.push({
+            key: sourceSecret.key,
+            reason: 'Source secret does not have an active version.',
+            code: 'SOURCE_NO_VERSION',
+          });
           continue;
         }
 
@@ -3252,6 +3282,19 @@ export async function buildApp(): Promise<FastifyInstance> {
 
         if (existing && !overwrite) {
           skipped.push(sourceSecret.key);
+          if (existing.deletedAt) {
+            skippedDetails.push({
+              key: sourceSecret.key,
+              reason: 'Key was deleted but is still reserved. Use overwrite to restore.',
+              code: 'TARGET_SOFT_DELETED',
+            });
+          } else {
+            skippedDetails.push({
+              key: sourceSecret.key,
+              reason: 'Target environment already has this key.',
+              code: 'TARGET_EXISTS',
+            });
+          }
           continue;
         }
 
@@ -3310,7 +3353,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       },
     });
 
-    reply.send({ created, updated, skipped });
+    reply.send({ created, updated, skipped, skippedDetails });
   });
 
   app.post('/secrets/:id/rollback', async (request, reply) => {
