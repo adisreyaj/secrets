@@ -100,9 +100,6 @@ export const ProjectPage = ({
   )
   const auditLogs = auditLogsData ?? []
   const tokens = tokensData ?? []
-  const [lastToken, setLastToken] = useState<Awaited<
-    ReturnType<typeof api.createToken>
-  > | null>(null)
 
   const {
     data: invitesData,
@@ -197,7 +194,6 @@ export const ProjectPage = ({
   const handleCreateToken = useCallback(
     async (name: string, readOnly: boolean) => {
       const data = await api.createToken(projectId, { name, readOnly })
-      setLastToken(data)
       await reloadTokens()
       return data
     },
@@ -425,8 +421,6 @@ export const ProjectPage = ({
           error={tokensError}
           onCreate={handleCreateToken}
           onDelete={handleDeleteToken}
-          lastCreated={lastToken}
-          onClearLastCreated={() => setLastToken(null)}
         />
       </section>
 

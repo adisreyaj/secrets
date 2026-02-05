@@ -1,6 +1,6 @@
 import type { ApiTokenDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
@@ -32,9 +32,6 @@ export const TokensPage = ({
     async () => (user ? api.listTokens(projectId) : []),
     [projectId, user],
   )
-  const [lastToken, setLastToken] = useState<Awaited<
-    ReturnType<typeof api.createToken>
-  > | null>(null)
   const projects = useMemo(() => projectsData ?? [], [projectsData])
   const tokens = tokensData ?? []
 
@@ -50,7 +47,6 @@ export const TokensPage = ({
   const handleCreateToken = useCallback(
     async (name: string, readOnly: boolean) => {
       const data = await api.createToken(projectId, { name, readOnly })
-      setLastToken(data)
       await loadTokens()
       return data
     },
@@ -95,8 +91,6 @@ export const TokensPage = ({
         error={tokensError}
         onCreate={handleCreateToken}
         onDelete={handleDeleteToken}
-        lastCreated={lastToken}
-        onClearLastCreated={() => setLastToken(null)}
       />
     </section>
   )
