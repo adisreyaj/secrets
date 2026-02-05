@@ -174,8 +174,7 @@ const AppShell = () => {
       return
     }
 
-    setResolvedEnvironmentId(environmentSegment)
-
+    // Don't set resolvedEnvironmentId to segment yet — API needs id. Resolve after listEnvironments.
     if (loadingEnvFor === projectId) return
     setLoadingEnvFor(projectId)
     api
@@ -199,9 +198,9 @@ const AppShell = () => {
           next.set(projectId, idBySlug)
           return next
         })
-        if (idBySlug.has(environmentSegment)) {
-          setResolvedEnvironmentId(idBySlug.get(environmentSegment) ?? null)
-        }
+        setResolvedEnvironmentId(
+          idBySlug.get(environmentSegment) ?? environmentSegment,
+        )
       })
       .catch(() => null)
       .finally(() => {
@@ -486,8 +485,13 @@ const AppShell = () => {
               projectId={resolvedProjectId ?? match.projectId}
               navigate={navigate}
             />
+          ) : match.name === 'environment' && !resolvedEnvironmentId ? (
+            <div className="text-muted-foreground text-sm">
+              Loading environment...
+            </div>
           ) : (
             <EnvironmentPage
+              key={resolvedEnvironmentId ?? match.environmentId}
               projectId={resolvedProjectId ?? match.projectId}
               environmentId={resolvedEnvironmentId ?? match.environmentId}
               navigate={navigate}

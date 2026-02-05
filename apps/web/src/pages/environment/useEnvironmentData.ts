@@ -4,7 +4,7 @@ import type {
   ProjectDto,
   SecretDto,
 } from '@secrets/shared'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../lib/api'
 import { getErrorMessage } from '../../lib/errors'
 import { useAsyncResource } from '../../lib/useAsyncResource'
@@ -54,6 +54,10 @@ export const useEnvironmentData = ({
   const [approvals, setApprovals] = useState<ApprovalRequestDto[]>([])
   const [approvalsLoading, setApprovalsLoading] = useState(false)
   const [approvalsError, setApprovalsError] = useState<string | null>(null)
+
+  // Track last loaded combination to avoid redundant effect-triggered reload loops
+  const lastSecretsEnvRef = useRef<string | null>(null)
+  const lastSecretsValuesLoadedRef = useRef<boolean | null>(null)
 
   const loadSecrets = useCallback(
     async (include: boolean) => {
@@ -117,10 +121,21 @@ export const useEnvironmentData = ({
   }, [environments])
 
   useEffect(() => {
-    if (enabled) {
-      void loadSecrets(valuesLoaded)
+    if (!enabled) return
+
+    // Prevent repeated loads for the same environment/visibility combination,
+    // which can cause deep update chains if some parent prop is unstable.
+    if (
+      lastSecretsEnvRef.current === environmentId &&
+      lastSecretsValuesLoadedRef.current === valuesLoaded
+    ) {
+      return
     }
-  }, [enabled, valuesLoaded, loadSecrets])
+
+    lastSecretsEnvRef.current = environmentId
+    lastSecretsValuesLoadedRef.current = valuesLoaded
+    void loadSecrets(valuesLoaded)
+  }, [enabled, environmentId, valuesLoaded, loadSecrets])
 
   useEffect(() => {
     if (enabled && environments.length > 0) {
