@@ -392,7 +392,7 @@ const SecretRow = memo(
             <div className="flex items-center gap-2">
               <p>{secret.key}</p>
               {isPending ? (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-[0.1em] text-amber-700 uppercase">
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-widest text-amber-700 uppercase">
                   Pending
                 </span>
               ) : null}
@@ -410,24 +410,6 @@ const SecretRow = memo(
                 size="xxs"
                 placeholder="New value"
               />
-              <div className="flex items-center gap-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onRowValueChange(secret.id, 'true')}
-                >
-                  true
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onRowValueChange(secret.id, 'false')}
-                >
-                  false
-                </Button>
-              </div>
             </div>
           ) : includeValues ? (
             <span>{formatKeyPreview(secret.value)}</span>
@@ -461,26 +443,13 @@ const SecretRow = memo(
                 Copy this key to other environments
               </TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => onStartEdit(secret)}
-                  disabled={isEditing || isPending}
-                  aria-label="Edit secret"
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Edit secret key or value</TooltipContent>
-            </Tooltip>
+
             {isEditing ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     size="icon"
-                    variant="ghost"
+                    variant="outline"
                     onClick={() => onCancelRow(secret.id)}
                     aria-label="Cancel edits"
                   >
@@ -489,7 +458,22 @@ const SecretRow = memo(
                 </TooltipTrigger>
                 <TooltipContent>Cancel edits for this row</TooltipContent>
               </Tooltip>
-            ) : null}
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={() => onStartEdit(secret)}
+                    disabled={isEditing || isPending}
+                    aria-label="Edit secret"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Edit secret key or value</TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

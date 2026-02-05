@@ -65,8 +65,20 @@ export const Header = ({
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost">
-                    {user.name ? user.name[0]?.toUpperCase() : 'U'}
+                  <Button variant="ghost" className="pr-1 pl-4">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="flex flex-col items-end">
+                        <p className="text-xs">{user.name}</p>
+                        <p className="text-muted-foreground text-xs">
+                          {user.email}
+                        </p>
+                      </div>
+                      <img
+                        src={`https://avatar.tobi.sh/${user.email}`}
+                        alt={user.name ?? user.email}
+                        className="h-10 w-10 rounded-full"
+                      />
+                    </div>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
@@ -74,7 +86,10 @@ export const Header = ({
                   className="shadow-soft border-border bg-popover text-popover-foreground w-56 rounded-2xl"
                 >
                   <DropdownMenuLabel className="text-popover-foreground tracking-normal normal-case">
-                    {user.name ?? user.email}
+                    {user.name}
+                    <p className="text-muted-foreground text-xs">
+                      {user.email}
+                    </p>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={onProfile}>
@@ -83,7 +98,7 @@ export const Header = ({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={onOpenShortcuts}>
                     Keyboard shortcuts
-                    <DropdownMenuShortcut className="border-foreground/20 from-background via-muted/60 to-muted text-foreground/80 ml-auto rounded-md border bg-gradient-to-b px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.08em] opacity-100 shadow-[0_1px_0_0_rgba(0,0,0,0.18),0_3px_0_0_rgba(0,0,0,0.08)]">
+                    <DropdownMenuShortcut className="border-foreground/20 from-background via-muted/60 to-muted text-foreground/80 ml-auto rounded-md border bg-linear-to-b px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.08em] opacity-100 shadow-[0_1px_0_0_rgba(0,0,0,0.18),0_3px_0_0_rgba(0,0,0,0.08)]">
                       ?
                     </DropdownMenuShortcut>
                   </DropdownMenuItem>
