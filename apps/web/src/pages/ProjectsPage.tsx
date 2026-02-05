@@ -1,13 +1,15 @@
 import type { ProjectDto } from '@secrets/shared'
 import { useCallback } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '../components/PageHeader'
 import {
   ProjectsSection,
   type ProjectTemplate,
 } from '../components/ProjectsSection'
 import { api } from '../lib/api'
+import { getErrorMessage } from '../lib/errors'
 import { projectPath } from '../lib/paths'
-import { useAsyncResource } from '../lib/useAsyncResource'
+import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ProjectsPage = ({
@@ -16,19 +18,23 @@ export const ProjectsPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
+  const queryClient = useQueryClient()
   const {
     data: projectsData,
-    loading: projectsLoading,
-    error: projectsError,
-    reload: loadProjects,
-  } = useAsyncResource<ProjectDto[]>(
-    async () => (user ? api.listProjects() : []),
-    [user],
-  )
+    isLoading: projectsLoading,
+    error: projectsErrorRaw,
+  } = useQuery<ProjectDto[]>({
+    queryKey: queryKeys.projects(),
+    queryFn: () => api.listProjects(),
+    enabled: Boolean(user),
+  })
   const projects = projectsData ?? []
+  const projectsError = projectsErrorRaw
+    ? getErrorMessage(projectsErrorRaw)
+    : null
 
-  const handleCreate = useCallback(
-    async (payload: { name: string; template: ProjectTemplate }) => {
+  const createProjectMutation = useMutation({
+    mutationFn: async (payload: { name: string; template: ProjectTemplate }) => {
       const project = await api.createProject({ name: payload.name })
       const templates: Record<ProjectTemplate, string[]> = {
         starter: ['development', 'prod'],
@@ -44,9 +50,17 @@ export const ProjectsPage = ({
           ),
         )
       }
-      await loadProjects()
     },
-    [loadProjects],
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+    },
+  })
+
+  const handleCreate = useCallback(
+    async (payload: { name: string; template: ProjectTemplate }) => {
+      await createProjectMutation.mutateAsync(payload)
+    },
+    [createProjectMutation],
   )
 
   return (

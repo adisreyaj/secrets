@@ -5,7 +5,8 @@ import type {
     Role,
 } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -38,7 +39,7 @@ import { projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
-import { useAsyncResource } from '../lib/useAsyncResource'
+import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const TeamPage = ({
@@ -49,29 +50,44 @@ export const TeamPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const { data: projectsData } = useAsyncResource<ProjectDto[]>(
-    async () => (user ? api.listProjects() : []),
-    [user],
-  )
+  const queryClient = useQueryClient()
+  const { data: projectsData } = useQuery<ProjectDto[]>({
+    queryKey: queryKeys.projects(),
+    queryFn: () => api.listProjects(),
+    enabled: Boolean(user),
+  })
   const projects = projectsData ?? []
+  const selectedProject =
+    projects.find((project) => project.id === projectId) ?? null
+  const isAdmin = selectedProject?.role === 'ADMIN'
 
-  const [members, setMembers] = useState<ProjectMemberDto[]>([])
-  const [membersLoading, setMembersLoading] = useState(false)
-  const [membersError, setMembersError] = useState<string | null>(null)
+  const {
+    data: membersData,
+    isLoading: membersLoading,
+    error: membersErrorRaw,
+  } = useQuery<ProjectMemberDto[]>({
+    queryKey: queryKeys.members(projectId),
+    queryFn: () => api.listMembers(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+  const members = membersData ?? []
 
-  const [invites, setInvites] = useState<ProjectInviteDto[]>([])
-  const [invitesLoading, setInvitesLoading] = useState(false)
-  const [invitesError, setInvitesError] = useState<string | null>(null)
+  const {
+    data: invitesData,
+    isLoading: invitesLoading,
+    error: invitesErrorRaw,
+  } = useQuery<ProjectInviteDto[]>({
+    queryKey: queryKeys.invites(projectId),
+    queryFn: () => api.listInvites(projectId),
+    enabled: Boolean(user) && Boolean(projectId) && isAdmin,
+  })
+  const invites = invitesData ?? []
 
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<Role>('VIEWER')
   const [inviteCreating, setInviteCreating] = useState(false)
   const [lastInviteLink, setLastInviteLink] = useState<string | null>(null)
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
-
-  const selectedProject =
-    projects.find((project) => project.id === projectId) ?? null
-  const isAdmin = selectedProject?.role === 'ADMIN'
 
   useRegisterShortcut('b', () =>
     navigate(projectPath(projectId, selectedProject?.slug)),
@@ -80,43 +96,12 @@ export const TeamPage = ({
     if (isAdmin) setInviteDialogOpen(true)
   })
 
-  const loadMembers = useCallback(async () => {
-    setMembersLoading(true)
-    setMembersError(null)
-    try {
-      const data = await api.listMembers(projectId)
-      setMembers(data)
-    } catch (error) {
-      setMembersError(getErrorMessage(error))
-    } finally {
-      setMembersLoading(false)
-    }
-  }, [projectId])
-
-  const loadInvites = useCallback(async () => {
-    setInvitesLoading(true)
-    setInvitesError(null)
-    try {
-      const data = await api.listInvites(projectId)
-      setInvites(data)
-    } catch (error) {
-      setInvitesError(getErrorMessage(error))
-    } finally {
-      setInvitesLoading(false)
-    }
-  }, [projectId])
-
-  useEffect(() => {
-    if (user) {
-      void loadMembers()
-    }
-  }, [user, loadMembers])
-
-  useEffect(() => {
-    if (user && isAdmin) {
-      void loadInvites()
-    }
-  }, [user, isAdmin, loadInvites])
+  const membersError = membersErrorRaw
+    ? getErrorMessage(membersErrorRaw)
+    : null
+  const invitesError = invitesErrorRaw
+    ? getErrorMessage(invitesErrorRaw)
+    : null
 
   const handleCreateInvite = async () => {
     if (!inviteEmail.trim() || inviteCreating) return
@@ -131,7 +116,7 @@ export const TeamPage = ({
       )}`
       setLastInviteLink(link)
       setInviteEmail('')
-      await loadInvites()
+      await queryClient.invalidateQueries({ queryKey: queryKeys.invites(projectId) })
     } finally {
       setInviteCreating(false)
     }
@@ -139,7 +124,7 @@ export const TeamPage = ({
 
   const handleRevokeInvite = async (inviteId: string) => {
     await api.revokeInvite(projectId, inviteId)
-    await loadInvites()
+    await queryClient.invalidateQueries({ queryKey: queryKeys.invites(projectId) })
   }
 
   return (

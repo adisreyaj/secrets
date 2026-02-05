@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { UserDto } from '@secrets/shared'
+import { useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from './api'
 import { getErrorMessage } from './errors'
 
@@ -26,6 +27,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const queryClient = useQueryClient()
   const [user, setUser] = useState<UserDto | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -39,6 +41,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setUser(null)
+        queryClient.clear()
       } else {
         setError(getErrorMessage(err))
       }
@@ -88,6 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await api.logout()
       setUser(null)
+      queryClient.clear()
     } finally {
       setLoading(false)
     }

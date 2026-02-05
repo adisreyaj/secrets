@@ -5,7 +5,8 @@ import type {
     ProjectDto,
 } from '@secrets/shared'
 import { ArrowLeft, Plus } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -32,7 +33,7 @@ import { api } from '../lib/api'
 import { projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
 import { useRegisterShortcut } from '../lib/shortcuts'
-import { useAsyncResource } from '../lib/useAsyncResource'
+import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ApprovalRulesPage = ({
@@ -43,19 +44,20 @@ export const ApprovalRulesPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const { data: projectsData, error: projectsError } = useAsyncResource<
-    ProjectDto[]
-  >(async () => (user ? api.listProjects() : []), [user])
-  const { data: environmentsData, error: envError } = useAsyncResource<
-    EnvironmentDto[]
-  >(
-    async () => (user ? api.listEnvironments(projectId) : []),
-    [projectId, user],
-  )
+  const queryClient = useQueryClient()
+  const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
+    queryKey: queryKeys.projects(),
+    queryFn: () => api.listProjects(),
+    enabled: Boolean(user),
+  })
+  const { data: environmentsData, error: envErrorRaw } =
+    useQuery<EnvironmentDto[]>({
+      queryKey: queryKeys.environments(projectId),
+      queryFn: () => api.listEnvironments(projectId),
+      enabled: Boolean(user) && Boolean(projectId),
+    })
   const projects = useMemo(() => projectsData ?? [], [projectsData])
   const environments = useMemo(() => environmentsData ?? [], [environmentsData])
-  const [rules, setRules] = useState<ApprovalRuleDto[]>([])
-  const [rulesLoading, setRulesLoading] = useState(false)
   const [rulesError, setRulesError] = useState<string | null>(null)
   const [ruleName, setRuleName] = useState('')
   const [ruleEnvironmentId, setRuleEnvironmentId] = useState<string>('all')
@@ -66,24 +68,16 @@ export const ApprovalRulesPage = ({
   ])
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
 
-  const loadRules = useCallback(async () => {
-    setRulesLoading(true)
-    setRulesError(null)
-    try {
-      const data = await api.listApprovalRules(projectId)
-      setRules(data)
-    } catch (error) {
-      setRulesError(getErrorMessage(error))
-    } finally {
-      setRulesLoading(false)
-    }
-  }, [projectId])
-
-  useEffect(() => {
-    if (user) {
-      void loadRules()
-    }
-  }, [user, loadRules])
+  const {
+    data: rulesData,
+    isLoading: rulesLoading,
+    error: rulesErrorRaw,
+  } = useQuery<ApprovalRuleDto[]>({
+    queryKey: queryKeys.approvalRules(projectId),
+    queryFn: () => api.listApprovalRules(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+  const rules = rulesData ?? []
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -122,17 +116,23 @@ export const ApprovalRulesPage = ({
     setRulePattern('*')
     setRuleEnvironmentId('all')
     setRuleActions(['CREATE', 'UPDATE'])
-    await loadRules()
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.approvalRules(projectId),
+    })
   }
 
   const handleToggleRule = async (rule: ApprovalRuleDto) => {
     await api.updateApprovalRule(rule.id, { isActive: !rule.isActive })
-    await loadRules()
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.approvalRules(projectId),
+    })
   }
 
   const handleDeleteRule = async (ruleId: string) => {
     await api.deleteApprovalRule(ruleId)
-    await loadRules()
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.approvalRules(projectId),
+    })
   }
 
   useRegisterShortcut('b', () =>
@@ -160,9 +160,12 @@ export const ApprovalRulesPage = ({
         }
       />
 
-      {(projectsError || envError || rulesError) && (
+      {(projectsErrorRaw || envErrorRaw || rulesErrorRaw || rulesError) && (
         <ErrorBanner
-          message={(projectsError || envError || rulesError) as string}
+          message={
+            rulesError ??
+            getErrorMessage(projectsErrorRaw ?? envErrorRaw ?? rulesErrorRaw)
+          }
         />
       )}
 

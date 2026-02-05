@@ -1,6 +1,7 @@
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -8,8 +9,9 @@ import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
 import { environmentPath, projectPath } from '../lib/paths'
+import { getErrorMessage } from '../lib/errors'
 import { useRegisterShortcut } from '../lib/shortcuts'
-import { useAsyncResource } from '../lib/useAsyncResource'
+import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const EnvironmentsPage = ({
@@ -20,19 +22,22 @@ export const EnvironmentsPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const { data: projectsData, error: projectsError } = useAsyncResource<
-    ProjectDto[]
-  >(async () => (user ? api.listProjects() : []), [user])
+  const queryClient = useQueryClient()
+  const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
+    queryKey: queryKeys.projects(),
+    queryFn: () => api.listProjects(),
+    enabled: Boolean(user),
+  })
   const projects = useMemo(() => projectsData ?? [], [projectsData])
   const {
     data: environmentsData,
-    loading: envLoading,
-    error: envError,
-    reload: loadEnvironments,
-  } = useAsyncResource<EnvironmentDto[]>(
-    async () => (user ? api.listEnvironments(projectId) : []),
-    [projectId, user],
-  )
+    isLoading: envLoading,
+    error: envErrorRaw,
+  } = useQuery<EnvironmentDto[]>({
+    queryKey: queryKeys.environments(projectId),
+    queryFn: () => api.listEnvironments(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
   const environments = environmentsData ?? []
 
   const selectedProject = useMemo(
@@ -53,9 +58,11 @@ export const EnvironmentsPage = ({
         name: payload.name,
         copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
       })
-      await loadEnvironments()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.environments(projectId),
+      })
     },
-    [projectId, loadEnvironments],
+    [projectId, queryClient],
   )
 
   return (
@@ -78,15 +85,17 @@ export const EnvironmentsPage = ({
         }
       />
 
-      {(projectsError || envError) && (
-        <ErrorBanner message={(projectsError || envError) as string} />
+      {(projectsErrorRaw || envErrorRaw) && (
+        <ErrorBanner
+          message={getErrorMessage(projectsErrorRaw ?? envErrorRaw)}
+        />
       )}
 
       <EnvironmentsSection
         environments={environments}
         selectedEnvironmentId={null}
         loading={envLoading}
-        error={envError}
+        error={envErrorRaw ? getErrorMessage(envErrorRaw) : null}
         missingCounts={{}}
         coverageLoading={false}
         onSelect={(envId) =>

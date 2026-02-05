@@ -4,10 +4,11 @@ import type {
   ProjectDto,
   SecretDto,
 } from '@secrets/shared'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { getErrorMessage } from '../../lib/errors'
-import { useAsyncResource } from '../../lib/useAsyncResource'
+import { queryKeys } from '../../lib/queryKeys'
 
 const toSlug = (value: string) =>
   value
@@ -26,86 +27,92 @@ export const useEnvironmentData = ({
   environmentId: string
   enabled: boolean
 }) => {
-  const { data: projectsData, error: projectsError } = useAsyncResource<
-    ProjectDto[]
-  >(async () => (enabled ? api.listProjects() : []), [enabled])
+  const queryClient = useQueryClient()
+
+  const {
+    data: projectsData,
+    error: projectsErrorRaw,
+  } = useQuery<ProjectDto[]>({
+    queryKey: queryKeys.projects(),
+    queryFn: () => api.listProjects(),
+    enabled,
+  })
+
   const projects = useMemo(() => projectsData ?? [], [projectsData])
+
   const {
     data: environmentsData,
-    loading: envLoading,
-    error: envError,
-    reload: loadEnvironments,
-  } = useAsyncResource<EnvironmentDto[]>(
-    async () => (enabled ? api.listEnvironments(projectId) : []),
-    [enabled, projectId],
-  )
+    isLoading: envLoading,
+    error: envErrorRaw,
+  } = useQuery<EnvironmentDto[]>({
+    queryKey: queryKeys.environments(projectId),
+    queryFn: () => api.listEnvironments(projectId),
+    enabled: enabled && Boolean(projectId),
+  })
+
   const environments = useMemo(() => environmentsData ?? [], [environmentsData])
 
   const resolvedEnvironmentId = environmentId
 
-  const [secrets, setSecrets] = useState<SecretDto[]>([])
-  const [secretsLoading, setSecretsLoading] = useState(false)
-  const [secretsError, setSecretsError] = useState<string | null>(null)
   const [valuesVisible, setValuesVisible] = useState(false)
   const [valuesLoaded, setValuesLoaded] = useState(false)
-  const [secretKeyIndex, setSecretKeyIndex] = useState<
-    Record<string, string[]>
-  >({})
-  const [coverageLoading, setCoverageLoading] = useState(false)
-  const [coverageError, setCoverageError] = useState<string | null>(null)
-  const [approvals, setApprovals] = useState<ApprovalRequestDto[]>([])
-  const [approvalsLoading, setApprovalsLoading] = useState(false)
-  const [approvalsError, setApprovalsError] = useState<string | null>(null)
 
-  // Track last loaded combination to avoid redundant effect-triggered reload loops
-  const lastSecretsEnvRef = useRef<string | null>(null)
-  const lastSecretsValuesLoadedRef = useRef<boolean | null>(null)
+  const {
+    data: secretsKeysData,
+    isLoading: secretsKeysLoading,
+    error: secretsKeysErrorRaw,
+  } = useQuery<SecretDto[]>({
+    queryKey: queryKeys.secrets(resolvedEnvironmentId, false),
+    queryFn: () => api.listSecrets(resolvedEnvironmentId, false),
+    enabled: enabled && Boolean(resolvedEnvironmentId),
+  })
 
-  const loadSecrets = useCallback(
-    async (include: boolean) => {
-      if (!resolvedEnvironmentId) return false
-      setSecretsLoading(true)
-      setSecretsError(null)
-      try {
-        const data = await api.listSecrets(resolvedEnvironmentId, include)
-        setSecrets(data)
-        return true
-      } catch (error) {
-        setSecretsError(getErrorMessage(error))
-        return false
-      } finally {
-        setSecretsLoading(false)
-      }
-    },
-    [resolvedEnvironmentId],
-  )
+  const {
+    data: secretsValuesData,
+    isLoading: secretsValuesLoading,
+    error: secretsValuesErrorRaw,
+  } = useQuery<SecretDto[]>({
+    queryKey: queryKeys.secrets(resolvedEnvironmentId, true),
+    queryFn: () => api.listSecrets(resolvedEnvironmentId, true),
+    enabled: enabled && Boolean(resolvedEnvironmentId) && valuesLoaded,
+  })
 
-  const loadApprovals = useCallback(async () => {
-    if (!resolvedEnvironmentId) return
-    setApprovalsLoading(true)
-    setApprovalsError(null)
-    try {
-      const data = await api.listApprovals(projectId, {
+  const secrets = useMemo(() => {
+    if (valuesLoaded) {
+      return secretsValuesData ?? secretsKeysData ?? []
+    }
+    return secretsKeysData ?? []
+  }, [secretsKeysData, secretsValuesData, valuesLoaded])
+
+  const secretsLoading = valuesLoaded ? secretsValuesLoading : secretsKeysLoading
+  const secretsErrorRaw = valuesLoaded
+    ? secretsValuesErrorRaw ?? secretsKeysErrorRaw
+    : secretsKeysErrorRaw
+
+  const {
+    data: approvalsData,
+    isLoading: approvalsLoading,
+    error: approvalsErrorRaw,
+  } = useQuery<ApprovalRequestDto[]>({
+    queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+    queryFn: () =>
+      api.listApprovals(projectId, {
         status: 'PENDING',
         environmentId: resolvedEnvironmentId,
-      })
-      setApprovals(data)
-    } catch (error) {
-      setApprovalsError(getErrorMessage(error))
-    } finally {
-      setApprovalsLoading(false)
-    }
-  }, [projectId, resolvedEnvironmentId])
+      }),
+    enabled: enabled && Boolean(projectId) && Boolean(resolvedEnvironmentId),
+  })
 
-  const loadSecretCoverage = useCallback(async () => {
-    if (environments.length === 0) {
-      setSecretKeyIndex({})
-      return
-    }
+  const approvals = approvalsData ?? []
 
-    setCoverageLoading(true)
-    setCoverageError(null)
-    try {
+  const {
+    data: secretCoverageData,
+    isLoading: coverageLoading,
+    error: coverageErrorRaw,
+  } = useQuery<Record<string, string[]>>({
+    queryKey: queryKeys.secretCoverage(projectId),
+    queryFn: async () => {
+      if (environments.length === 0) return {}
       const entries = await Promise.all(
         environments.map(async (env) => {
           const data = await api.listSecrets(env.id, false)
@@ -116,48 +123,35 @@ export const useEnvironmentData = ({
       for (const [envId, keys] of entries) {
         next[envId] = keys
       }
-      setSecretKeyIndex(next)
-    } catch (error) {
-      setCoverageError(getErrorMessage(error))
-    } finally {
-      setCoverageLoading(false)
-    }
-  }, [environments])
+      return next
+    },
+    enabled: enabled && environments.length > 0,
+  })
 
-  useEffect(() => {
-    if (!enabled || !resolvedEnvironmentId) return
+  const secretKeyIndex = secretCoverageData ?? {}
 
-    // Prevent repeated loads for the same environment/visibility combination,
-    // which can cause deep update chains if some parent prop is unstable.
-    if (
-      lastSecretsEnvRef.current === resolvedEnvironmentId &&
-      lastSecretsValuesLoadedRef.current === valuesLoaded
-    ) {
-      return
-    }
-
-    lastSecretsEnvRef.current = resolvedEnvironmentId
-    lastSecretsValuesLoadedRef.current = valuesLoaded
-    void loadSecrets(valuesLoaded)
-  }, [enabled, resolvedEnvironmentId, valuesLoaded, loadSecrets])
-
-  useEffect(() => {
-    if (enabled && environments.length > 0) {
-      void loadSecretCoverage()
-    }
-  }, [enabled, environments, loadSecretCoverage])
-
-  useEffect(() => {
-    if (enabled) {
-      void loadApprovals()
-    }
-  }, [enabled, loadApprovals])
+  const projectsError = projectsErrorRaw
+    ? getErrorMessage(projectsErrorRaw)
+    : null
+  const envError = envErrorRaw ? getErrorMessage(envErrorRaw) : null
+  const secretsError = secretsErrorRaw ? getErrorMessage(secretsErrorRaw) : null
+  const approvalsError = approvalsErrorRaw
+    ? getErrorMessage(approvalsErrorRaw)
+    : null
+  const coverageError = coverageErrorRaw
+    ? getErrorMessage(coverageErrorRaw)
+    : null
 
   const handleToggleValues = async (nextVisible: boolean) => {
-    if (nextVisible && !valuesLoaded) {
-      const loaded = await loadSecrets(true)
-      if (loaded) {
+    if (nextVisible && !valuesLoaded && resolvedEnvironmentId) {
+      try {
+        await queryClient.fetchQuery({
+          queryKey: queryKeys.secrets(resolvedEnvironmentId, true),
+          queryFn: () => api.listSecrets(resolvedEnvironmentId, true),
+        })
         setValuesLoaded(true)
+      } catch {
+        // leave valuesLoaded false on failure
       }
     }
     setValuesVisible(nextVisible)
@@ -171,7 +165,9 @@ export const useEnvironmentData = ({
       name: payload.name,
       copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
     })
-    await loadEnvironments()
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.environments(projectId),
+    })
   }
 
   const handleCreateSecret = async (payload: {
@@ -181,10 +177,17 @@ export const useEnvironmentData = ({
     if (!resolvedEnvironmentId) return
     const result = await api.createSecret(resolvedEnvironmentId, payload)
     if ('status' in result && result.status === 'pending') {
-      await loadApprovals()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+      })
       return
     }
-    await loadSecrets(valuesLoaded)
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
+    })
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secretCoverage(projectId),
+    })
   }
 
   const handleUpdateSecrets = async (
@@ -200,32 +203,49 @@ export const useEnvironmentData = ({
         value: change.value,
       })
       if ('status' in result && result.status === 'pending') {
-        await loadApprovals()
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+        })
         continue
       }
     }
-    await loadSecrets(valuesLoaded)
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
+    })
     if (keyUpdated) {
-      await loadSecretCoverage()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.secretCoverage(projectId),
+      })
     }
   }
 
   const handleRollbackSecret = async (secretId: string) => {
     const result = await api.rollbackSecret(secretId)
     if ('status' in result && result.status === 'pending') {
-      await loadApprovals()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+      })
       return
     }
-    await loadSecrets(valuesLoaded)
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
+    })
   }
 
   const handleDeleteSecret = async (secretId: string) => {
     const result = await api.deleteSecret(secretId)
     if ('status' in result && result.status === 'pending') {
-      await loadApprovals()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+      })
       return
     }
-    await loadSecrets(valuesLoaded)
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
+    })
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secretCoverage(projectId),
+    })
   }
 
   const handleDiffSecret = async (
@@ -245,10 +265,14 @@ export const useEnvironmentData = ({
   ) => {
     const result = await api.copySecret(secretId, payload)
     if ('status' in result && result.status === 'pending') {
-      await loadApprovals()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+      })
       return result
     }
-    await loadSecretCoverage()
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secretCoverage(projectId),
+    })
     return result
   }
 
@@ -263,11 +287,17 @@ export const useEnvironmentData = ({
       overwrite: false,
     })
     if ('status' in result && result.status === 'pending') {
-      await loadApprovals()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+      })
       return result
     }
-    await loadSecretCoverage()
-    await loadSecrets(valuesLoaded)
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secretCoverage(projectId),
+    })
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secrets(resolvedEnvironmentId, valuesLoaded),
+    })
     return result
   }
 
@@ -375,6 +405,25 @@ export const useEnvironmentData = ({
     anchor.download = `${toSlug(selectedEnvironment.name)}-secrets.csv`
     anchor.click()
     URL.revokeObjectURL(url)
+  }
+
+  const loadSecrets = async (include: boolean) => {
+    if (!resolvedEnvironmentId) return
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secrets(resolvedEnvironmentId, include),
+    })
+  }
+
+  const loadSecretCoverage = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secretCoverage(projectId),
+    })
+  }
+
+  const loadApprovals = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+    })
   }
 
   return {

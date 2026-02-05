@@ -5,7 +5,8 @@ import type {
     ProjectDto,
 } from '@secrets/shared'
 import { ArrowLeft, Check, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -29,7 +30,7 @@ import { projectPath } from '../lib/paths'
 import { getErrorMessage } from '../lib/errors'
 import { formatDateTime } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
-import { useAsyncResource } from '../lib/useAsyncResource'
+import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ApprovalsPage = ({
@@ -40,43 +41,44 @@ export const ApprovalsPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const { data: projectsData, error: projectsError } = useAsyncResource<
-    ProjectDto[]
-  >(async () => (user ? api.listProjects() : []), [user])
-  const { data: environmentsData, error: envError } = useAsyncResource<
-    EnvironmentDto[]
-  >(
-    async () => (user ? api.listEnvironments(projectId) : []),
-    [projectId, user],
-  )
+  const queryClient = useQueryClient()
+  const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
+    queryKey: queryKeys.projects(),
+    queryFn: () => api.listProjects(),
+    enabled: Boolean(user),
+  })
+  const { data: environmentsData, error: envErrorRaw } =
+    useQuery<EnvironmentDto[]>({
+      queryKey: queryKeys.environments(projectId),
+      queryFn: () => api.listEnvironments(projectId),
+      enabled: Boolean(user) && Boolean(projectId),
+    })
   const projects = useMemo(() => projectsData ?? [], [projectsData])
   const environments = useMemo(() => environmentsData ?? [], [environmentsData])
-  const [approvals, setApprovals] = useState<ApprovalRequestDto[]>([])
-  const [approvalsLoading, setApprovalsLoading] = useState(false)
-  const [approvalsError, setApprovalsError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus>('PENDING')
   const [detailId, setDetailId] = useState<string | null>(null)
-  const [detail, setDetail] = useState<ApprovalRequestDto | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
 
-  const loadApprovals = useCallback(async () => {
-    setApprovalsLoading(true)
-    setApprovalsError(null)
-    try {
-      const data = await api.listApprovals(projectId, { status: statusFilter })
-      setApprovals(data)
-    } catch (error) {
-      setApprovalsError(getErrorMessage(error))
-    } finally {
-      setApprovalsLoading(false)
-    }
-  }, [projectId, statusFilter])
+  const {
+    data: approvalsData,
+    isLoading: approvalsLoading,
+    error: approvalsErrorRaw,
+    refetch: refetchApprovals,
+  } = useQuery<ApprovalRequestDto[]>({
+    queryKey: queryKeys.approvals(projectId, statusFilter),
+    queryFn: () => api.listApprovals(projectId, { status: statusFilter }),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
 
-  useEffect(() => {
-    if (user) {
-      void loadApprovals()
-    }
-  }, [user, loadApprovals])
+  const approvals = approvalsData ?? []
+
+  const {
+    data: detail,
+    isLoading: detailLoading,
+  } = useQuery<ApprovalRequestDto>({
+    queryKey: detailId ? queryKeys.approval(detailId) : ['approvals', 'detail'],
+    queryFn: () => api.getApproval(detailId ?? ''),
+    enabled: Boolean(detailId),
+  })
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -95,33 +97,31 @@ export const ApprovalsPage = ({
 
   const openDetail = async (approvalId: string) => {
     setDetailId(approvalId)
-    setDetailLoading(true)
-    try {
-      const data = await api.getApproval(approvalId)
-      setDetail(data)
-    } finally {
-      setDetailLoading(false)
-    }
   }
 
   const closeDetail = () => {
     setDetailId(null)
-    setDetail(null)
   }
 
   const handleApprove = async (approvalId: string) => {
     await api.approveRequest(approvalId)
-    await loadApprovals()
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.approvals(projectId, statusFilter),
+    })
   }
 
   const handleDeny = async (approvalId: string) => {
     await api.denyRequest(approvalId)
-    await loadApprovals()
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.approvals(projectId, statusFilter),
+    })
   }
 
   const handleCancel = async (approvalId: string) => {
     await api.cancelRequest(approvalId)
-    await loadApprovals()
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.approvals(projectId, statusFilter),
+    })
   }
 
   useRegisterShortcut('b', () =>
@@ -148,8 +148,12 @@ export const ApprovalsPage = ({
         }
       />
 
-      {(projectsError || envError || approvalsError) && (
-        <ErrorBanner message={projectsError || envError || approvalsError} />
+      {(projectsErrorRaw || envErrorRaw || approvalsErrorRaw) && (
+        <ErrorBanner
+          message={getErrorMessage(
+            projectsErrorRaw ?? envErrorRaw ?? approvalsErrorRaw,
+          )}
+        />
       )}
 
       <div className="flex flex-wrap items-center gap-3">
@@ -172,7 +176,7 @@ export const ApprovalsPage = ({
         <Button
           variant="outline"
           className="rounded-full"
-          onClick={() => loadApprovals()}
+          onClick={() => refetchApprovals()}
         >
           Refresh
         </Button>

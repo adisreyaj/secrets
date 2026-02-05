@@ -8,13 +8,8 @@ import type {
   SecretSearchResultDto,
 } from '@secrets/shared'
 import { ArrowLeft } from 'lucide-react'
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AuditLog } from '../components/AuditLog'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
 import { ErrorBanner } from '../components/ErrorBanner'
@@ -38,7 +33,7 @@ import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate, formatDateTime } from '../lib/format'
 import { environmentPath, projectPath } from '../lib/paths'
-import { useAsyncResource } from '../lib/useAsyncResource'
+import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ProjectPage = ({
@@ -49,68 +44,96 @@ export const ProjectPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
+  const queryClient = useQueryClient()
+
   const {
     data: projectsData,
-    loading: projectsLoading,
-    error: projectsError,
-    reload: reloadProjects,
-  } = useAsyncResource<ProjectDto[]>(
-    async () => (user ? api.listProjects() : []),
-    [user],
-  )
+    isLoading: projectsLoading,
+    error: projectsErrorRaw,
+  } = useQuery<ProjectDto[]>({
+    queryKey: queryKeys.projects(),
+    queryFn: () => api.listProjects(),
+    enabled: Boolean(user),
+  })
+
   const {
     data: environmentsData,
-    loading: envLoading,
-    error: envError,
-    reload: reloadEnvironments,
-  } = useAsyncResource<EnvironmentDto[]>(
-    async () => (user ? api.listEnvironments(projectId) : []),
-    [projectId, user],
-  )
+    isLoading: envLoading,
+    error: envErrorRaw,
+  } = useQuery<EnvironmentDto[]>({
+    queryKey: queryKeys.environments(projectId),
+    queryFn: () => api.listEnvironments(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+
   const projects = useMemo(() => projectsData ?? [], [projectsData])
   const environments = useMemo(() => environmentsData ?? [], [environmentsData])
+
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<
     string | null
   >(null)
   const [searchQuery, setSearchQuery] = useState('')
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const [searchEnvFilter, setSearchEnvFilter] = useState<string | null>(null)
-  const [searchResults, setSearchResults] = useState<SecretSearchResultDto[]>(
-    [],
-  )
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
 
   const {
     data: auditLogsData,
-    loading: auditLoading,
-    error: auditError,
-  } = useAsyncResource<AuditLogDto[]>(
-    async () => (user ? api.listAudit(projectId) : []),
-    [projectId, user],
-  )
+    isLoading: auditLoading,
+    error: auditErrorRaw,
+  } = useQuery<AuditLogDto[]>({
+    queryKey: queryKeys.audit(projectId),
+    queryFn: () => api.listAudit(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+
   const {
     data: tokensData,
-    loading: tokensLoading,
-    error: tokensError,
-    reload: reloadTokens,
-  } = useAsyncResource<ApiTokenDto[]>(
-    async () => (user ? api.listTokens(projectId) : []),
-    [projectId, user],
-  )
-  const auditLogs = auditLogsData ?? []
-  const tokens = tokensData ?? []
+    isLoading: tokensLoading,
+    error: tokensErrorRaw,
+  } = useQuery<ApiTokenDto[]>({
+    queryKey: queryKeys.tokens(projectId),
+    queryFn: () => api.listTokens(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
 
   const {
     data: invitesData,
-    loading: invitesLoading,
-    error: invitesError,
-    reload: reloadInvites,
-  } = useAsyncResource<ProjectInviteDto[]>(
-    async () => (user ? api.listInvites(projectId) : []),
-    [projectId, user],
-  )
+    isLoading: invitesLoading,
+    error: invitesErrorRaw,
+  } = useQuery<ProjectInviteDto[]>({
+    queryKey: queryKeys.invites(projectId),
+    queryFn: () => api.listInvites(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+
+  const trimmedSearch = deferredSearchQuery.trim()
+  const {
+    data: searchResultsData,
+    isFetching: searchLoading,
+    error: searchErrorRaw,
+  } = useQuery<SecretSearchResultDto[]>({
+    queryKey: queryKeys.searchSecrets(
+      projectId,
+      trimmedSearch,
+      searchEnvFilter,
+      true,
+    ),
+    queryFn: () =>
+      api.searchProjectSecrets(projectId, {
+        query: trimmedSearch,
+        environmentId: searchEnvFilter,
+        includeValues: true,
+      }),
+    enabled: Boolean(user) && Boolean(projectId) && trimmedSearch.length > 0,
+    staleTime: 30_000,
+    gcTime: 300_000,
+  })
+
+  const auditLogs = auditLogsData ?? []
+  const tokens = tokensData ?? []
   const invites = invitesData ?? []
+  const searchResults = searchResultsData ?? []
+
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<Role>('VIEWER')
   const [inviteCreating, setInviteCreating] = useState(false)
@@ -126,35 +149,6 @@ export const ProjectPage = ({
     }
   }, [environments])
 
-  useEffect(() => {
-    if (!user) return
-    const trimmed = deferredSearchQuery.trim()
-    if (!trimmed) {
-      setSearchResults([])
-      setSearchError(null)
-      return
-    }
-
-    const handle = window.setTimeout(async () => {
-      setSearchLoading(true)
-      setSearchError(null)
-      try {
-        const data = await api.searchProjectSecrets(projectId, {
-          query: trimmed,
-          environmentId: searchEnvFilter,
-          includeValues: true,
-        })
-        setSearchResults(data)
-      } catch (error) {
-        setSearchError(getErrorMessage(error))
-      } finally {
-        setSearchLoading(false)
-      }
-    }, 250)
-
-    return () => window.clearTimeout(handle)
-  }, [projectId, searchEnvFilter, deferredSearchQuery, user])
-
   const handleCreateProject = useCallback(
     async (payload: { name: string; template: ProjectTemplate }) => {
       const project = await api.createProject({ name: payload.name })
@@ -164,17 +158,17 @@ export const ProjectPage = ({
         empty: [],
       }
 
-      const environments = templates[payload.template] ?? []
-      if (environments.length > 0) {
+      const envNames = templates[payload.template] ?? []
+      if (envNames.length > 0) {
         await Promise.all(
-          environments.map((envName) =>
+          envNames.map((envName) =>
             api.createEnvironment(project.id, { name: envName }),
           ),
         )
       }
-      await reloadProjects()
+      await queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
     },
-    [reloadProjects],
+    [queryClient],
   )
 
   const handleCreateEnvironment = useCallback(
@@ -186,26 +180,32 @@ export const ProjectPage = ({
         name: payload.name,
         copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
       })
-      await reloadEnvironments()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.environments(projectId),
+      })
     },
-    [projectId, reloadEnvironments],
+    [projectId, queryClient],
   )
 
   const handleCreateToken = useCallback(
     async (name: string, readOnly: boolean) => {
       const data = await api.createToken(projectId, { name, readOnly })
-      await reloadTokens()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.tokens(projectId),
+      })
       return data
     },
-    [projectId, reloadTokens],
+    [projectId, queryClient],
   )
 
   const handleDeleteToken = useCallback(
     async (tokenId: string) => {
       await api.deleteToken(projectId, tokenId)
-      await reloadTokens()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.tokens(projectId),
+      })
     },
-    [projectId, reloadTokens],
+    [projectId, queryClient],
   )
 
   const handleCreateInvite = useCallback(async () => {
@@ -221,22 +221,35 @@ export const ProjectPage = ({
       )}`
       setLastInviteLink(link)
       setInviteEmail('')
-      await reloadInvites()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.invites(projectId),
+      })
     } finally {
       setInviteCreating(false)
     }
-  }, [inviteCreating, inviteEmail, inviteRole, projectId, reloadInvites])
+  }, [inviteCreating, inviteEmail, inviteRole, projectId, queryClient])
 
   const handleRevokeInvite = useCallback(
     async (inviteId: string) => {
       await api.revokeInvite(projectId, inviteId)
-      await reloadInvites()
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.invites(projectId),
+      })
     },
-    [projectId, reloadInvites],
+    [projectId, queryClient],
   )
 
   const selectedProject =
     projects.find((project) => project.id === projectId) ?? null
+
+  const projectsError = projectsErrorRaw
+    ? getErrorMessage(projectsErrorRaw)
+    : null
+  const envError = envErrorRaw ? getErrorMessage(envErrorRaw) : null
+  const auditError = auditErrorRaw ? getErrorMessage(auditErrorRaw) : null
+  const tokensError = tokensErrorRaw ? getErrorMessage(tokensErrorRaw) : null
+  const invitesError = invitesErrorRaw ? getErrorMessage(invitesErrorRaw) : null
+  const searchError = searchErrorRaw ? getErrorMessage(searchErrorRaw) : null
 
   return (
     <section className="flex flex-col gap-10">
@@ -342,7 +355,7 @@ export const ProjectPage = ({
             <p className="text-muted-foreground text-sm">
               Searching secrets...
             </p>
-          ) : searchQuery.trim().length === 0 ? (
+          ) : trimmedSearch.length === 0 ? (
             <p className="text-muted-foreground text-sm">
               Start typing to search for keys across environments.
             </p>

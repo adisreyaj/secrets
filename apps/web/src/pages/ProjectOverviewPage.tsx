@@ -10,14 +10,16 @@ import {
     Users,
 } from 'lucide-react'
 import { useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
 import { environmentsPath, projectPath } from '../lib/paths'
+import { getErrorMessage } from '../lib/errors'
 import { useRegisterShortcut } from '../lib/shortcuts'
-import { useAsyncResource } from '../lib/useAsyncResource'
+import { queryKeys } from '../lib/queryKeys'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ProjectOverviewPage = ({
@@ -28,15 +30,17 @@ export const ProjectOverviewPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
-  const { data: projectsData, error: projectsError } = useAsyncResource<
-    ProjectDto[]
-  >(async () => (user ? api.listProjects() : []), [user])
-  const { data: environmentsData, error: envError } = useAsyncResource<
-    EnvironmentDto[]
-  >(
-    async () => (user ? api.listEnvironments(projectId) : []),
-    [projectId, user],
-  )
+  const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
+    queryKey: queryKeys.projects(),
+    queryFn: () => api.listProjects(),
+    enabled: Boolean(user),
+  })
+  const { data: environmentsData, error: envErrorRaw } =
+    useQuery<EnvironmentDto[]>({
+      queryKey: queryKeys.environments(projectId),
+      queryFn: () => api.listEnvironments(projectId),
+      enabled: Boolean(user) && Boolean(projectId),
+    })
   const projects = useMemo(() => projectsData ?? [], [projectsData])
   const environments = environmentsData ?? []
 
@@ -85,8 +89,10 @@ export const ProjectOverviewPage = ({
         }
       />
 
-      {(projectsError || envError) && (
-        <ErrorBanner message={projectsError || envError} />
+      {(projectsErrorRaw || envErrorRaw) && (
+        <ErrorBanner
+          message={getErrorMessage(projectsErrorRaw ?? envErrorRaw)}
+        />
       )}
 
       <ul className="grid gap-4 md:grid-cols-2">
