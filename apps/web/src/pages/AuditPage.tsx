@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, startOfDay } from 'date-fns'
 import { ArrowLeft, CalendarIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import type { toast } from 'sonner'
 import { AuditLog } from '../components/AuditLog'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -25,6 +26,62 @@ import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
+
+const ACTION_LABELS: Record<string, string> = {
+  'environment.create': 'Create Environment',
+  'environment.update': 'Update Environment',
+  'environment.delete': 'Delete Environment',
+  'project.create': 'Create Project',
+  'project.update': 'Update Project',
+  'project.delete': 'Delete Project',
+  'secret.copy.bulk': 'Bulk Copy Secret',
+  'secret.create': 'Create Secret',
+  'secret.update': 'Update Secret',
+  'secret.delete': 'Delete Secret',
+  'service_account.create': 'Create Service Account',
+  'service_account.update': 'Update Service Account',
+  'service_account.delete': 'Delete Service Account',
+  'service_account.token.create': 'Create Service Account Token',
+  'service_account.token.delete': 'Delete Service Account Token',
+  'token.create': 'Create API Token',
+  'token.delete': 'Delete API Token',
+}
+
+const RESOURCE_TYPE_LABELS: Record<string, string> = {
+  api_token: 'API Token',
+  environment: 'Environment',
+  project: 'Project',
+  secret: 'Secret',
+  service_account: 'Service Account',
+  service_account_token: 'Service Account Token',
+}
+
+const humanizeToken = (value: string) =>
+  value
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+
+const humanizeAction = (action: string) => {
+  if (!action) return action
+  const mapped = ACTION_LABELS[action]
+  if (mapped) return mapped
+
+  const parts = action.split('.').filter(Boolean)
+  if (parts.length === 0) return action
+
+  const verb = parts[parts.length - 1]
+  const noun = parts.slice(0, -1).join(' ')
+  const verbLabel = humanizeToken(verb)
+  const nounLabel = humanizeToken(noun)
+  return nounLabel ? `${verbLabel} ${nounLabel}` : verbLabel
+}
+
+const humanizeResourceType = (type: string) => {
+  if (!type) return type
+  return RESOURCE_TYPE_LABELS[type] ?? humanizeToken(type)
+}
 
 
 
@@ -232,10 +289,7 @@ export const AuditPage = ({
           kicker="Audit"
           title="Audit log"
           action={
-            <Button
-              variant="outline"
-              onClick={() => refetchAudit()}
-            >
+            <Button variant="outline" onClick={() => refetchAudit()}>
               Refresh
             </Button>
           }
@@ -296,7 +350,7 @@ export const AuditPage = ({
                   <SelectItem value="all">All</SelectItem>
                   {actionOptions.map((action) => (
                     <SelectItem key={action} value={action}>
-                      {action}
+                      {humanizeAction(action)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -321,7 +375,7 @@ export const AuditPage = ({
                   <SelectItem value="all">All</SelectItem>
                   {resourceTypeOptions.map((type) => (
                     <SelectItem key={type} value={type}>
-                      {type}
+                      {humanizeResourceType(type)}
                     </SelectItem>
                   ))}
                 </SelectContent>
