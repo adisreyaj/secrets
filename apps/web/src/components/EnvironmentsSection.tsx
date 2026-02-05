@@ -128,7 +128,7 @@ export const EnvironmentsSection = ({
         action={
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" className="flex items-center gap-2">
+              <Button variant="outline">
                 <Plus className="h-4 w-4" />
                 New environment
                 <ShortcutHint keys="n" />

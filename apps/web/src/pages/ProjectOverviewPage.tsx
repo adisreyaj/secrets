@@ -79,7 +79,6 @@ export const ProjectOverviewPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2"
             onClick={() => navigate('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />

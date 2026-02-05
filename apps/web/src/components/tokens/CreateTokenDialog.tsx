@@ -62,7 +62,7 @@ export const CreateTokenDialog = ({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="flex items-center gap-2 py-2">
+        <Button variant="outline">
           <KeyRound className="h-4 w-4" />
           New token
           <ShortcutHint keys="n" />

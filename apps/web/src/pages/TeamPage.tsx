@@ -144,7 +144,6 @@ export const TeamPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }
@@ -165,7 +164,6 @@ export const TeamPage = ({
               <TooltipTrigger asChild>
                 <Button
                   variant="outline"
-                  className="flex items-center gap-2"
                   onClick={() => setInviteDialogOpen(true)}
                   disabled={!isAdmin}
                 >

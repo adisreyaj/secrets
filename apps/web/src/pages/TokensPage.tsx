@@ -94,7 +94,6 @@ export const TokensPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }

@@ -220,7 +220,6 @@ export const ServiceAccountsPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }
@@ -243,7 +242,6 @@ export const ServiceAccountsPage = ({
           action={
             <Button
               variant="outline"
-              className="flex items-center gap-2"
               onClick={() => setCreateDialogOpen(true)}
             >
               <Plus className="h-4 w-4" />

@@ -164,7 +164,6 @@ export const ApprovalRulesPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2 py-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }
@@ -192,7 +191,6 @@ export const ApprovalRulesPage = ({
           action={
             <Button
               variant="outline"
-              className="flex items-center gap-2 py-2"
               onClick={() => setCreateDialogOpen(true)}
               disabled={!isAdmin}
             >
@@ -231,7 +229,6 @@ export const ApprovalRulesPage = ({
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
-                    className="flex items-center gap-2 py-2"
                     onClick={() => handleToggleRule(rule)}
                     disabled={!isAdmin}
                   >
@@ -239,7 +236,6 @@ export const ApprovalRulesPage = ({
                   </Button>
                   <Button
                     variant="outline"
-                    className="flex items-center gap-2 py-2"
                     onClick={() => handleDeleteRule(rule.id)}
                     disabled={!isAdmin}
                   >

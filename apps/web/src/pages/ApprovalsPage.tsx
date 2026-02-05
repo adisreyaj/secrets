@@ -152,7 +152,6 @@ export const ApprovalsPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2 py-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }
@@ -172,100 +171,97 @@ export const ApprovalsPage = ({
         />
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-[220px]">
-          <Select
-            value={statusFilter}
-            onValueChange={(value) => setStatusFilter(value as ApprovalStatus)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="PENDING">Pending</SelectItem>
-              <SelectItem value="APPROVED">Approved</SelectItem>
-              <SelectItem value="DENIED">Denied</SelectItem>
-              <SelectItem value="CANCELED">Canceled</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <Button
-          variant="outline"
-          className="flex items-center gap-2 py-2"
-          onClick={() => refetchApprovals()}
-        >
-          Refresh
-        </Button>
-      </div>
-
-      <div className="grid gap-4">
-        {approvalsLoading ? (
-          <EmptyState title="Loading approvals..." />
-        ) : approvals.length === 0 ? (
-          <EmptyState title="No approvals for this filter." />
-        ) : (
-          approvals.map((approval) => (
-            <div
-              key={approval.id}
-              className="border-border/60 bg-card/80 shadow-soft rounded-2xl border p-5"
+      <section className="border-border/60 bg-card/70 shadow-soft rounded-3xl border p-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-[220px]">
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => setStatusFilter(value as ApprovalStatus)}
             >
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <p className="text-foreground text-sm font-semibold">
-                    {approval.action} · {approval.key}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    Env:{' '}
-                    {envById.get(approval.environmentId) ??
-                      approval.environmentId.slice(0, 6)}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    Requested {formatDateTime(approval.createdAt)}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex items-center gap-2 py-2"
-                    onClick={() => openDetail(approval.id)}
-                  >
-                    Details
-                  </Button>
-                  {approval.status === 'PENDING' && isAdmin ? (
-                    <>
-                      <Button
-                        className="flex items-center gap-2 py-2"
-                        onClick={() => handleApprove(approval.id)}
-                      >
-                        <Check className="h-4 w-4" />
-                        Approve
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="flex items-center gap-2 py-2"
-                        onClick={() => handleDeny(approval.id)}
-                      >
-                        <X className="h-4 w-4" />
-                        Deny
-                      </Button>
-                    </>
-                  ) : null}
-                  {approval.status === 'PENDING' &&
-                  approval.requestedBy === user?.id ? (
+              <SelectTrigger>
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PENDING">Pending</SelectItem>
+                <SelectItem value="APPROVED">Approved</SelectItem>
+                <SelectItem value="DENIED">Denied</SelectItem>
+                <SelectItem value="CANCELED">Canceled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => refetchApprovals()}
+          >
+            Refresh
+          </Button>
+        </div>
+
+        <div className="mt-4 grid gap-4">
+          {approvalsLoading ? (
+            <EmptyState title="Loading approvals..." />
+          ) : approvals.length === 0 ? (
+            <EmptyState title="No approvals for this filter." />
+          ) : (
+            approvals.map((approval) => (
+              <div
+                key={approval.id}
+                className="border-border/60 bg-card/80 shadow-soft rounded-2xl border p-5"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-foreground text-sm font-semibold">
+                      {approval.action} · {approval.key}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Env:{' '}
+                      {envById.get(approval.environmentId) ??
+                        approval.environmentId.slice(0, 6)}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Requested {formatDateTime(approval.createdAt)}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       variant="outline"
-                      className="flex items-center gap-2 py-2"
-                      onClick={() => handleCancel(approval.id)}
+                      onClick={() => openDetail(approval.id)}
                     >
-                      Cancel
+                      Details
                     </Button>
-                  ) : null}
+                    {approval.status === 'PENDING' && isAdmin ? (
+                      <>
+                        <Button
+                          onClick={() => handleApprove(approval.id)}
+                        >
+                          <Check className="h-4 w-4" />
+                          Approve
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => handleDeny(approval.id)}
+                        >
+                          <X className="h-4 w-4" />
+                          Deny
+                        </Button>
+                      </>
+                    ) : null}
+                    {approval.status === 'PENDING' &&
+                    approval.requestedBy === user?.id ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => handleCancel(approval.id)}
+                      >
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
-        )}
-      </div>
+            ))
+          )}
+        </div>
+      </section>
 
       <Dialog
         open={Boolean(detailId)}

@@ -3,8 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { endOfDay, startOfDay } from 'date-fns'
 import { ArrowLeft, CalendarIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { DateRange } from 'react-day-picker'
-import { toast } from 'sonner'
 import { AuditLog } from '../components/AuditLog'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -28,15 +26,7 @@ import { queryKeys } from '../lib/queryKeys'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
-type AuditActorType = 'user' | 'service'
 
-type AuditFilterState = {
-  resourceType: string
-  resourceId: string
-  actorType: AuditActorType
-  actorId: string
-  dateRange?: DateRange
-}
 
 export const AuditPage = ({
   projectId,
@@ -220,7 +210,6 @@ export const AuditPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2 py-2"
             onClick={() =>
               navigate(projectPath(projectId, selectedProject?.slug))
             }
@@ -245,7 +234,6 @@ export const AuditPage = ({
           action={
             <Button
               variant="outline"
-              className="flex items-center gap-2 py-2"
               onClick={() => refetchAudit()}
             >
               Refresh
@@ -261,7 +249,7 @@ export const AuditPage = ({
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className="flex items-center gap-2 py-2"
+                    className="border-input placeholder:text-muted-foreground focus-visible:ring-ring bg-background text-foreground flex h-11 w-full items-center justify-between gap-2 rounded-md border px-4 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {filters.dateRange?.from ? (
                       filters.dateRange.to ? (
@@ -391,18 +379,8 @@ export const AuditPage = ({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              className="flex items-center gap-2 py-2"
-              onClick={handleApplyFilters}
-            >
-              Apply filters
-            </Button>
-            <Button
-              variant="ghost"
-              className="flex items-center gap-2 py-2"
-              onClick={handleClearFilters}
-            >
+            <Button onClick={handleApplyFilters}>Apply filters</Button>
+            <Button variant="ghost" onClick={handleClearFilters}>
               Clear filters
             </Button>
           </div>
@@ -418,7 +396,6 @@ export const AuditPage = ({
           action={
             <Button
               variant="outline"
-              className="flex items-center gap-2 py-2"
               onClick={handleSaveRetention}
               disabled={!retentionDirty || retentionSaving || !isAdmin}
             >
