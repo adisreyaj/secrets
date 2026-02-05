@@ -3,6 +3,7 @@ import { ErrorBanner } from './ErrorBanner'
 import { EmptyState } from './EmptyState'
 import { formatDateTime } from '../lib/format'
 import { SectionCard, SectionHeader } from './SectionCard'
+import { humanizeAction, humanizeResourceType } from '../lib/auditLabels'
 
 export const AuditLog = ({
   audits,
@@ -36,7 +37,8 @@ export const AuditLog = ({
             >
               <article>
                 <p className="text-foreground text-sm font-semibold">
-                  {audit.action} · {audit.resourceType}
+                  {humanizeAction(audit.action)} ·{' '}
+                  {humanizeResourceType(audit.resourceType)}
                 </p>
                 <p className="text-foreground/70 text-xs">
                   {audit.resourceId?.slice(0, 6) ?? '—'} ·{' '}
