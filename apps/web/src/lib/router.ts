@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { matchRoutes, type RouteObject } from 'react-router-dom'
 
 export type RouteMatch =
   | { name: 'login' }
@@ -16,66 +16,81 @@ export type RouteMatch =
   | { name: 'tokens'; projectId: string }
   | { name: 'service-accounts'; projectId: string }
 
-const normalize = (value: string) => value.replace(/\/+$/, '').trim()
+export const appRoutes: RouteObject[] = [
+  { path: '/login', handle: { name: 'login' } },
+  { path: '/cli-login', handle: { name: 'cli-login' } },
+  { path: '/invite', handle: { name: 'invite' } },
+  { path: '/profile', handle: { name: 'profile' } },
+  { path: '/projects', handle: { name: 'projects' } },
+  { path: '/projects/:projectId', handle: { name: 'project' } },
+  {
+    path: '/projects/:projectId/environments',
+    handle: { name: 'environments' },
+  },
+  {
+    path: '/projects/:projectId/environments/:environmentId',
+    handle: { name: 'environment' },
+  },
+  { path: '/projects/:projectId/audit', handle: { name: 'audit' } },
+  { path: '/projects/:projectId/approvals', handle: { name: 'approvals' } },
+  {
+    path: '/projects/:projectId/approval-rules',
+    handle: { name: 'approval-rules' },
+  },
+  { path: '/projects/:projectId/team', handle: { name: 'team' } },
+  { path: '/projects/:projectId/tokens', handle: { name: 'tokens' } },
+  {
+    path: '/projects/:projectId/service-accounts',
+    handle: { name: 'service-accounts' },
+  },
+]
 
-const parseRoute = (pathWithQuery: string): RouteMatch => {
-  const [path, query] = pathWithQuery.split('?')
-  const raw = normalize(path) || '/'
-  const segments = raw.replace(/^\//, '').split('/').filter(Boolean)
-  const queryParams = new URLSearchParams(query ?? '')
+export const getRouteMatch = (pathname: string, search: string): RouteMatch => {
+  const matches = matchRoutes(appRoutes, { pathname })
+  const current = matches?.[matches.length - 1]
+  const name = current?.route.handle?.name as RouteMatch['name'] | undefined
+  const params = current?.params ?? {}
+  const queryParams = new URLSearchParams(search)
 
-  if (segments.length === 0) {
-    return { name: 'projects' }
-  }
-
-  if (segments[0] === 'login') {
-    return { name: 'login' }
-  }
-
-  if (segments[0] === 'cli-login') {
+  if (name === 'login') return { name: 'login' }
+  if (name === 'cli-login') {
     return { name: 'cli-login', code: queryParams.get('code') }
   }
-
-  if (segments[0] === 'invite') {
+  if (name === 'invite') {
     return { name: 'invite', token: queryParams.get('token') }
   }
-
-  if (segments[0] === 'profile') {
-    return { name: 'profile' }
+  if (name === 'profile') return { name: 'profile' }
+  if (name === 'projects') return { name: 'projects' }
+  if (name === 'project' && params.projectId) {
+    return { name: 'project', projectId: params.projectId }
   }
-
-  if (segments[0] === 'projects') {
-    if (segments.length === 1) {
-      return { name: 'projects' }
+  if (name === 'environments' && params.projectId) {
+    return { name: 'environments', projectId: params.projectId }
+  }
+  if (name === 'environment' && params.projectId && params.environmentId) {
+    return {
+      name: 'environment',
+      projectId: params.projectId,
+      environmentId: params.environmentId,
     }
-    if (segments.length >= 2) {
-      const projectId = segments[1]
-      if (segments[2] === 'environments' && segments[3]) {
-        return { name: 'environment', projectId, environmentId: segments[3] }
-      }
-      if (segments[2] === 'environments') {
-        return { name: 'environments', projectId }
-      }
-      if (segments[2] === 'audit') {
-        return { name: 'audit', projectId }
-      }
-      if (segments[2] === 'approvals') {
-        return { name: 'approvals', projectId }
-      }
-      if (segments[2] === 'approval-rules') {
-        return { name: 'approval-rules', projectId }
-      }
-      if (segments[2] === 'team') {
-        return { name: 'team', projectId }
-      }
-      if (segments[2] === 'tokens') {
-        return { name: 'tokens', projectId }
-      }
-      if (segments[2] === 'service-accounts') {
-        return { name: 'service-accounts', projectId }
-      }
-      return { name: 'project', projectId }
-    }
+  }
+  if (name === 'audit' && params.projectId) {
+    return { name: 'audit', projectId: params.projectId }
+  }
+  if (name === 'approvals' && params.projectId) {
+    return { name: 'approvals', projectId: params.projectId }
+  }
+  if (name === 'approval-rules' && params.projectId) {
+    return { name: 'approval-rules', projectId: params.projectId }
+  }
+  if (name === 'team' && params.projectId) {
+    return { name: 'team', projectId: params.projectId }
+  }
+  if (name === 'tokens' && params.projectId) {
+    return { name: 'tokens', projectId: params.projectId }
+  }
+  if (name === 'service-accounts' && params.projectId) {
+    return { name: 'service-accounts', projectId: params.projectId }
   }
 
   return { name: 'projects' }
@@ -97,40 +112,3 @@ export const getProjectId = (match: RouteMatch) =>
 
 export const getEnvironmentId = (match: RouteMatch) =>
   match.name === 'environment' ? match.environmentId : null
-
-const readLocationPath = () =>
-  `${window.location.pathname}${window.location.search}`
-
-export const useBrowserRouter = () => {
-  const [path, setPath] = useState(() => readLocationPath())
-
-  useEffect(() => {
-    const hash = window.location.hash
-    if (hash.startsWith('#/')) {
-      const normalized = hash.replace(/^#/, '')
-      const next = normalized.startsWith('/') ? normalized : `/${normalized}`
-      window.history.replaceState({}, '', next)
-      setPath(next)
-    }
-  }, [])
-
-  useEffect(() => {
-    const handler = () => setPath(readLocationPath())
-    window.addEventListener('popstate', handler)
-    return () => window.removeEventListener('popstate', handler)
-  }, [])
-
-  const match = useMemo(() => parseRoute(path), [path])
-
-  const navigate = (nextPath: string) => {
-    const normalized = nextPath.startsWith('/')
-      ? nextPath
-      : `/${nextPath}`
-    if (readLocationPath() !== normalized) {
-      window.history.pushState({}, '', normalized)
-      setPath(normalized)
-    }
-  }
-
-  return { match, navigate, path }
-}
