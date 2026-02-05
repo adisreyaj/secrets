@@ -1,14 +1,13 @@
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
 
-const pickSegment = (id: string, slug?: string | null) =>
-  slug && slug.trim().length > 0 ? slug : id
+const pickSegment = (id: string) => id
 
 export const projectPath = (
   projectId: string,
-  projectSlug?: string | null,
+  _projectSlug?: string | null,
   suffix?: string,
 ) => {
-  const base = `/projects/${pickSegment(projectId, projectSlug)}`
+  const base = `/projects/${pickSegment(projectId)}`
   if (!suffix) return base
   return `${base}${suffix.startsWith('/') ? suffix : `/${suffix}`}`
 }
@@ -20,14 +19,11 @@ export const environmentsPath = (
 
 export const environmentPath = (
   projectId: string,
-  projectSlug: string | null | undefined,
+  _projectSlug: string | null | undefined,
   environmentId: string,
-  environmentSlug?: string | null,
+  _environmentSlug?: string | null,
 ) =>
-  `${environmentsPath(projectId, projectSlug)}/${pickSegment(
-    environmentId,
-    environmentSlug,
-  )}`
+  `${environmentsPath(projectId)}/${pickSegment(environmentId)}`
 
 export const projectPathFor = (project: ProjectDto) =>
   projectPath(project.id, project.slug)

@@ -150,28 +150,9 @@ const AppShell = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
-  const [projectSlugById, setProjectSlugById] = useState(
-    () => new Map<string, string>(),
-  )
-  const [projectIdBySlug, setProjectIdBySlug] = useState(
-    () => new Map<string, string>(),
-  )
-  const [envSlugByProject, setEnvSlugByProject] = useState(
-    () => new Map<string, Map<string, string>>(),
-  )
-  const [envIdByProject, setEnvIdByProject] = useState(
-    () => new Map<string, Map<string, string>>(),
-  )
   const [resolvedProjectId, setResolvedProjectId] = useState<string | null>(
     null,
   )
-  const [resolvedEnvironmentId, setResolvedEnvironmentId] = useState<
-    string | null
-  >(null)
-  const [loadingProjectSlug, setLoadingProjectSlug] = useState<string | null>(
-    null,
-  )
-  const [loadingEnvFor, setLoadingEnvFor] = useState<string | null>(null)
 
   const match = useMemo(
     () => getRouteMatch(location.pathname, location.search),
@@ -200,184 +181,13 @@ const AppShell = () => {
   }, [authLoading, user, isPublicRoute, navigate])
 
   useEffect(() => {
-    if (!user) return
-    let active = true
-    api
-      .listProjects()
-      .then((projects) => {
-        if (!active) return
-        const slugById = new Map<string, string>()
-        const idBySlug = new Map<string, string>()
-        for (const project of projects) {
-          if (project.slug) {
-            slugById.set(project.id, project.slug)
-            idBySlug.set(project.slug, project.id)
-          }
-        }
-        setProjectSlugById(slugById)
-        setProjectIdBySlug(idBySlug)
-      })
-      .catch(() => null)
-    return () => {
-      active = false
-    }
-  }, [user])
-
-  useEffect(() => {
     const projectSegment = getProjectId(match)
     if (!projectSegment) {
       setResolvedProjectId(null)
-      setResolvedEnvironmentId(null)
       return
     }
-    if (projectIdBySlug.has(projectSegment)) {
-      setResolvedProjectId(projectIdBySlug.get(projectSegment) ?? null)
-      return
-    }
-
-    if (!user) {
-      if (authLoading) {
-        setResolvedProjectId(null)
-      } else {
-        setResolvedProjectId(projectSegment)
-      }
-      return
-    }
-
-    if (loadingProjectSlug === projectSegment) return
-    setResolvedProjectId(null)
-    setLoadingProjectSlug(projectSegment)
-    api
-      .getProjectBySlug(projectSegment)
-      .then((project) => {
-        setProjectSlugById((prev) => {
-          const next = new Map(prev)
-          if (project.slug) next.set(project.id, project.slug)
-          return next
-        })
-        setProjectIdBySlug((prev) => {
-          const next = new Map(prev)
-          if (project.slug) next.set(project.slug, project.id)
-          return next
-        })
-        setResolvedProjectId(project.id)
-      })
-      .catch(() => {
-        setResolvedProjectId(projectSegment)
-      })
-      .finally(() => {
-        setLoadingProjectSlug((current) =>
-          current === projectSegment ? null : current,
-        )
-      })
-  }, [match, projectIdBySlug, loadingProjectSlug, user, authLoading])
-
-  useEffect(() => {
-    if (match.name !== 'environment') {
-      setResolvedEnvironmentId(null)
-      return
-    }
-    const projectId = resolvedProjectId
-    const environmentSegment = getEnvironmentId(match)
-    if (!projectId || !environmentSegment) {
-      setResolvedEnvironmentId(null)
-      return
-    }
-
-    const envIdMap = envIdByProject.get(projectId)
-    if (envIdMap?.has(environmentSegment)) {
-      setResolvedEnvironmentId(envIdMap.get(environmentSegment) ?? null)
-      return
-    }
-
-    // Don't set resolvedEnvironmentId to segment yet — API needs id. Resolve after listEnvironments.
-    if (loadingEnvFor === projectId) return
-    setLoadingEnvFor(projectId)
-    api
-      .listEnvironments(projectId)
-      .then((envs) => {
-        const slugById = new Map<string, string>()
-        const idBySlug = new Map<string, string>()
-        for (const env of envs) {
-          if (env.slug) {
-            slugById.set(env.id, env.slug)
-            idBySlug.set(env.slug, env.id)
-          }
-        }
-        setEnvSlugByProject((prev) => {
-          const next = new Map(prev)
-          next.set(projectId, slugById)
-          return next
-        })
-        setEnvIdByProject((prev) => {
-          const next = new Map(prev)
-          next.set(projectId, idBySlug)
-          return next
-        })
-        setResolvedEnvironmentId(
-          idBySlug.get(environmentSegment) ?? environmentSegment,
-        )
-      })
-      .catch(() => null)
-      .finally(() => {
-        setLoadingEnvFor((current) => (current === projectId ? null : current))
-      })
-  }, [match, resolvedProjectId, envIdByProject, loadingEnvFor])
-
-  useEffect(() => {
-    const projectSegment = getProjectId(match)
-    if (!projectSegment) return
-    const projectId = resolvedProjectId ?? projectSegment
-    const projectSlug =
-      projectSlugById.get(projectId) ??
-      (projectSegment !== projectId ? projectSegment : undefined)
-    const envSegment = getEnvironmentId(match)
-    const envSlug =
-      match.name === 'environment' && resolvedEnvironmentId && projectId
-        ? envSlugByProject.get(projectId)?.get(resolvedEnvironmentId) ??
-          (envSegment && envSegment !== resolvedEnvironmentId
-            ? envSegment
-            : undefined)
-        : undefined
-
-    let desired: string | null = null
-    if (match.name === 'project') {
-      desired = projectPath(projectId, projectSlug)
-    } else if (match.name === 'environments') {
-      desired = environmentsPath(projectId, projectSlug)
-    } else if (match.name === 'environment' && envSegment) {
-      desired = environmentPath(
-        projectId,
-        projectSlug,
-        resolvedEnvironmentId ?? envSegment,
-        envSlug ?? envSegment,
-      )
-    } else if (match.name === 'audit') {
-      desired = projectPath(projectId, projectSlug, 'audit')
-    } else if (match.name === 'approvals') {
-      desired = projectPath(projectId, projectSlug, 'approvals')
-    } else if (match.name === 'approval-rules') {
-      desired = projectPath(projectId, projectSlug, 'approval-rules')
-    } else if (match.name === 'team') {
-      desired = projectPath(projectId, projectSlug, 'team')
-    } else if (match.name === 'tokens') {
-      desired = projectPath(projectId, projectSlug, 'tokens')
-    } else if (match.name === 'service-accounts') {
-      desired = projectPath(projectId, projectSlug, 'service-accounts')
-    }
-
-    if (desired && desired !== path) {
-      navigate(desired)
-    }
-  }, [
-    match,
-    navigate,
-    path,
-    projectSlugById,
-    envSlugByProject,
-    resolvedProjectId,
-    resolvedEnvironmentId,
-  ])
+    setResolvedProjectId(projectSegment)
+  }, [match])
 
   useEffect(() => {
     const projectId = resolvedProjectId
@@ -385,17 +195,17 @@ const AppShell = () => {
       setLastProjectId(projectId)
     }
     const environmentId =
-      match.name === 'environment' ? resolvedEnvironmentId : null
+      match.name === 'environment' ? getEnvironmentId(match) : null
     if (projectId && environmentId) {
       setLastEnvironmentId(projectId, environmentId)
     }
-  }, [match, resolvedEnvironmentId, resolvedProjectId])
+  }, [match, resolvedProjectId])
 
   const resolveProjectId = () => resolvedProjectId ?? getLastProjectId()
 
   const resolveEnvironmentId = (projectId: string | null) => {
     if (!projectId) return null
-    return resolvedEnvironmentId ?? getLastEnvironmentId(projectId)
+    return getLastEnvironmentId(projectId)
   }
 
   useRegisterShortcut('?', () => setShortcutsOpen(true), {
@@ -410,8 +220,7 @@ const AppShell = () => {
     'g o',
     () => {
       const projectId = resolveProjectId()
-      const projectSlug = projectId ? projectSlugById.get(projectId) : undefined
-      navigate(projectId ? projectPath(projectId, projectSlug) : '/projects')
+      navigate(projectId ? projectPath(projectId) : '/projects')
     },
     { enabled: shortcutsEnabled },
   )
@@ -420,10 +229,7 @@ const AppShell = () => {
     'g e',
     () => {
       const projectId = resolveProjectId()
-      const projectSlug = projectId ? projectSlugById.get(projectId) : undefined
-      navigate(
-        projectId ? environmentsPath(projectId, projectSlug) : '/projects',
-      )
+      navigate(projectId ? environmentsPath(projectId) : '/projects')
     },
     { enabled: shortcutsEnabled },
   )
@@ -432,10 +238,9 @@ const AppShell = () => {
     'g s',
     () => {
       const projectId = resolveProjectId()
-      const projectSlug = projectId ? projectSlugById.get(projectId) : undefined
       navigate(
         projectId
-          ? projectPath(projectId, projectSlug, 'service-accounts')
+          ? projectPath(projectId, undefined, 'service-accounts')
           : '/projects',
       )
     },
@@ -450,14 +255,11 @@ const AppShell = () => {
         navigate('/projects')
         return
       }
-      const projectSlug = projectSlugById.get(projectId)
       const environmentId = resolveEnvironmentId(projectId)
-      const envSlug =
-        environmentId && envSlugByProject.get(projectId)?.get(environmentId)
       navigate(
         environmentId
-          ? environmentPath(projectId, projectSlug, environmentId, envSlug)
-          : environmentsPath(projectId, projectSlug),
+          ? environmentPath(projectId, undefined, environmentId, undefined)
+          : environmentsPath(projectId),
       )
     },
     { enabled: shortcutsEnabled },
@@ -467,9 +269,8 @@ const AppShell = () => {
     'g a',
     () => {
       const projectId = resolveProjectId()
-      const projectSlug = projectId ? projectSlugById.get(projectId) : undefined
       navigate(
-        projectId ? projectPath(projectId, projectSlug, 'approvals') : '/projects',
+        projectId ? projectPath(projectId, undefined, 'approvals') : '/projects',
       )
     },
     { enabled: shortcutsEnabled },
@@ -479,9 +280,8 @@ const AppShell = () => {
     'g t',
     () => {
       const projectId = resolveProjectId()
-      const projectSlug = projectId ? projectSlugById.get(projectId) : undefined
       navigate(
-        projectId ? projectPath(projectId, projectSlug, 'tokens') : '/projects',
+        projectId ? projectPath(projectId, undefined, 'tokens') : '/projects',
       )
     },
     { enabled: shortcutsEnabled },
@@ -491,9 +291,8 @@ const AppShell = () => {
     'g l',
     () => {
       const projectId = resolveProjectId()
-      const projectSlug = projectId ? projectSlugById.get(projectId) : undefined
       navigate(
-        projectId ? projectPath(projectId, projectSlug, 'audit') : '/projects',
+        projectId ? projectPath(projectId, undefined, 'audit') : '/projects',
       )
     },
     { enabled: shortcutsEnabled },
@@ -503,9 +302,8 @@ const AppShell = () => {
     'g m',
     () => {
       const projectId = resolveProjectId()
-      const projectSlug = projectId ? projectSlugById.get(projectId) : undefined
       navigate(
-        projectId ? projectPath(projectId, projectSlug, 'team') : '/projects',
+        projectId ? projectPath(projectId, undefined, 'team') : '/projects',
       )
     },
     { enabled: shortcutsEnabled },
@@ -551,10 +349,6 @@ const AppShell = () => {
             <div className="text-muted-foreground text-sm">
               Loading project...
             </div>
-          ) : match.name === 'environment' && !resolvedEnvironmentId ? (
-            <div className="text-muted-foreground text-sm">
-              Loading environment...
-            </div>
           ) : (
             <Routes>
               <Route path="/" element={<Navigate to="/projects" replace />} />
@@ -582,7 +376,10 @@ const AppShell = () => {
                 element={<ApprovalRulesRoute />}
               />
               <Route path="/projects/:projectId/team" element={<TeamRoute />} />
-              <Route path="/projects/:projectId/tokens" element={<TokensRoute />} />
+              <Route
+                path="/projects/:projectId/tokens"
+                element={<TokensRoute />}
+              />
               <Route
                 path="/projects/:projectId/service-accounts"
                 element={<ServiceAccountsRoute />}

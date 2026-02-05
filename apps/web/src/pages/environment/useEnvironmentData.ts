@@ -29,6 +29,7 @@ export const useEnvironmentData = ({
   const { data: projectsData, error: projectsError } = useAsyncResource<
     ProjectDto[]
   >(async () => (enabled ? api.listProjects() : []), [enabled])
+  const projects = useMemo(() => projectsData ?? [], [projectsData])
   const {
     data: environmentsData,
     loading: envLoading,
@@ -38,8 +39,9 @@ export const useEnvironmentData = ({
     async () => (enabled ? api.listEnvironments(projectId) : []),
     [enabled, projectId],
   )
-  const projects = useMemo(() => projectsData ?? [], [projectsData])
   const environments = useMemo(() => environmentsData ?? [], [environmentsData])
+
+  const resolvedEnvironmentId = environmentId
 
   const [secrets, setSecrets] = useState<SecretDto[]>([])
   const [secretsLoading, setSecretsLoading] = useState(false)
@@ -61,10 +63,11 @@ export const useEnvironmentData = ({
 
   const loadSecrets = useCallback(
     async (include: boolean) => {
+      if (!resolvedEnvironmentId) return false
       setSecretsLoading(true)
       setSecretsError(null)
       try {
-        const data = await api.listSecrets(environmentId, include)
+        const data = await api.listSecrets(resolvedEnvironmentId, include)
         setSecrets(data)
         return true
       } catch (error) {
@@ -74,16 +77,17 @@ export const useEnvironmentData = ({
         setSecretsLoading(false)
       }
     },
-    [environmentId],
+    [resolvedEnvironmentId],
   )
 
   const loadApprovals = useCallback(async () => {
+    if (!resolvedEnvironmentId) return
     setApprovalsLoading(true)
     setApprovalsError(null)
     try {
       const data = await api.listApprovals(projectId, {
         status: 'PENDING',
-        environmentId,
+        environmentId: resolvedEnvironmentId,
       })
       setApprovals(data)
     } catch (error) {
@@ -91,7 +95,7 @@ export const useEnvironmentData = ({
     } finally {
       setApprovalsLoading(false)
     }
-  }, [projectId, environmentId])
+  }, [projectId, resolvedEnvironmentId])
 
   const loadSecretCoverage = useCallback(async () => {
     if (environments.length === 0) {
@@ -121,21 +125,21 @@ export const useEnvironmentData = ({
   }, [environments])
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled || !resolvedEnvironmentId) return
 
     // Prevent repeated loads for the same environment/visibility combination,
     // which can cause deep update chains if some parent prop is unstable.
     if (
-      lastSecretsEnvRef.current === environmentId &&
+      lastSecretsEnvRef.current === resolvedEnvironmentId &&
       lastSecretsValuesLoadedRef.current === valuesLoaded
     ) {
       return
     }
 
-    lastSecretsEnvRef.current = environmentId
+    lastSecretsEnvRef.current = resolvedEnvironmentId
     lastSecretsValuesLoadedRef.current = valuesLoaded
     void loadSecrets(valuesLoaded)
-  }, [enabled, environmentId, valuesLoaded, loadSecrets])
+  }, [enabled, resolvedEnvironmentId, valuesLoaded, loadSecrets])
 
   useEffect(() => {
     if (enabled && environments.length > 0) {
@@ -174,7 +178,8 @@ export const useEnvironmentData = ({
     key: string
     value: string
   }) => {
-    const result = await api.createSecret(environmentId, payload)
+    if (!resolvedEnvironmentId) return
+    const result = await api.createSecret(resolvedEnvironmentId, payload)
     if ('status' in result && result.status === 'pending') {
       await loadApprovals()
       return
@@ -251,7 +256,8 @@ export const useEnvironmentData = ({
     sourceEnvironmentId: string,
     keys: string[],
   ) => {
-    const result = await api.copySecretsFromEnvironment(environmentId, {
+    if (!resolvedEnvironmentId) return
+    const result = await api.copySecretsFromEnvironment(resolvedEnvironmentId, {
       sourceEnvironmentId,
       keys,
       overwrite: false,
@@ -266,7 +272,8 @@ export const useEnvironmentData = ({
   }
 
   const selectedEnvironment =
-    environments.find((env) => env.id === environmentId) ?? null
+    environments.find((env) => env.id === (resolvedEnvironmentId ?? environmentId)) ??
+    null
   const selectedProject =
     projects.find((project) => project.id === projectId) ?? null
   const environmentOptions = useMemo(
@@ -285,7 +292,8 @@ export const useEnvironmentData = ({
   }, [secretKeyIndex])
 
   const missingKeys = useMemo(() => {
-    const currentKeys = new Set(secretKeyIndex[environmentId] ?? [])
+    const activeEnvId = resolvedEnvironmentId ?? environmentId
+    const currentKeys = new Set(secretKeyIndex[activeEnvId] ?? [])
     const missing: string[] = []
     for (const key of allSecretKeys) {
       if (!currentKeys.has(key)) {
@@ -294,13 +302,14 @@ export const useEnvironmentData = ({
     }
     missing.sort((a, b) => a.localeCompare(b))
     return missing
-  }, [allSecretKeys, environmentId, secretKeyIndex])
+  }, [allSecretKeys, environmentId, resolvedEnvironmentId, secretKeyIndex])
 
   const missingKeysByEnvironment = useMemo(() => {
-    const currentKeys = new Set(secretKeyIndex[environmentId] ?? [])
+    const activeEnvId = resolvedEnvironmentId ?? environmentId
+    const currentKeys = new Set(secretKeyIndex[activeEnvId] ?? [])
     const map: Record<string, string[]> = {}
     for (const env of environments) {
-      if (env.id === environmentId) continue
+      if (env.id === activeEnvId) continue
       const keys = secretKeyIndex[env.id] ?? []
       const candidates = keys.filter((key) => !currentKeys.has(key))
       if (candidates.length > 0) {
@@ -308,7 +317,7 @@ export const useEnvironmentData = ({
       }
     }
     return map
-  }, [environmentId, environments, secretKeyIndex])
+  }, [environmentId, environments, resolvedEnvironmentId, secretKeyIndex])
 
   const secretByKey = useMemo(() => {
     const map = new Map<string, SecretDto>()

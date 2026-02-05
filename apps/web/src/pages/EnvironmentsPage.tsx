@@ -23,6 +23,7 @@ export const EnvironmentsPage = ({
   const { data: projectsData, error: projectsError } = useAsyncResource<
     ProjectDto[]
   >(async () => (user ? api.listProjects() : []), [user])
+  const projects = useMemo(() => projectsData ?? [], [projectsData])
   const {
     data: environmentsData,
     loading: envLoading,
@@ -32,7 +33,6 @@ export const EnvironmentsPage = ({
     async () => (user ? api.listEnvironments(projectId) : []),
     [projectId, user],
   )
-  const projects = useMemo(() => projectsData ?? [], [projectsData])
   const environments = environmentsData ?? []
 
   const selectedProject = useMemo(
