@@ -5,6 +5,7 @@ import { Toaster } from 'sonner'
 import App from './App'
 import './index.css'
 import { AuthProvider } from './lib/auth'
+import { FeatureFlagProvider } from './lib/feature-flags'
 import { ThemeProvider } from './lib/theme'
 
 const queryClient = new QueryClient({
@@ -31,7 +32,9 @@ createRoot(rootElement).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <App />
+          <FeatureFlagProvider>
+            <App />
+          </FeatureFlagProvider>
         </AuthProvider>
       </ThemeProvider>
       <Toaster position="top-right" richColors />
