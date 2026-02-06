@@ -7,14 +7,20 @@
     "secrets": "dist/index.js"
   },
   "dependencies": {
-    "@secrets/sdk": "workspace:*"
+    "@secrets/sdk": "workspace:*",
+    "ink": "^5.0.1",
+    "react": "^18.3.1"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
+    "@types/react": "^18.3.5",
+    "tsdown": "^0.8.1",
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "pnpm build && node --test test/*.test.mjs"
+    "build": "tsdown",
+    "link:global": "pnpm link --global",
+    "test": "pnpm build && node --test test/*.test.mjs",
+    "unlink:global": "pnpm unlink --global"
   }
 }
