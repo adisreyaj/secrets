@@ -57,6 +57,7 @@ export const AuthPanel = ({
             </span>
             <Input
               id="auth-name"
+              data-testid="auth-name"
               value={form.name}
               onChange={(event) =>
                 setForm((prev) => ({ ...prev, name: event.target.value }))
@@ -73,6 +74,7 @@ export const AuthPanel = ({
           </span>
           <Input
             id="auth-email"
+            data-testid="auth-email"
             value={form.email}
             onChange={(event) =>
               setForm((prev) => ({ ...prev, email: event.target.value }))
@@ -89,6 +91,7 @@ export const AuthPanel = ({
           </span>
           <Input
             id="auth-password"
+            data-testid="auth-password"
             value={form.password}
             onChange={(event) =>
               setForm((prev) => ({ ...prev, password: event.target.value }))
@@ -102,6 +105,7 @@ export const AuthPanel = ({
         {error ? <p className="text-sm text-rose-600">{error}</p> : null}
         <Button
           type="submit"
+          data-testid="auth-submit"
           disabled={loading}
           className="h-11 w-full rounded-full bg-foreground text-sm font-semibold text-background hover:bg-foreground/90"
         >
@@ -110,6 +114,7 @@ export const AuthPanel = ({
       </form>
       <Button
         variant="ghost"
+        data-testid="auth-toggle-mode"
         onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
         className="mt-4 h-auto px-0 text-xs font-semibold text-muted-foreground hover:bg-transparent"
       >

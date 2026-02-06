@@ -30,6 +30,7 @@ export const MissingKeysCard = ({
             <Button
               variant="outline"
               size="sm"
+              data-testid="missing-keys-open"
               className="rounded-full text-xs"
               onClick={onOpenDialog}
               disabled={missingSourcesCount === 0}

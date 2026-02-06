@@ -159,6 +159,7 @@ export const MissingKeysDialog = ({
           </Button>
           <Button
             onClick={onConfirm}
+            data-testid="missing-keys-confirm"
             disabled={!missingSourceEnvId || missingCopying || selectedMissingKeys.length === 0}
             className="rounded-full"
           >

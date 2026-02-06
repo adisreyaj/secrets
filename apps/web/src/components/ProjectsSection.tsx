@@ -91,6 +91,7 @@ export const ProjectsSection = ({
             <DialogTrigger asChild>
               <Button
                 variant="outline"
+                data-testid="projects-new"
                 className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
               >
                 <Plus className="h-4 w-4" />
@@ -111,6 +112,7 @@ export const ProjectsSection = ({
                     Project name
                   </span>
                   <Input
+                    data-testid="project-name-input"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="e.g. Signalflow"
@@ -122,7 +124,7 @@ export const ProjectsSection = ({
                     Environment template
                   </span>
                   <Select value={template} onValueChange={(value) => setTemplate(value as ProjectTemplate)}>
-                    <SelectTrigger className="h-11 px-4">
+                    <SelectTrigger className="h-11 px-4" data-testid="project-template-select">
                       <SelectValue placeholder="Select a template" />
                     </SelectTrigger>
                     <SelectContent>
@@ -148,6 +150,7 @@ export const ProjectsSection = ({
                   </Button>
                   <Button
                     type="submit"
+                    data-testid="project-create-submit"
                     className="rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
                     disabled={creating || !name.trim()}
                   >
@@ -178,6 +181,7 @@ export const ProjectsSection = ({
                 <Button
                   onClick={() => onSelect(project.id)}
                   variant="ghost"
+                  data-testid={`project-card-${project.id}`}
                   className={`h-auto w-full flex-col items-start justify-start gap-3 rounded-2xl border p-4 text-left transition-transform hover:-translate-y-1 hover:shadow-lg motion-reduce:transform-none motion-reduce:hover:transform-none whitespace-normal ${
                     isSelected
                       ? 'border-foreground bg-foreground text-background hover:bg-foreground'

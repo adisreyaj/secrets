@@ -207,6 +207,15 @@ export const SecretActionDialog = ({
           <Button
             variant={mode === 'delete' ? 'outline' : 'default'}
             onClick={handleConfirm}
+            data-testid={
+              mode === 'rollback'
+                ? 'secret-rollback-confirm'
+                : mode === 'copy'
+                  ? 'secret-copy-confirm'
+                  : mode === 'delete'
+                    ? 'secret-delete-confirm'
+                    : undefined
+            }
             disabled={
               mode === 'copy' &&
               (selectedTargets.length === 0 ||

@@ -101,6 +101,7 @@ export const EnvironmentsSection = ({
             <DialogTrigger asChild>
               <Button
                 variant="outline"
+                data-testid="envs-new"
                 className="flex h-10 items-center gap-2 rounded-full border-border px-4 text-sm font-semibold text-foreground hover:border-foreground/40"
               >
                 <Plus className="h-4 w-4" />
@@ -122,6 +123,7 @@ export const EnvironmentsSection = ({
                     Environment name
                   </span>
                   <Input
+                    data-testid="env-name-input"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="e.g. staging"
@@ -137,7 +139,7 @@ export const EnvironmentsSection = ({
                     onValueChange={setCopyFromId}
                     disabled={environmentOptions.length === 0}
                   >
-                    <SelectTrigger className="h-11 px-4">
+                    <SelectTrigger className="h-11 px-4" data-testid="env-copy-select">
                       <SelectValue placeholder="Don't copy anything" />
                     </SelectTrigger>
                     <SelectContent>
@@ -166,6 +168,7 @@ export const EnvironmentsSection = ({
                   </Button>
                   <Button
                     type="submit"
+                    data-testid="env-create-submit"
                     className="rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
                     disabled={creating || !name.trim()}
                   >
@@ -196,6 +199,7 @@ export const EnvironmentsSection = ({
                 <Button
                   onClick={() => onSelect(env.id)}
                   variant="ghost"
+                  data-testid={`env-card-${env.id}`}
                   className={`flex h-auto w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
                     isSelected
                       ? 'border-foreground bg-foreground text-background hover:bg-foreground hover:text-background'

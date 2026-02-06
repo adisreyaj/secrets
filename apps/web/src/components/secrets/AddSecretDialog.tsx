@@ -116,6 +116,7 @@ export const AddSecretDialog = ({
         <Button
           variant="outline"
           size="sm"
+          data-testid="secret-add-open"
           className="flex h-9 items-center gap-2 rounded-full text-xs"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -202,6 +203,7 @@ export const AddSecretDialog = ({
               Secret key
             </span>
             <Input
+              data-testid="secret-key-input"
               value={form.key}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -218,6 +220,7 @@ export const AddSecretDialog = ({
               Secret value
             </span>
             <Input
+              data-testid="secret-value-input"
               value={form.value}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -261,6 +264,7 @@ export const AddSecretDialog = ({
             </Button>
             <Button
               type="submit"
+              data-testid="secret-add-submit"
               className="rounded-full bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
               disabled={creating || !form.key.trim() || !form.value.trim()}
             >

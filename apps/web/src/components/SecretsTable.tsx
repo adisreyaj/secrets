@@ -225,6 +225,7 @@ export const SecretsTable = ({
               value={searchValue}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Filter by key or value..."
+              data-testid="secrets-search"
               className="bg-background h-9 flex-1 rounded-2xl px-4"
             />
           </div>
@@ -259,6 +260,7 @@ export const SecretsTable = ({
             variant="secondary"
             size="sm"
             onClick={() => onToggleValues(!includeValues)}
+            data-testid="secrets-toggle-values"
             className="bg-muted text-muted-foreground hover:bg-muted/80 flex h-9 items-center gap-2 rounded-full px-3 py-0 font-medium"
           >
             {includeValues ? (
@@ -573,7 +575,10 @@ const SecretRow = memo(
   }) => {
     const isEditing = !!editingRow
     return (
-      <TableRow className="text-muted-foreground text-sm">
+      <TableRow
+        className="text-muted-foreground text-sm"
+        data-testid={`secret-row-${secret.id}`}
+      >
         <TableHead className="text-foreground py-3 font-semibold" scope="row">
           {isEditing ? (
             <div className="space-y-1">
@@ -647,6 +652,7 @@ const SecretRow = memo(
                   size="icon"
                   variant="outline"
                   onClick={() => onOpenCopy(secret)}
+                  data-testid={`secret-copy-${secret.id}`}
                   className="h-8 w-8 rounded-full"
                   disabled={!canCopy || isEditing}
                   aria-label="Copy secret"
@@ -664,6 +670,7 @@ const SecretRow = memo(
                   size="icon"
                   variant="outline"
                   onClick={() => onStartEdit(secret)}
+                  data-testid={`secret-edit-${secret.id}`}
                   className="h-8 w-8 rounded-full"
                   disabled={isEditing}
                   aria-label="Edit secret"
@@ -680,6 +687,7 @@ const SecretRow = memo(
                     size="icon"
                     variant="ghost"
                     onClick={() => onCancelRow(secret.id)}
+                    data-testid={`secret-cancel-${secret.id}`}
                     className="h-8 w-8 rounded-full"
                     aria-label="Cancel edits"
                   >
@@ -695,6 +703,7 @@ const SecretRow = memo(
                   size="icon"
                   variant="outline"
                   onClick={() => onOpenRollback(secret)}
+                  data-testid={`secret-rollback-${secret.id}`}
                   className="h-8 w-8 rounded-full"
                   disabled={isEditing}
                   aria-label="Rollback secret"
@@ -710,6 +719,7 @@ const SecretRow = memo(
                   size="icon"
                   variant="outline"
                   onClick={() => onOpenDiff(secret)}
+                  data-testid={`secret-diff-${secret.id}`}
                   className="h-8 w-8 rounded-full"
                   disabled={isEditing}
                   aria-label="View diff"
@@ -725,6 +735,7 @@ const SecretRow = memo(
                   size="icon"
                   variant="outline"
                   onClick={() => onOpenDelete(secret)}
+                  data-testid={`secret-delete-${secret.id}`}
                   className="h-8 w-8 rounded-full border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700"
                   disabled={isEditing}
                   aria-label="Delete secret"
