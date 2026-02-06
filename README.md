@@ -84,6 +84,14 @@ CLI/SDK environment variables:
 - `SECRETS_PROJECT` project id or slug (required when env is a slug)
 - `SECRETS_API_BASE_URL` API base URL (default `http://localhost:3001`)
 
+Web app environment variables (Vite):
+
+- `VITE_POSTHOG_KEY` PostHog project API key
+- `VITE_POSTHOG_HOST` PostHog host (default `https://app.posthog.com`)
+- `VITE_ERROR_TRACKING_PROVIDER` error tracking provider (default `posthog`)
+- `VITE_ERROR_TRACKING_DEBUG` set to `true` to enable PostHog debug logs
+- Error tracking is enabled only in production (`import.meta.env.PROD`)
+
 ## Project Structure
 
 - `apps/server` Fastify API + Prisma schema

@@ -5,6 +5,7 @@ import { Toaster } from 'sonner'
 import App from './App'
 import './index.css'
 import { AuthProvider } from './lib/auth'
+import { ErrorBoundary, ErrorTrackingProvider } from './lib/error-tracking'
 import { FeatureFlagProvider } from './lib/feature-flags'
 import { ThemeProvider } from './lib/theme'
 
@@ -32,9 +33,13 @@ createRoot(rootElement).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <FeatureFlagProvider>
-            <App />
-          </FeatureFlagProvider>
+          <ErrorTrackingProvider>
+            <FeatureFlagProvider>
+              <ErrorBoundary>
+                <App />
+              </ErrorBoundary>
+            </FeatureFlagProvider>
+          </ErrorTrackingProvider>
         </AuthProvider>
       </ThemeProvider>
       <Toaster position="top-right" richColors />
