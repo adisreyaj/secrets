@@ -19,6 +19,7 @@
     "start:server": "pnpm -C apps/server start",
     "start:web": "pnpm -C apps/web start",
     "lint:web": "pnpm -C apps/web lint",
+    "lint:server": "pnpm -C apps/server lint",
     "format:web": "pnpm -C apps/web format",
     "format:check:web": "pnpm -C apps/web format:check",
     "test:server": "pnpm -C apps/server test",
