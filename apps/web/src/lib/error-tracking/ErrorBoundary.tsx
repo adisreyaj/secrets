@@ -1,7 +1,7 @@
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { Button } from '../../components/ui/button'
-import { captureError } from './provider'
+import { captureError } from './core'
 
 interface ErrorBoundaryProps {
   children: ReactNode

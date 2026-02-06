@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveErrorTrackingAdapter } from '../lib/error-tracking/provider'
+import { resolveErrorTrackingAdapter } from '../lib/error-tracking/core'
 import { noopErrorTrackingAdapter } from '../lib/error-tracking/adapters/noop'
 import { posthogErrorTrackingAdapter } from '../lib/error-tracking/adapters/posthog'
 
