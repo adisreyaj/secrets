@@ -2,22 +2,22 @@ import type { ProjectDto } from '@secrets/shared'
 import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageHeader } from '../components/PageHeader'
-import {
-  ProjectsSection,
-  type ProjectTemplate,
-} from '../components/ProjectsSection'
+import { ProjectsSection } from '../components/ProjectsSection'
+import { PROJECT_TEMPLATE_ENVIRONMENTS } from '../features/projects/constants'
+import type { CreateProjectPayload } from '../features/projects/types'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
+import { runMutationWithToast } from '../lib/mutationFeedback'
 import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
+import { asArray } from '../lib/queryResult'
 import { useRequireAuth } from '../lib/useRequireAuth'
-import { toast } from 'sonner'
 
-export const ProjectsPage = ({
-  navigate,
-}: {
+type ProjectsPageProps = {
   navigate: (path: string) => void
-}) => {
+}
+
+export const ProjectsPage = ({ navigate }: ProjectsPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
   const {
@@ -29,21 +29,16 @@ export const ProjectsPage = ({
     queryFn: () => api.listProjects(),
     enabled: Boolean(user),
   })
-  const projects = projectsData ?? []
+  const projects = asArray(projectsData)
   const projectsError = projectsErrorRaw
     ? getErrorMessage(projectsErrorRaw)
     : null
 
   const createProjectMutation = useMutation({
-    mutationFn: async (payload: { name: string; template: ProjectTemplate }) => {
+    mutationFn: async (payload: CreateProjectPayload) => {
       const project = await api.createProject({ name: payload.name })
-      const templates: Record<ProjectTemplate, string[]> = {
-        starter: ['development', 'prod'],
-        full: ['development', 'staging', 'prod'],
-        empty: [],
-      }
+      const environments = PROJECT_TEMPLATE_ENVIRONMENTS[payload.template] ?? []
 
-      const environments = templates[payload.template] ?? []
       if (environments.length > 0) {
         await Promise.all(
           environments.map((envName) =>
@@ -58,13 +53,11 @@ export const ProjectsPage = ({
   })
 
   const handleCreate = useCallback(
-    async (payload: { name: string; template: ProjectTemplate }) => {
-      try {
-        await createProjectMutation.mutateAsync(payload)
-        toast.success('Project created.')
-      } catch (error) {
-        toast.error(getErrorMessage(error))
-      }
+    async (payload: CreateProjectPayload) => {
+      await runMutationWithToast(
+        () => createProjectMutation.mutateAsync(payload),
+        { successMessage: 'Project created.' },
+      )
     },
     [createProjectMutation],
   )

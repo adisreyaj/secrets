@@ -7,7 +7,6 @@ import type {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { useState } from 'react'
-import { toast } from 'sonner'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -39,17 +38,18 @@ import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
 import { projectPath } from '../lib/paths'
+import { runMutationWithToast } from '../lib/mutationFeedback'
 import { queryKeys } from '../lib/queryKeys'
+import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
-export const TeamPage = ({
-  projectId,
-  navigate,
-}: {
+type TeamPageProps = {
   projectId: string
   navigate: (path: string) => void
-}) => {
+}
+
+export const TeamPage = ({ projectId, navigate }: TeamPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
   const { data: projectsData } = useQuery<ProjectDto[]>({
@@ -57,7 +57,7 @@ export const TeamPage = ({
     queryFn: () => api.listProjects(),
     enabled: Boolean(user),
   })
-  const projects = projectsData ?? []
+  const projects = asArray(projectsData)
   const selectedProject =
     projects.find((project) => project.id === projectId) ?? null
   const isAdmin = selectedProject?.role === 'ADMIN'
@@ -71,7 +71,7 @@ export const TeamPage = ({
     queryFn: () => api.listMembers(projectId),
     enabled: Boolean(user) && Boolean(projectId),
   })
-  const members = membersData ?? []
+  const members = asArray(membersData)
 
   const {
     data: invitesData,
@@ -82,7 +82,7 @@ export const TeamPage = ({
     queryFn: () => api.listInvites(projectId),
     enabled: Boolean(user) && Boolean(projectId) && isAdmin,
   })
-  const invites = invitesData ?? []
+  const invites = asArray(invitesData)
 
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<Role>('VIEWER')
@@ -108,32 +108,41 @@ export const TeamPage = ({
     if (!inviteEmail.trim() || inviteCreating) return
     setInviteCreating(true)
     try {
-      const data = await api.createInvite(projectId, {
-        email: inviteEmail.trim(),
-        role: inviteRole,
-      })
-      const link = `${window.location.origin}/invite?token=${encodeURIComponent(
-        data.token,
-      )}`
-      setLastInviteLink(link)
-      setInviteEmail('')
-      await queryClient.invalidateQueries({ queryKey: queryKeys.invites(projectId) })
-      toast.success('Invite sent.')
-    } catch (error) {
-      toast.error(getErrorMessage(error))
+      await runMutationWithToast(
+        () =>
+          api.createInvite(projectId, {
+            email: inviteEmail.trim(),
+            role: inviteRole,
+          }),
+        {
+          successMessage: 'Invite sent.',
+          onSuccess: async (data) => {
+            const link = `${window.location.origin}/invite?token=${encodeURIComponent(
+              data.token,
+            )}`
+            setLastInviteLink(link)
+            setInviteEmail('')
+            await queryClient.invalidateQueries({
+              queryKey: queryKeys.invites(projectId),
+            })
+          },
+        },
+      )
     } finally {
       setInviteCreating(false)
     }
   }
 
   const handleRevokeInvite = async (inviteId: string) => {
-    try {
-      await api.revokeInvite(projectId, inviteId)
-      await queryClient.invalidateQueries({ queryKey: queryKeys.invites(projectId) })
-      toast.success('Invite revoked.')
-    } catch (error) {
-      toast.error(getErrorMessage(error))
-    }
+    await runMutationWithToast(
+      async () => {
+        await api.revokeInvite(projectId, inviteId)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.invites(projectId),
+        })
+      },
+      { successMessage: 'Invite revoked.' },
+    )
   }
 
   return (

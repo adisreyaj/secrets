@@ -2,7 +2,6 @@ import type { ApiTokenDto, ProjectDto } from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
-import { toast } from 'sonner'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { ShortcutHint } from '../components/ShortcutHint'
@@ -10,18 +9,19 @@ import { TokensPanel } from '../components/TokensPanel'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
+import { runMutationWithToast } from '../lib/mutationFeedback'
 import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
+import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
-export const TokensPage = ({
-  projectId,
-  navigate,
-}: {
+type TokensPageProps = {
   projectId: string
   navigate: (path: string) => void
-}) => {
+}
+
+export const TokensPage = ({ projectId, navigate }: TokensPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
   const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
@@ -38,8 +38,8 @@ export const TokensPage = ({
     queryFn: () => api.listTokens(projectId),
     enabled: Boolean(user) && Boolean(projectId),
   })
-  const projects = useMemo(() => projectsData ?? [], [projectsData])
-  const tokens = tokensData ?? []
+  const projects = asArray(projectsData)
+  const tokens = asArray(tokensData)
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -51,33 +51,31 @@ export const TokensPage = ({
   )
 
   const handleCreateToken = useCallback(
-    async (name: string, readOnly: boolean) => {
-      try {
-        const data = await api.createToken(projectId, { name, readOnly })
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.tokens(projectId),
-        })
-        toast.success('Token created.')
-        return data
-      } catch (error) {
-        toast.error(getErrorMessage(error))
-      }
-    },
+    async (name: string, readOnly: boolean) =>
+      runMutationWithToast(
+        async () => {
+          const data = await api.createToken(projectId, { name, readOnly })
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.tokens(projectId),
+          })
+          return data
+        },
+        { successMessage: 'Token created.' },
+      ),
     [projectId, queryClient],
   )
 
   const handleDeleteToken = useCallback(
-    async (tokenId: string) => {
-      try {
-        await api.deleteToken(projectId, tokenId)
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.tokens(projectId),
-        })
-        toast.success('Token deleted.')
-      } catch (error) {
-        toast.error(getErrorMessage(error))
-      }
-    },
+    async (tokenId: string) =>
+      runMutationWithToast(
+        async () => {
+          await api.deleteToken(projectId, tokenId)
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.tokens(projectId),
+          })
+        },
+        { successMessage: 'Token deleted.' },
+      ),
     [projectId, queryClient],
   )
 

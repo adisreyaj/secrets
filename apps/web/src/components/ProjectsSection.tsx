@@ -1,7 +1,13 @@
 import type { ProjectDto } from '@secrets/shared'
 import { Plus } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { PROJECT_TEMPLATE_OPTIONS } from '../features/projects/constants'
+import type {
+  CreateProjectPayload,
+  ProjectTemplate,
+} from '../features/projects/types'
 import { formatShortDate } from '../lib/format'
+import { useRegisterProjectSelectionShortcuts } from '../lib/shortcuts.helpers'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { EmptyState } from './EmptyState'
 import { ErrorBanner } from './ErrorBanner'
@@ -27,7 +33,14 @@ import {
   SelectValue,
 } from './ui/select'
 
-export type ProjectTemplate = 'starter' | 'full' | 'empty'
+type ProjectsSectionProps = {
+  projects: ProjectDto[]
+  selectedProjectId: string | null
+  loading: boolean
+  error: string | null
+  onSelect: (projectId: string) => void
+  onCreate: (payload: CreateProjectPayload) => Promise<void>
+}
 
 export const ProjectsSection = ({
   projects,
@@ -36,30 +49,11 @@ export const ProjectsSection = ({
   error,
   onSelect,
   onCreate,
-}: {
-  projects: ProjectDto[]
-  selectedProjectId: string | null
-  loading: boolean
-  error: string | null
-  onSelect: (projectId: string) => void
-  onCreate: (payload: {
-    name: string
-    template: ProjectTemplate
-  }) => Promise<void>
-}) => {
+}: ProjectsSectionProps) => {
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [template, setTemplate] = useState<ProjectTemplate>('starter')
-
-  const templates = useMemo(
-    () => [
-      { id: 'starter', label: 'Starter (Dev + Prod)' },
-      { id: 'full', label: 'Full stack (Dev + Staging + Prod)' },
-      { id: 'empty', label: 'Empty project' },
-    ],
-    [],
-  )
 
   useEffect(() => {
     if (!dialogOpen) {
@@ -69,15 +63,12 @@ export const ProjectsSection = ({
   }, [dialogOpen])
 
   useRegisterShortcut('n', () => setDialogOpen(true))
-  useRegisterShortcut('1', () => projects[0] && onSelect(projects[0].id))
-  useRegisterShortcut('2', () => projects[1] && onSelect(projects[1].id))
-  useRegisterShortcut('3', () => projects[2] && onSelect(projects[2].id))
-  useRegisterShortcut('4', () => projects[3] && onSelect(projects[3].id))
-  useRegisterShortcut('5', () => projects[4] && onSelect(projects[4].id))
-  useRegisterShortcut('6', () => projects[5] && onSelect(projects[5].id))
-  useRegisterShortcut('7', () => projects[6] && onSelect(projects[6].id))
-  useRegisterShortcut('8', () => projects[7] && onSelect(projects[7].id))
-  useRegisterShortcut('9', () => projects[8] && onSelect(projects[8].id))
+  useRegisterProjectSelectionShortcuts((index) => {
+    const project = projects[index]
+    if (project) {
+      onSelect(project.id)
+    }
+  })
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -127,15 +118,13 @@ export const ProjectsSection = ({
                   <span className="muted-label">Environment template</span>
                   <Select
                     value={template}
-                    onValueChange={(value) =>
-                      setTemplate(value as ProjectTemplate)
-                    }
+                    onValueChange={(value) => setTemplate(value as ProjectTemplate)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a template" />
                     </SelectTrigger>
                     <SelectContent>
-                      {templates.map((option) => (
+                      {PROJECT_TEMPLATE_OPTIONS.map((option) => (
                         <SelectItem key={option.id} value={option.id}>
                           {option.label}
                         </SelectItem>
@@ -220,7 +209,7 @@ export const ProjectsSection = ({
                       isSelected ? 'text-background/70' : 'text-foreground/70'
                     }`}
                   >
-                    Project ID: {project.id.slice(0, 6)}
+                    Updated {formatShortDate(project.updatedAt)}
                   </p>
                 </Button>
               </li>

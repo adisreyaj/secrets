@@ -4,7 +4,6 @@ import { endOfDay, startOfDay } from 'date-fns'
 import { ArrowLeft, CalendarIcon, RefreshCcw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { DateRange } from 'react-day-picker'
-import { toast } from 'sonner'
 import { AuditLog } from '../components/AuditLog'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -21,68 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
+import { humanizeAction, humanizeResourceType } from '../features/audit/labels'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { projectPath } from '../lib/paths'
+import { runMutationWithToast } from '../lib/mutationFeedback'
 import { queryKeys } from '../lib/queryKeys'
+import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
-
-const ACTION_LABELS: Record<string, string> = {
-  'environment.create': 'Create Environment',
-  'environment.update': 'Update Environment',
-  'environment.delete': 'Delete Environment',
-  'project.create': 'Create Project',
-  'project.update': 'Update Project',
-  'project.delete': 'Delete Project',
-  'secret.copy.bulk': 'Bulk Copy Secret',
-  'secret.create': 'Create Secret',
-  'secret.update': 'Update Secret',
-  'secret.delete': 'Delete Secret',
-  'service_account.create': 'Create Service Account',
-  'service_account.update': 'Update Service Account',
-  'service_account.delete': 'Delete Service Account',
-  'service_account.token.create': 'Create service account token',
-  'service_account.token.delete': 'Delete Service Account Token',
-  'token.create': 'Create API token',
-  'token.delete': 'Delete API Token',
-}
-
-const RESOURCE_TYPE_LABELS: Record<string, string> = {
-  api_token: 'API token',
-  environment: 'Environment',
-  project: 'Project',
-  secret: 'Secret',
-  service_account: 'Service Account',
-  service_account_token: 'Service Account Token',
-}
-
-const humanizeToken = (value: string) =>
-  value
-    .split(/[_\s]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ')
-
-const humanizeAction = (action: string) => {
-  if (!action) return action
-  const mapped = ACTION_LABELS[action]
-  if (mapped) return mapped
-
-  const parts = action.split('.').filter(Boolean)
-  if (parts.length === 0) return action
-
-  const verb = parts[parts.length - 1]
-  const noun = parts.slice(0, -1).join(' ')
-  const verbLabel = humanizeToken(verb)
-  const nounLabel = humanizeToken(noun)
-  return nounLabel ? `${verbLabel} ${nounLabel}` : verbLabel
-}
-
-const humanizeResourceType = (type: string) => {
-  if (!type) return type
-  return RESOURCE_TYPE_LABELS[type] ?? humanizeToken(type)
-}
 
 type AuditActorType = 'user' | 'service'
 
@@ -95,13 +41,12 @@ type AuditFilterState = {
   dateRange: DateRange | undefined
 }
 
-export const AuditPage = ({
-  projectId,
-  navigate,
-}: {
+type AuditPageProps = {
   projectId: string
   navigate: (path: string) => void
-}) => {
+}
+
+export const AuditPage = ({ projectId, navigate }: AuditPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
 
@@ -112,7 +57,7 @@ export const AuditPage = ({
       enabled: Boolean(user),
     },
   )
-  const projects = useMemo(() => projectsData ?? [], [projectsData])
+  const projects = asArray(projectsData)
 
   const [filterError, setFilterError] = useState<string | null>(null)
   const [filters, setFilters] = useState<AuditFilterState>({
@@ -143,7 +88,7 @@ export const AuditPage = ({
     enabled: Boolean(user) && Boolean(projectId),
   })
 
-  const auditLogs = auditLogsData ?? []
+  const auditLogs = asArray(auditLogsData)
 
   const actionOptions = useMemo(() => {
     if (appliedFilters) return []
@@ -241,11 +186,13 @@ export const AuditPage = ({
     if (retentionSaving) return
     setRetentionSaving(true)
     try {
-      await updateRetentionMutation.mutateAsync(retentionValue)
-      toast.success('Retention settings saved.')
-    } catch {
-      toast.error('Failed to save retention settings.')
-      // error handled via mutation state
+      await runMutationWithToast(
+        () => updateRetentionMutation.mutateAsync(retentionValue),
+        {
+          successMessage: 'Retention settings saved.',
+          errorMessage: 'Failed to save retention settings.',
+        },
+      )
     } finally {
       setRetentionSaving(false)
     }

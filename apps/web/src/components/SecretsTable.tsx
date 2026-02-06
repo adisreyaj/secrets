@@ -28,6 +28,109 @@ import {
 } from './ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
+type SecretEditorChange = { id: string; key?: string; value?: string }
+
+type CopySecretResult =
+  | { created: string[]; updated: string[]; skipped: string[] }
+  | {
+      status: 'pending'
+      approvalRequestId?: string
+      approvalRequestIds?: string[]
+    }
+  | undefined
+
+type CopyMissingResult =
+  | {
+      created: string[]
+      updated: string[]
+      skipped: string[]
+      skippedDetails?: { key: string; reason: string; code: string }[]
+    }
+  | {
+      status: 'pending'
+      approvalRequestId?: string
+      approvalRequestIds?: string[]
+    }
+  | undefined
+
+type SecretsTableProps = {
+  secrets: SecretDto[]
+  environments: EnvironmentDto[]
+  environmentId: string
+  includeValues: boolean
+  loading: boolean
+  coverageLoading: boolean
+  error: string | null
+  missingKeys: string[]
+  missingKeysByEnvironment: Record<string, string[]>
+  pendingBySecretId?: Map<string, ApprovalRequestDto>
+  onToggleValues: (next: boolean) => void
+  onCreate: (payload: { key: string; value: string }) => Promise<void>
+  onUpdateMany: (changes: SecretEditorChange[]) => Promise<void>
+  onRollback: (secretId: string) => Promise<void>
+  onDiff: (
+    secretId: string,
+    versions?: { from?: string; to?: string },
+  ) => Promise<SecretDiffResponse>
+  onListVersions: (secretId: string) => Promise<SecretVersionDto[]>
+  onDelete: (secretId: string) => Promise<void>
+  onCopy: (
+    secretId: string,
+    payload: { targetEnvironmentIds: string[]; overwrite: boolean },
+  ) => Promise<CopySecretResult>
+  onCopyMissing: (
+    sourceEnvironmentId: string,
+    keys: string[],
+    overwrite: boolean,
+  ) => Promise<CopyMissingResult>
+  searchValue?: string
+  onSearchChange?: (value: string) => void
+  className?: string
+}
+
+type SecretsTableBodyProps = {
+  secrets: SecretDto[]
+  loading: boolean
+  onStartEdit: (secret: SecretDto) => void
+  onOpenRollback: (secret: SecretDto) => void
+  onOpenDiff: (secret: SecretDto) => void
+  onOpenDelete: (secret: SecretDto) => void
+  onOpenCopy: (secret: SecretDto) => void
+  canCopy: boolean
+  pendingBySecretId?: Map<string, ApprovalRequestDto>
+  editingRows: Record<
+    string,
+    { key: string; value: string; dirtyKey: boolean; dirtyValue: boolean }
+  >
+  rowErrors: Record<string, string>
+  includeValues: boolean
+  onRowKeyChange: (secretId: string, value: string) => void
+  onRowValueChange: (secretId: string, value: string) => void
+  onCancelRow: (secretId: string) => void
+}
+
+type SecretRowProps = {
+  secret: SecretDto
+  editingRow?: {
+    key: string
+    value: string
+    dirtyKey: boolean
+    dirtyValue: boolean
+  }
+  rowError?: string
+  includeValues: boolean
+  canCopy: boolean
+  pendingRequest?: ApprovalRequestDto
+  onOpenCopy: (secret: SecretDto) => void
+  onStartEdit: (secret: SecretDto) => void
+  onCancelRow: (secretId: string) => void
+  onOpenRollback: (secret: SecretDto) => void
+  onOpenDiff: (secret: SecretDto) => void
+  onOpenDelete: (secret: SecretDto) => void
+  onRowKeyChange: (secretId: string, value: string) => void
+  onRowValueChange: (secretId: string, value: string) => void
+}
+
 export const SecretsTable = ({
   secrets,
   environments,
@@ -51,63 +154,7 @@ export const SecretsTable = ({
   searchValue,
   onSearchChange,
   className,
-}: {
-  secrets: SecretDto[]
-  environments: EnvironmentDto[]
-  environmentId: string
-  includeValues: boolean
-  loading: boolean
-  coverageLoading: boolean
-  error: string | null
-  missingKeys: string[]
-  missingKeysByEnvironment: Record<string, string[]>
-  pendingBySecretId?: Map<string, ApprovalRequestDto>
-  onToggleValues: (next: boolean) => void
-  onCreate: (payload: { key: string; value: string }) => Promise<void>
-  onUpdateMany: (
-    changes: { id: string; key?: string; value?: string }[],
-  ) => Promise<void>
-  onRollback: (secretId: string) => Promise<void>
-  onDiff: (
-    secretId: string,
-    versions?: { from?: string; to?: string },
-  ) => Promise<SecretDiffResponse>
-  onListVersions: (secretId: string) => Promise<SecretVersionDto[]>
-  onDelete: (secretId: string) => Promise<void>
-  onCopy: (
-    secretId: string,
-    payload: { targetEnvironmentIds: string[]; overwrite: boolean },
-  ) => Promise<
-    | { created: string[]; updated: string[]; skipped: string[] }
-    | {
-        status: 'pending'
-        approvalRequestId?: string
-        approvalRequestIds?: string[]
-      }
-    | undefined
-  >
-  onCopyMissing: (
-    sourceEnvironmentId: string,
-    keys: string[],
-    overwrite: boolean,
-  ) => Promise<
-    | {
-        created: string[]
-        updated: string[]
-        skipped: string[]
-        skippedDetails?: { key: string; reason: string; code: string }[]
-      }
-    | {
-        status: 'pending'
-        approvalRequestId?: string
-        approvalRequestIds?: string[]
-      }
-    | undefined
-  >
-  searchValue?: string
-  onSearchChange?: (value: string) => void
-  className?: string
-}) => {
+}: SecretsTableProps) => {
   const [activeSecret, setActiveSecret] = useState<SecretDto | null>(null)
   const [dialogMode, setDialogMode] = useState<
     'rollback' | 'delete' | 'copy' | 'diff' | null
@@ -266,26 +313,7 @@ const SecretsTableBody = memo(
     onRowKeyChange,
     onRowValueChange,
     onCancelRow,
-  }: {
-    secrets: SecretDto[]
-    loading: boolean
-    onStartEdit: (secret: SecretDto) => void
-    onOpenRollback: (secret: SecretDto) => void
-    onOpenDiff: (secret: SecretDto) => void
-    onOpenDelete: (secret: SecretDto) => void
-    onOpenCopy: (secret: SecretDto) => void
-    canCopy: boolean
-    pendingBySecretId?: Map<string, ApprovalRequestDto>
-    editingRows: Record<
-      string,
-      { key: string; value: string; dirtyKey: boolean; dirtyValue: boolean }
-    >
-    rowErrors: Record<string, string>
-    includeValues: boolean
-    onRowKeyChange: (secretId: string, value: string) => void
-    onRowValueChange: (secretId: string, value: string) => void
-    onCancelRow: (secretId: string) => void
-  }) => {
+  }: SecretsTableBodyProps) => {
     return (
       <TableBody>
         {loading ? (
@@ -348,27 +376,7 @@ const SecretRow = memo(
     onOpenDelete,
     onRowKeyChange,
     onRowValueChange,
-  }: {
-    secret: SecretDto
-    editingRow?: {
-      key: string
-      value: string
-      dirtyKey: boolean
-      dirtyValue: boolean
-    }
-    rowError?: string
-    includeValues: boolean
-    canCopy: boolean
-    pendingRequest?: ApprovalRequestDto
-    onOpenCopy: (secret: SecretDto) => void
-    onStartEdit: (secret: SecretDto) => void
-    onCancelRow: (secretId: string) => void
-    onOpenRollback: (secret: SecretDto) => void
-    onOpenDiff: (secret: SecretDto) => void
-    onOpenDelete: (secret: SecretDto) => void
-    onRowKeyChange: (secretId: string, value: string) => void
-    onRowValueChange: (secretId: string, value: string) => void
-  }) => {
+  }: SecretRowProps) => {
     const isEditing = !!editingRow
     const isPending = !!pendingRequest
     return (

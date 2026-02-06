@@ -7,7 +7,6 @@ import type {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Copy, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
@@ -27,17 +26,18 @@ import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
 import { projectPath } from '../lib/paths'
+import { runMutationWithToast } from '../lib/mutationFeedback'
 import { queryKeys } from '../lib/queryKeys'
+import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
-export const ServiceAccountsPage = ({
-  projectId,
-  navigate,
-}: {
+type ServiceAccountsPageProps = {
   projectId: string
   navigate: (path: string) => void
-}) => {
+}
+
+export const ServiceAccountsPage = ({ projectId, navigate }: ServiceAccountsPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
 
@@ -76,9 +76,9 @@ export const ServiceAccountsPage = ({
     enabled: Boolean(user) && Boolean(projectId),
   })
 
-  const projects = useMemo(() => projectsData ?? [], [projectsData])
-  const environments = environmentsData ?? []
-  const accounts = accountsData?.accounts ?? []
+  const projects = asArray(projectsData)
+  const environments = asArray(environmentsData)
+  const accounts = asArray(accountsData?.accounts)
   const tokensByAccount = accountsData?.tokensByAccount ?? {}
 
   const [createName, setCreateName] = useState('')
@@ -122,36 +122,40 @@ export const ServiceAccountsPage = ({
     if (!createName.trim() || createEnvIds.length === 0 || creating) return
     setCreating(true)
     setCreateError(null)
-    try {
-      await api.createServiceAccount(projectId, {
-        name: createName.trim(),
-        environmentIds: createEnvIds,
-      })
-      setCreateName('')
-      setCreateEnvIds([])
-      setCreateDialogOpen(false)
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.serviceAccounts(projectId),
-      })
-      toast.success('Service account created.')
-    } catch (error) {
-      setCreateError(getErrorMessage(error))
-      toast.error(getErrorMessage(error))
-    } finally {
-      setCreating(false)
+    const created = await runMutationWithToast(
+      () =>
+        api.createServiceAccount(projectId, {
+          name: createName.trim(),
+          environmentIds: createEnvIds,
+        }),
+      {
+        successMessage: 'Service account created.',
+        onSuccess: async () => {
+          setCreateName('')
+          setCreateEnvIds([])
+          setCreateDialogOpen(false)
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.serviceAccounts(projectId),
+          })
+        },
+      },
+    )
+    if (!created) {
+      setCreateError('Failed to create service account.')
     }
+    setCreating(false)
   }
 
   const handleDeleteAccount = async (account: ServiceAccountDto) => {
-    try {
-      await api.deleteServiceAccount(projectId, account.id)
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.serviceAccounts(projectId),
-      })
-      toast.success('Service account deleted.')
-    } catch (error) {
-      toast.error(getErrorMessage(error))
-    }
+    await runMutationWithToast(
+      async () => {
+        await api.deleteServiceAccount(projectId, account.id)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.serviceAccounts(projectId),
+        })
+      },
+      { successMessage: 'Service account deleted.' },
+    )
   }
 
   const openTokenDialog = (account: ServiceAccountDto) => {
@@ -168,40 +172,44 @@ export const ServiceAccountsPage = ({
     if (!tokenAccount || tokenEnvIds.length === 0 || !tokenName.trim()) return
     setTokenCreating(true)
     setTokenError(null)
-    try {
-      const result = await api.createServiceAccountToken(tokenAccount.id, {
-        name: tokenName.trim(),
-        readOnly: tokenReadOnly,
-        environmentIds: tokenEnvIds,
-      })
-      setLastIssuedToken(result.token)
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.serviceAccounts(projectId),
-      })
-      toast.success('Service account token issued.')
-    } catch (error) {
-      setTokenError(getErrorMessage(error))
-      toast.error(getErrorMessage(error))
-    } finally {
-      setTokenCreating(false)
+    const result = await runMutationWithToast(
+      () =>
+        api.createServiceAccountToken(tokenAccount.id, {
+          name: tokenName.trim(),
+          readOnly: tokenReadOnly,
+          environmentIds: tokenEnvIds,
+        }),
+      {
+        successMessage: 'Service account token issued.',
+        onSuccess: async (created) => {
+          setLastIssuedToken(created.token)
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.serviceAccounts(projectId),
+          })
+        },
+      },
+    )
+    if (!result) {
+      setTokenError('Failed to issue token.')
     }
+    setTokenCreating(false)
   }
 
   const handleDeleteToken = async () => {
     if (!revokeTarget) return
-    try {
-      await api.deleteServiceAccountToken(
-        revokeTarget.account.id,
-        revokeTarget.token.id,
-      )
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.serviceAccounts(projectId),
-      })
-      setRevokeTarget(null)
-      toast.success('Token revoked.')
-    } catch (error) {
-      toast.error(getErrorMessage(error))
-    }
+    await runMutationWithToast(
+      async () => {
+        await api.deleteServiceAccountToken(
+          revokeTarget.account.id,
+          revokeTarget.token.id,
+        )
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.serviceAccounts(projectId),
+        })
+        setRevokeTarget(null)
+      },
+      { successMessage: 'Token revoked.' },
+    )
   }
 
   const projectsError = projectsErrorRaw

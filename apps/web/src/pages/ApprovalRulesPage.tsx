@@ -7,7 +7,6 @@ import type {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { toast } from 'sonner'
 import { EmptyState } from '../components/EmptyState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -33,17 +32,18 @@ import {
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { projectPath } from '../lib/paths'
+import { runMutationWithToast } from '../lib/mutationFeedback'
 import { queryKeys } from '../lib/queryKeys'
+import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
-export const ApprovalRulesPage = ({
-  projectId,
-  navigate,
-}: {
+type ApprovalRulesPageProps = {
   projectId: string
   navigate: (path: string) => void
-}) => {
+}
+
+export const ApprovalRulesPage = ({ projectId, navigate }: ApprovalRulesPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
   const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
@@ -57,8 +57,8 @@ export const ApprovalRulesPage = ({
       queryFn: () => api.listEnvironments(projectId),
       enabled: Boolean(user) && Boolean(projectId),
     })
-  const projects = useMemo(() => projectsData ?? [], [projectsData])
-  const environments = useMemo(() => environmentsData ?? [], [environmentsData])
+  const projects = asArray(projectsData)
+  const environments = asArray(environmentsData)
   const [rulesError, setRulesError] = useState<string | null>(null)
   const [ruleName, setRuleName] = useState('')
   const [ruleEnvironmentId, setRuleEnvironmentId] = useState<string>('all')
@@ -78,7 +78,7 @@ export const ApprovalRulesPage = ({
     queryFn: () => api.listApprovalRules(projectId),
     enabled: Boolean(user) && Boolean(projectId),
   })
-  const rules = rulesData ?? []
+  const rules = asArray(rulesData)
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
@@ -106,49 +106,49 @@ export const ApprovalRulesPage = ({
       setRulesError('Rule name, pattern, and at least one action are required.')
       return
     }
-    try {
-      await api.createApprovalRule(projectId, {
-        name: ruleName.trim(),
-        environmentId: ruleEnvironmentId === 'all' ? null : ruleEnvironmentId,
-        keyPattern: rulePattern.trim(),
-        actions: ruleActions,
-        isActive: true,
-      })
-      setRuleName('')
-      setRulePattern('*')
-      setRuleEnvironmentId('all')
-      setRuleActions(['CREATE', 'UPDATE'])
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.approvalRules(projectId),
-      })
-      toast.success('Approval rule created.')
-    } catch (error) {
-      toast.error(getErrorMessage(error))
-    }
+    await runMutationWithToast(
+      async () => {
+        await api.createApprovalRule(projectId, {
+          name: ruleName.trim(),
+          environmentId: ruleEnvironmentId === 'all' ? null : ruleEnvironmentId,
+          keyPattern: rulePattern.trim(),
+          actions: ruleActions,
+          isActive: true,
+        })
+        setRuleName('')
+        setRulePattern('*')
+        setRuleEnvironmentId('all')
+        setRuleActions(['CREATE', 'UPDATE'])
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.approvalRules(projectId),
+        })
+      },
+      { successMessage: 'Approval rule created.' },
+    )
   }
 
   const handleToggleRule = async (rule: ApprovalRuleDto) => {
-    try {
-      await api.updateApprovalRule(rule.id, { isActive: !rule.isActive })
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.approvalRules(projectId),
-      })
-      toast.success(rule.isActive ? 'Rule disabled.' : 'Rule enabled.')
-    } catch (error) {
-      toast.error(getErrorMessage(error))
-    }
+    await runMutationWithToast(
+      async () => {
+        await api.updateApprovalRule(rule.id, { isActive: !rule.isActive })
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.approvalRules(projectId),
+        })
+      },
+      { successMessage: rule.isActive ? 'Rule disabled.' : 'Rule enabled.' },
+    )
   }
 
   const handleDeleteRule = async (ruleId: string) => {
-    try {
-      await api.deleteApprovalRule(ruleId)
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.approvalRules(projectId),
-      })
-      toast.success('Approval rule deleted.')
-    } catch (error) {
-      toast.error(getErrorMessage(error))
-    }
+    await runMutationWithToast(
+      async () => {
+        await api.deleteApprovalRule(ruleId)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.approvalRules(projectId),
+        })
+      },
+      { successMessage: 'Approval rule deleted.' },
+    )
   }
 
   useRegisterShortcut('b', () =>

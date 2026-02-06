@@ -13,18 +13,13 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
-  useMemo,
   useState,
 } from 'react'
-import { toast } from 'sonner'
 import { AuditLog } from '../components/AuditLog'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { Hero } from '../components/Hero'
-import {
-  ProjectsSection,
-  type ProjectTemplate,
-} from '../components/ProjectsSection'
+import { ProjectsSection } from '../components/ProjectsSection'
 import { SectionCard } from '../components/SectionCard'
 import { TokensPanel } from '../components/TokensPanel'
 import { Button } from '../components/ui/button'
@@ -36,20 +31,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
+import { PROJECT_TEMPLATE_ENVIRONMENTS } from '../features/projects/constants'
+import type { CreateProjectPayload } from '../features/projects/types'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate, formatDateTime } from '../lib/format'
 import { environmentPath, projectPath } from '../lib/paths'
+import { runMutationWithToast } from '../lib/mutationFeedback'
 import { queryKeys } from '../lib/queryKeys'
+import { asArray } from '../lib/queryResult'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
-export const ProjectPage = ({
-  projectId,
-  navigate,
-}: {
+type ProjectPageProps = {
   projectId: string
   navigate: (path: string) => void
-}) => {
+}
+
+export const ProjectPage = ({ projectId, navigate }: ProjectPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
 
@@ -73,8 +71,8 @@ export const ProjectPage = ({
     enabled: Boolean(user) && Boolean(projectId),
   })
 
-  const projects = useMemo(() => projectsData ?? [], [projectsData])
-  const environments = useMemo(() => environmentsData ?? [], [environmentsData])
+  const projects = asArray(projectsData)
+  const environments = asArray(environmentsData)
 
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<
     string | null
@@ -136,10 +134,10 @@ export const ProjectPage = ({
     gcTime: 300_000,
   })
 
-  const auditLogs = auditLogsData ?? []
-  const tokens = tokensData ?? []
-  const invites = invitesData ?? []
-  const searchResults = searchResultsData ?? []
+  const auditLogs = asArray(auditLogsData)
+  const tokens = asArray(tokensData)
+  const invites = asArray(invitesData)
+  const searchResults = asArray(searchResultsData)
 
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<Role>('VIEWER')
@@ -157,16 +155,11 @@ export const ProjectPage = ({
   }, [environments])
 
   const handleCreateProject = useCallback(
-    async (payload: { name: string; template: ProjectTemplate }) => {
-      try {
+    async (payload: CreateProjectPayload) =>
+      runMutationWithToast(
+        async () => {
         const project = await api.createProject({ name: payload.name })
-        const templates: Record<ProjectTemplate, string[]> = {
-          starter: ['development', 'prod'],
-          full: ['development', 'staging', 'prod'],
-          empty: [],
-        }
-
-        const envNames = templates[payload.template] ?? []
+        const envNames = PROJECT_TEMPLATE_ENVIRONMENTS[payload.template] ?? []
         if (envNames.length > 0) {
           await Promise.all(
             envNames.map((envName) =>
@@ -175,20 +168,16 @@ export const ProjectPage = ({
           )
         }
         await queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
-        toast.success('Project created.')
-      } catch (error) {
-        toast.error(getErrorMessage(error))
-      }
-    },
+      },
+      { successMessage: 'Project created.' },
+    ),
     [queryClient],
   )
 
   const handleCreateEnvironment = useCallback(
-    async (payload: {
-      name: string
-      copyFromEnvironmentId?: string | null
-    }) => {
-      try {
+    async (payload: { name: string; copyFromEnvironmentId?: string | null }) =>
+      runMutationWithToast(
+        async () => {
         await api.createEnvironment(projectId, {
           name: payload.name,
           copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
@@ -196,43 +185,38 @@ export const ProjectPage = ({
         await queryClient.invalidateQueries({
           queryKey: queryKeys.environments(projectId),
         })
-        toast.success('Environment created.')
-      } catch (error) {
-        toast.error(getErrorMessage(error))
-      }
-    },
+      },
+      { successMessage: 'Environment created.' },
+    ),
     [projectId, queryClient],
   )
 
   const handleCreateToken = useCallback(
-    async (name: string, readOnly: boolean) => {
-      try {
-        const data = await api.createToken(projectId, { name, readOnly })
+    async (name: string, readOnly: boolean) =>
+      runMutationWithToast(
+        async () => {
+          const data = await api.createToken(projectId, { name, readOnly })
         await queryClient.invalidateQueries({
           queryKey: queryKeys.tokens(projectId),
         })
-        toast.success('Token created.')
         return data
-      } catch (error) {
-        toast.error(getErrorMessage(error))
-        return undefined
-      }
-    },
+      },
+      { successMessage: 'Token created.' },
+    ),
     [projectId, queryClient],
   )
 
   const handleDeleteToken = useCallback(
-    async (tokenId: string) => {
-      try {
+    async (tokenId: string) =>
+      runMutationWithToast(
+        async () => {
         await api.deleteToken(projectId, tokenId)
         await queryClient.invalidateQueries({
           queryKey: queryKeys.tokens(projectId),
         })
-        toast.success('Token deleted.')
-      } catch (error) {
-        toast.error(getErrorMessage(error))
-      }
-    },
+      },
+      { successMessage: 'Token deleted.' },
+    ),
     [projectId, queryClient],
   )
 
@@ -240,38 +224,42 @@ export const ProjectPage = ({
     if (!inviteEmail.trim() || inviteCreating) return
     setInviteCreating(true)
     try {
-      const data = await api.createInvite(projectId, {
-        email: inviteEmail.trim(),
-        role: inviteRole,
-      })
-      const link = `${window.location.origin}/invite?token=${encodeURIComponent(
-        data.token,
-      )}`
-      setLastInviteLink(link)
-      setInviteEmail('')
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.invites(projectId),
-      })
-      toast.success('Invite sent.')
-    } catch (error) {
-      toast.error(getErrorMessage(error))
+      await runMutationWithToast(
+        () =>
+          api.createInvite(projectId, {
+            email: inviteEmail.trim(),
+            role: inviteRole,
+          }),
+        {
+          successMessage: 'Invite sent.',
+          onSuccess: async (data) => {
+            const link = `${window.location.origin}/invite?token=${encodeURIComponent(
+              data.token,
+            )}`
+            setLastInviteLink(link)
+            setInviteEmail('')
+            await queryClient.invalidateQueries({
+              queryKey: queryKeys.invites(projectId),
+            })
+          },
+        },
+      )
     } finally {
       setInviteCreating(false)
     }
   }, [inviteCreating, inviteEmail, inviteRole, projectId, queryClient])
 
   const handleRevokeInvite = useCallback(
-    async (inviteId: string) => {
-      try {
+    async (inviteId: string) =>
+      runMutationWithToast(
+        async () => {
         await api.revokeInvite(projectId, inviteId)
         await queryClient.invalidateQueries({
           queryKey: queryKeys.invites(projectId),
         })
-        toast.success('Invite revoked.')
-      } catch (error) {
-        toast.error(getErrorMessage(error))
-      }
-    },
+      },
+      { successMessage: 'Invite revoked.' },
+    ),
     [projectId, queryClient],
   )
 
