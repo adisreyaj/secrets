@@ -9,6 +9,7 @@ vi.mock('../src/db.js', () => ({
 }));
 
 import {
+  enforceGlobalBootstrapScope,
   requireAuth,
   requireEnvironmentScope,
   requireProjectRole,
@@ -67,6 +68,20 @@ describe('auth guards', () => {
       Role.EDITOR,
     );
     expect(result).toBeNull();
+    expect(reply.code).toHaveBeenCalledWith(403);
+  });
+
+  it('enforceGlobalBootstrapScope denies non-bootstrap routes', () => {
+    const reply = createReply();
+    const allowed = enforceGlobalBootstrapScope(
+      {
+        method: 'GET',
+        routeOptions: { url: '/environments/:id/secrets' },
+        auth: { viaToken: true, tokenScopeType: 'global_bootstrap' },
+      } as any,
+      reply,
+    );
+    expect(allowed).toBe(false);
     expect(reply.code).toHaveBeenCalledWith(403);
   });
 });

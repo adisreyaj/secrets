@@ -8,7 +8,13 @@ import { generateToken, hashPassword, hashToken, verifyPassword } from './auth.j
 import { config } from './config.js';
 import { decryptSecret, encryptSecret, loadMasterKey, masterKeyVersion } from './crypto.js';
 import { prisma } from './db.js';
-import { requireAuth, requireEnvironmentScope, requireProjectRole, requireUserForApproval } from './server/auth/guards.js';
+import {
+  enforceGlobalBootstrapScope,
+  requireAuth,
+  requireEnvironmentScope,
+  requireProjectRole,
+  requireUserForApproval,
+} from './server/auth/guards.js';
 import { ROLE_RANK } from './server/auth/policies.js';
 import { toApprovalRequestDto, toApprovalRuleDto } from './server/mappers/approvals.js';
 import { toInviteDto } from './server/mappers/invites.js';
@@ -52,6 +58,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             serviceAccountId: request.auth.serviceAccountId ?? null,
             projectId: request.auth.projectId ?? null,
             viaToken: request.auth.viaToken,
+            tokenScopeType: request.auth.tokenScopeType ?? null,
           }
         : null,
     };
@@ -129,6 +136,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           request.auth = {
             user: toUserDto(token.creator),
             viaToken: true,
+            tokenScopeType: 'project',
             projectId: token.projectId,
             role: membership?.role ?? null,
             readOnly: token.readOnly,
@@ -158,6 +166,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           );
           request.auth = {
             viaToken: true,
+            tokenScopeType: 'service_account',
             projectId: serviceToken.serviceAccount.projectId,
             role: Role.EDITOR,
             readOnly: serviceToken.readOnly,
@@ -167,6 +176,30 @@ export async function buildApp(): Promise<FastifyInstance> {
 
           await prisma.serviceAccountToken.update({
             where: { id: serviceToken.id },
+            data: { lastUsedAt: new Date() },
+          });
+          return;
+        }
+
+        const globalToken = await prisma.globalCliToken.findFirst({
+          where: {
+            tokenHash,
+            revokedAt: null,
+            deletedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          include: { creator: true },
+        });
+        if (globalToken) {
+          request.auth = {
+            user: toUserDto(globalToken.creator),
+            viaToken: true,
+            tokenScopeType: 'global_bootstrap',
+            readOnly: false,
+          };
+
+          await prisma.globalCliToken.update({
+            where: { id: globalToken.id },
             data: { lastUsedAt: new Date() },
           });
         }
@@ -219,6 +252,20 @@ export async function buildApp(): Promise<FastifyInstance> {
       (request as { routerPath?: string }).routerPath ||
       request.url.split('?')[0];
     if (routePath === '/auth/cli-login' || routePath === '/auth/cli-login/complete') {
+      return;
+    }
+
+    if (!enforceGlobalBootstrapScope(request, reply)) {
+      app.log.warn(
+        {
+          requestId: request.id,
+          method: request.method,
+          routePath,
+          tokenScopeType: request.auth?.tokenScopeType ?? null,
+          userId: request.auth?.user?.id ?? null,
+        },
+        'global bootstrap token denied route access',
+      );
       return;
     }
 
@@ -383,18 +430,21 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
-    const body = request.body as { code?: string; projectId?: string; name?: string } | undefined;
+    const body = request.body as
+      | { code?: string; projectId?: string; name?: string; mode?: 'global' | 'project' }
+      | undefined;
     const code = body?.code?.trim();
+    const mode = body?.mode === 'project' ? 'project' : 'global';
     const projectId = body?.projectId?.trim();
     const name = body?.name?.trim() ?? 'CLI login';
 
-    if (!code || !projectId) {
-      reply.code(400).send({ error: 'Code and projectId are required' });
+    if (!code) {
+      reply.code(400).send({ error: 'Code is required' });
       return;
     }
 
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
+    if (mode === 'project' && !projectId) {
+      reply.code(400).send({ error: 'projectId is required in project mode' });
       return;
     }
 
@@ -419,14 +469,69 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     const raw = generateToken();
-    const token = await prisma.apiToken.create({
+    if (mode === 'project') {
+      const role = await requireProjectRole(request, reply, projectId!, Role.VIEWER);
+      if (!role) {
+        return;
+      }
+
+      const token = await prisma.apiToken.create({
+        data: {
+          projectId: projectId!,
+          name,
+          tokenHash: hashToken(raw),
+          createdBy: auth.user.id,
+          readOnly: false,
+          expiresAt: new Date(Date.now() + config.apiTokenTtlDays * 24 * 60 * 60 * 1000),
+        },
+      });
+
+      await prisma.cliLoginSession.update({
+        where: { id: session.id },
+        data: {
+          token: raw,
+          userId: auth.user.id,
+          projectId: projectId!,
+        },
+      });
+
+      await logAudit({
+        projectId: projectId!,
+        actorUserId: auth.user?.id,
+        actorServiceAccountId: auth.serviceAccountId ?? null,
+        action: 'token.create',
+        resourceType: 'api_token',
+        resourceId: token.id,
+        metadataJson: { source: 'cli-login', scopeType: 'project' },
+      });
+
+      reply.send({
+        token: raw,
+        tokenMeta: {
+          id: token.id,
+          scopeType: 'project',
+          projectId: token.projectId,
+          name: token.name,
+          readOnly: token.readOnly,
+          createdAt: token.createdAt.toISOString(),
+          lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+          expiresAt: token.expiresAt?.toISOString() ?? null,
+        },
+      });
+      return;
+    }
+
+    if (!config.enableGlobalCliTokens) {
+      reply.code(403).send({ error: 'Global CLI bootstrap tokens are currently disabled' });
+      return;
+    }
+
+    const token = await prisma.globalCliToken.create({
       data: {
-        projectId,
         name,
         tokenHash: hashToken(raw),
         createdBy: auth.user.id,
-        readOnly: false,
-        expiresAt: new Date(Date.now() + config.apiTokenTtlDays * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + config.globalCliTokenTtlDays * 24 * 60 * 60 * 1000),
       },
     });
 
@@ -435,27 +540,27 @@ export async function buildApp(): Promise<FastifyInstance> {
       data: {
         token: raw,
         userId: auth.user.id,
-        projectId,
+        projectId: null,
       },
     });
 
-    await logAudit({
-      projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'token.create',
-      resourceType: 'api_token',
-      resourceId: token.id,
-      metadataJson: { source: 'cli-login' },
-    });
+    app.log.info(
+      {
+        event: 'global_cli_token.create',
+        source: 'cli-login',
+        tokenId: token.id,
+        actorUserId: auth.user.id,
+        scopeType: 'global_bootstrap',
+      },
+      'global bootstrap token created',
+    );
 
     reply.send({
       token: raw,
       tokenMeta: {
         id: token.id,
-        projectId: token.projectId,
+        scopeType: 'global_bootstrap',
         name: token.name,
-        readOnly: token.readOnly,
         createdAt: token.createdAt.toISOString(),
         lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
         expiresAt: token.expiresAt?.toISOString() ?? null,
@@ -494,7 +599,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     reply.send({
       status: 'complete',
       token,
-      projectId: session.projectId,
+      ...(session.projectId ? { projectId: session.projectId } : {}),
     });
   });
 
