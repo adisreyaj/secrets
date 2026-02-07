@@ -113,11 +113,7 @@ export const AddSecretDialog = ({
       }}
     >
       <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9"
-        >
+        <Button variant="outline" size="sm" className="h-9">
           <Plus className="h-3.5 w-3.5" />
           Add secret
           <ShortcutHint keys="n" />
@@ -196,6 +192,7 @@ export const AddSecretDialog = ({
           <label className="grid gap-2 text-sm">
             <span className="muted-label">Secret key</span>
             <Input
+              data-testid="secret-key-input"
               value={form.key}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -209,6 +206,7 @@ export const AddSecretDialog = ({
           <label className="grid gap-2 text-sm">
             <span className="muted-label">Secret value</span>
             <Input
+              data-testid="secret-value-input"
               value={form.value}
               onChange={(event) =>
                 setForm((prev) => ({

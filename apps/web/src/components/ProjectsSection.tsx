@@ -7,8 +7,8 @@ import type {
   ProjectTemplate,
 } from '../features/projects/types'
 import { formatShortDate } from '../lib/format'
-import { useRegisterProjectSelectionShortcuts } from '../lib/shortcuts.helpers'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { useRegisterProjectSelectionShortcuts } from '../lib/shortcuts.helpers'
 import { EmptyState } from './EmptyState'
 import { ErrorBanner } from './ErrorBanner'
 import { SectionCard, SectionHeader } from './SectionCard'
@@ -109,6 +109,7 @@ export const ProjectsSection = ({
                 <label className="grid gap-2 text-sm">
                   <span className="muted-label">Project name</span>
                   <Input
+                    data-testid="project-name-input"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="e.g. Signalflow"
@@ -118,7 +119,9 @@ export const ProjectsSection = ({
                   <span className="muted-label">Environment template</span>
                   <Select
                     value={template}
-                    onValueChange={(value) => setTemplate(value as ProjectTemplate)}
+                    onValueChange={(value) =>
+                      setTemplate(value as ProjectTemplate)
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a template" />

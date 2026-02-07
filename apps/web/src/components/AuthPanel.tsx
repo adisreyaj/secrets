@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
+import { useFlagEnabled } from '../lib/feature-flags'
+import { FEATURE_FLAGS } from '../lib/feature-flags/keys'
 import { ErrorBanner } from './ErrorBanner'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Input } from './ui/input'
-import { useFlagEnabled } from '../lib/feature-flags'
-import { FEATURE_FLAGS } from '../lib/feature-flags/keys'
 
 export const AuthPanel = ({
   loading,
@@ -74,6 +74,7 @@ export const AuthPanel = ({
             <span className="muted-label">Full name</span>
             <Input
               id="auth-name"
+              data-testid="auth-name"
               value={form.name}
               onChange={(event) =>
                 setForm((prev) => ({ ...prev, name: event.target.value }))
@@ -87,6 +88,7 @@ export const AuthPanel = ({
           <span className="muted-label">Email</span>
           <Input
             id="auth-email"
+            data-testid="auth-email"
             value={form.email}
             onChange={(event) =>
               setForm((prev) => ({ ...prev, email: event.target.value }))
@@ -100,6 +102,7 @@ export const AuthPanel = ({
           <span className="muted-label">Password</span>
           <Input
             id="auth-password"
+            data-testid="auth-password"
             value={form.password}
             onChange={(event) =>
               setForm((prev) => ({ ...prev, password: event.target.value }))

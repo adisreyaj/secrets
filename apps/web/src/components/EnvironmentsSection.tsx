@@ -146,6 +146,7 @@ export const EnvironmentsSection = ({
                 <label className="grid gap-2 text-sm">
                   <span className="muted-label">Environment name</span>
                   <Input
+                    data-testid="env-name-input"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="e.g. staging"
@@ -212,6 +213,7 @@ export const EnvironmentsSection = ({
                 <Button
                   onClick={() => onSelect(env.id)}
                   variant="ghost"
+                  data-testid={`env-card-${env.id}`}
                   className={`flex h-auto w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
                     isSelected
                       ? 'border-foreground bg-foreground text-background hover:bg-foreground hover:text-background'

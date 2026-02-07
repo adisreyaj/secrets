@@ -380,7 +380,10 @@ const SecretRow = memo(
     const isEditing = !!editingRow
     const isPending = !!pendingRequest
     return (
-      <TableRow className="text-muted-foreground text-sm">
+      <TableRow
+        className="text-muted-foreground text-sm"
+        data-testid={`secret-row-${secret.id}`}
+      >
         <TableHead className="text-foreground py-3 font-semibold" scope="row">
           {isEditing ? (
             <div className="space-y-1">
@@ -451,7 +454,6 @@ const SecretRow = memo(
                 Copy this key to other environments
               </TooltipContent>
             </Tooltip>
-
             {isEditing ? (
               <Tooltip>
                 <TooltipTrigger asChild>

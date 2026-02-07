@@ -23,7 +23,13 @@
     "format:web": "pnpm -C apps/web format",
     "format:check:web": "pnpm -C apps/web format:check",
     "test:server": "pnpm -C apps/server test",
+    "test:db:reset": "NODE_ENV=test pnpm --dir apps/server exec prisma migrate reset --force",
+    "test:e2e": "pnpm test:db:reset && NODE_ENV=test pnpm playwright test",
     "prisma:generate": "pnpm -C apps/server prisma:generate",
     "prisma:migrate": "pnpm -C apps/server prisma:migrate"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "playwright": "^1.55.0"
   }
 }
