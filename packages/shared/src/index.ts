@@ -254,13 +254,25 @@ export interface CliLoginStartResponse {
 
 export interface CliLoginIssueRequest {
   code: string;
-  projectId: string;
+  mode?: 'global' | 'project';
+  projectId?: string;
   name?: string;
+}
+
+export interface CliTokenMetaDto {
+  id: string;
+  scopeType: 'global_bootstrap' | 'project';
+  projectId?: string;
+  name: string;
+  readOnly?: boolean;
+  createdAt: string;
+  lastUsedAt?: string | null;
+  expiresAt?: string | null;
 }
 
 export interface CliLoginIssueResponse {
   token: string;
-  tokenMeta: ApiTokenDto;
+  tokenMeta: CliTokenMetaDto;
 }
 
 export interface CliLoginCompleteRequest {

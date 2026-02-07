@@ -14,6 +14,8 @@ First-time login:
 secrets login
 ```
 
+`secrets login` now issues a global bootstrap token by default. This allows login with zero existing projects.
+
 Initialize a project + environment and optionally import `.env`:
 
 ```bash
@@ -56,6 +58,18 @@ Create `.secretsrc.json` to avoid flags or env vars (never include tokens):
 ```
 
 If the file exists, CLI will use it. Env vars/flags always override.
+
+## Global Bootstrap Token Scope
+
+- Default token from `secrets login` is `global_bootstrap` scope with 30-day TTL.
+- It is allowlisted to bootstrap endpoints only:
+  - `GET /projects`
+  - `POST /projects`
+  - `GET /projects/:id/environments`
+  - `GET /projects/:id/environments/slug/:slug`
+- It cannot perform secret CRUD/export, token/service-account management, invites/team/admin, approvals, or retention/audit settings.
+- Use `secrets init` after login to create/connect project and environment context.
+- Project-scoped CLI token flow remains supported for existing project-based workflows.
 
 ## Local CLI testing
 

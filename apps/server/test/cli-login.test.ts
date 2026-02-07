@@ -106,6 +106,31 @@ describe('CLI login endpoints', () => {
     await app.close();
   });
 
+  it('omits projectId for global bootstrap completion payload', async () => {
+    const app = await buildApp();
+    const start = await app.inject({ method: 'POST', url: '/auth/cli-login' });
+    const payload = start.json() as { code: string };
+
+    const session = sessionsByCode.get(payload.code);
+    session.token = 'global-cli-token';
+    session.projectId = null;
+    sessionsByCode.set(payload.code, session);
+    sessionsById.set(session.id, session);
+
+    const complete = await app.inject({
+      method: 'POST',
+      url: '/auth/cli-login/complete',
+      payload: { code: payload.code },
+    });
+
+    expect(complete.statusCode).toBe(200);
+    expect(complete.json()).toEqual({
+      status: 'complete',
+      token: 'global-cli-token',
+    });
+    await app.close();
+  });
+
   it('returns 404 for expired code', async () => {
     const app = await buildApp();
     const code = 'expired-code';

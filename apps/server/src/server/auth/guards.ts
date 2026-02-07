@@ -4,6 +4,7 @@ import type { AuthContext } from '../types/auth.js';
 import {
   approvalsRequireUser,
   forbidden,
+  globalBootstrapScopeDenied,
   insufficientRole,
   tokenScopeDenied,
   unauthorized,
@@ -64,4 +65,32 @@ export function requireUserForApproval(
     return false;
   }
   return true;
+}
+
+const GLOBAL_BOOTSTRAP_ALLOWLIST = new Set([
+  'GET /projects',
+  'POST /projects',
+  'GET /projects/:id/environments',
+  'GET /projects/:id/environments/slug/:slug',
+]);
+
+export function enforceGlobalBootstrapScope(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): boolean {
+  if (request.auth?.tokenScopeType !== 'global_bootstrap') {
+    return true;
+  }
+
+  const routePath =
+    request.routeOptions?.url ??
+    (request as { routerPath?: string }).routerPath ??
+    request.url.split('?')[0];
+  const routeKey = `${request.method.toUpperCase()} ${routePath}`;
+  if (GLOBAL_BOOTSTRAP_ALLOWLIST.has(routeKey)) {
+    return true;
+  }
+
+  globalBootstrapScopeDenied(reply);
+  return false;
 }

@@ -27,6 +27,7 @@ export const CliLoginPage = ({
   const { user, loading, error, login, register } = useAuth()
   const [projects, setProjects] = useState<ProjectDto[]>([])
   const [projectsError, setProjectsError] = useState<string | null>(null)
+  const [mode, setMode] = useState<'global' | 'project'>('global')
   const [selectedProject, setSelectedProject] = useState<string>('none')
   const [tokenName, setTokenName] = useState('CLI login')
   const [loginCode, setLoginCode] = useState(code ?? '')
@@ -62,13 +63,15 @@ export const CliLoginPage = ({
   }
 
   const handleIssue = async () => {
-    if (!loginCode.trim() || selectedProject === 'none' || issuing) return
+    if (!loginCode.trim() || issuing) return
+    if (mode === 'project' && selectedProject === 'none') return
     setIssuing(true)
     setIssueError(null)
     try {
       const data = await api.issueCliLogin({
         code: loginCode.trim(),
-        projectId: selectedProject,
+        mode,
+        projectId: mode === 'project' ? selectedProject : undefined,
         name: tokenName.trim() || 'CLI login',
       })
       setIssuedToken(data.token)
@@ -106,20 +109,41 @@ export const CliLoginPage = ({
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="muted-label">Project</span>
-            <Select value={selectedProject} onValueChange={setSelectedProject}>
+            <span className="muted-label">Mode</span>
+            <Select
+              value={mode}
+              onValueChange={(value) =>
+                setMode(value === 'project' ? 'project' : 'global')
+              }
+            >
               <SelectTrigger>
-                <SelectValue placeholder="Select a project" />
+                <SelectValue placeholder="Select login mode" />
               </SelectTrigger>
               <SelectContent>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.name}
-                  </SelectItem>
-                ))}
+                <SelectItem value="global">Global bootstrap</SelectItem>
+                {projects.length > 0 ? (
+                  <SelectItem value="project">Project-scoped</SelectItem>
+                ) : null}
               </SelectContent>
             </Select>
           </label>
+          {mode === 'project' ? (
+            <label className="grid gap-2 text-sm">
+              <span className="muted-label">Project</span>
+              <Select value={selectedProject} onValueChange={setSelectedProject}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          ) : null}
           <label className="grid gap-2 text-sm md:col-span-2">
             <span className="muted-label">Token name</span>
             <Input
@@ -133,7 +157,9 @@ export const CliLoginPage = ({
           <Button
             onClick={handleIssue}
             disabled={
-              issuing || !loginCode.trim() || selectedProject === 'none'
+              issuing ||
+              !loginCode.trim() ||
+              (mode === 'project' && selectedProject === 'none')
             }
           >
             {issuing ? 'Issuing...' : 'Issue CLI token'}

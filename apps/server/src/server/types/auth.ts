@@ -9,6 +9,7 @@ export interface AuthUser {
 export interface AuthContext {
   user?: AuthUser;
   viaToken: boolean;
+  tokenScopeType?: 'global_bootstrap' | 'project' | 'service_account';
   projectId?: string;
   role?: Role | null;
   readOnly?: boolean;
