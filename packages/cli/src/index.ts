@@ -8,6 +8,8 @@ import {
   readConfigFile,
 } from '@secrets/sdk'
 import { parseEnvFile, summarizeImportResults } from './env.js'
+import { runLoginUI } from './ui/login.js'
+import { runInitUI } from './ui/init.js'
 
 const DEFAULT_BASE_URL = 'http://localhost:3001'
 
@@ -234,27 +236,6 @@ async function resolveBaseUrl(flags: FlagOptions) {
   return flags.baseUrl ?? process.env.SECRETS_API_BASE_URL ?? config?.apiBaseUrl ?? DEFAULT_BASE_URL
 }
 
-async function promptInput(question: string, fallback: string) {
-  const readline = await import('node:readline/promises')
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  const answer = await rl.question(`${question} (${fallback}): `)
-  rl.close()
-  return answer.trim() || fallback
-}
-
-async function promptYesNo(question: string, defaultYes = false) {
-  const fallback = defaultYes ? 'Y/n' : 'y/N'
-  const readline = await import('node:readline/promises')
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-  const answer = await rl.question(`${question} (${fallback}): `)
-  rl.close()
-  const normalized = answer.trim().toLowerCase()
-  if (!normalized) {
-    return defaultYes
-  }
-  return normalized === 'y' || normalized === 'yes'
-}
-
 async function loginCommand(args: string[]) {
   const { flags, rest } = parseFlags(args)
   if (rest.length > 0) {
@@ -268,50 +249,15 @@ async function loginCommand(args: string[]) {
   }
   const payload = (await response.json()) as { code: string; loginUrl: string; expiresAt: string }
 
-  console.log('Open this URL to complete login:')
-  console.log(payload.loginUrl)
-  console.log(`Code: ${payload.code}`)
-
-  try {
-    const { exec } = await import('node:child_process')
-    const platform = process.platform
-    const openCommand =
-      platform === 'darwin'
-        ? `open "${payload.loginUrl}"`
-        : platform === 'win32'
-        ? `start "" "${payload.loginUrl}"`
-        : `xdg-open "${payload.loginUrl}"`
-    exec(openCommand)
-  } catch {
-    // Best effort only.
+  const result = await runLoginUI(baseUrl, payload)
+  console.log('\nCLI token:')
+  console.log(result.token)
+  console.log('\nNext steps:')
+  console.log('  export SECRETS_TOKEN=<token>')
+  if (result.projectId) {
+    console.log(`  export SECRETS_PROJECT=${result.projectId}`)
   }
-
-  const expiresAt = new Date(payload.expiresAt).getTime()
-  while (Date.now() < expiresAt) {
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    const poll = await fetch(`${baseUrl}/auth/cli-login/complete`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: payload.code }),
-    })
-    if (!poll.ok) {
-      continue
-    }
-    const data = (await poll.json()) as { status: string; token?: string; projectId?: string }
-    if (data.status === 'complete' && data.token) {
-      console.log('\nCLI token:')
-      console.log(data.token)
-      console.log('\nNext steps:')
-      console.log('  export SECRETS_TOKEN=<token>')
-      if (data.projectId) {
-        console.log(`  export SECRETS_PROJECT=${data.projectId}`)
-      }
-      console.log('  secrets init')
-      return
-    }
-  }
-
-  throw new Error('CLI login expired. Run `secrets login` again.')
+  console.log('  secrets init')
 }
 
 async function initCommand(args: string[]) {
@@ -343,9 +289,23 @@ async function initCommand(args: string[]) {
   }
 
   const cwdName = path.basename(process.cwd())
-  const projectName =
-    flags.projectName ?? (await promptInput('Project name', cwdName))
-  const envName = flags.envName ?? (await promptInput('Environment name', 'dev'))
+  const envPath = path.join(process.cwd(), '.env')
+  let envExists = false
+  try {
+    await fs.access(envPath)
+    envExists = true
+  } catch {
+    envExists = false
+  }
+
+  const answers = await runInitUI(
+    flags.projectName ?? cwdName,
+    flags.envName ?? 'dev',
+    envExists,
+  )
+
+  const projectName = answers.projectName
+  const envName = answers.envName
 
   const project = await apiRequest<{ id: string; slug?: string | null }>(baseUrl, token, `/projects`, {
     method: 'POST',
@@ -369,15 +329,6 @@ async function initCommand(args: string[]) {
 
   await fs.writeFile(configPath, JSON.stringify(config, null, 2))
   console.log(`Created ${CONFIG_FILENAME}`)
-
-  const envPath = path.join(process.cwd(), '.env')
-  let envExists = false
-  try {
-    await fs.access(envPath)
-    envExists = true
-  } catch {
-    envExists = false
-  }
 
   if (envExists) {
     const gitignorePath = path.join(process.cwd(), '.gitignore')
@@ -408,8 +359,7 @@ async function initCommand(args: string[]) {
       )
     }
 
-    const shouldImport = await promptYesNo('Import .env into secrets?', true)
-    if (shouldImport) {
+    if (answers.importEnv) {
       const raw = await fs.readFile(envPath, 'utf-8')
       const entries = parseEnvFile(raw)
       const results: { status?: string }[] = []
