@@ -14,8 +14,8 @@
     "build:cli": "pnpm -C packages/cli build",
     "build:sdk": "pnpm -C packages/sdk build",
     "test:server": "pnpm -C apps/server test",
-    "test:db:reset": "DOTENV_CONFIG_PATH=apps/server/.env.test pnpm -C apps/server prisma migrate reset --force --skip-seed",
-    "test:e2e": "pnpm test:db:reset && playwright test",
+    "test:db:reset": "NODE_ENV=test pnpm --dir apps/server exec prisma migrate reset --force",
+    "test:e2e": "pnpm test:db:reset && NODE_ENV=test pnpm playwright test",
     "prisma:generate": "pnpm -C apps/server prisma:generate",
     "prisma:migrate": "pnpm -C apps/server prisma:migrate"
   },

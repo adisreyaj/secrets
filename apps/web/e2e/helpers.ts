@@ -4,7 +4,7 @@ export const createProject = async (page: Page, name: string) => {
   await page.getByTestId('projects-new').click()
   await page.getByTestId('project-name-input').fill(name)
   await page.getByTestId('project-template-select').click()
-  await page.getByText('Starter (Dev + Prod)').click()
+  await page.getByRole('listbox').getByText('Starter (Dev + Prod)').click()
   await page.getByTestId('project-create-submit').click()
   await expect(page.getByText(name, { exact: true })).toBeVisible()
 }

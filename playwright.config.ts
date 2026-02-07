@@ -16,7 +16,7 @@ export default defineConfig({
   globalSetup: './apps/web/e2e/global-setup.ts',
   webServer: [
     {
-      command: 'DOTENV_CONFIG_PATH=apps/server/.env.test pnpm -C apps/server dev',
+      command: 'NODE_ENV=test pnpm -C apps/server dev',
       url: 'http://localhost:3001/health',
       reuseExistingServer: true,
       timeout: 120_000,
@@ -28,4 +28,4 @@ export default defineConfig({
       timeout: 120_000,
     },
   ],
-})
+});

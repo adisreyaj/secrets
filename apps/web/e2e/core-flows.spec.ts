@@ -48,9 +48,14 @@ test.describe.serial('core workspace flows', () => {
     await page.getByTestId('secrets-search').fill('')
 
     const row = findSecretRow(page, primarySecret.key)
-    await row.getByLabel('Edit secret').click()
-    await row.getByPlaceholder('SECRET_KEY').fill(updatedSecret.key)
-    await row.getByPlaceholder('New value').fill(updatedSecret.value)
+    const rowTestId = await row.getAttribute('data-testid')
+    if (!rowTestId) {
+      throw new Error('Unable to resolve stable row test id for secret edit flow')
+    }
+    const stableRow = page.getByTestId(rowTestId)
+    await stableRow.getByLabel('Edit secret').click()
+    await stableRow.getByPlaceholder('SECRET_KEY').fill(updatedSecret.key)
+    await stableRow.getByPlaceholder('New value').fill(updatedSecret.value)
     await page.getByRole('button', { name: 'Save changes' }).click()
     await expect(page.getByText(updatedSecret.key, { exact: true })).toBeVisible()
 
@@ -74,8 +79,8 @@ test.describe.serial('core workspace flows', () => {
 
     await findSecretRow(page, updatedSecret.key).getByLabel('View diff').click()
     await expect(page.getByRole('heading', { name: 'Secret diff' })).toBeVisible()
-    await expect(page.getByText('Previous')).toBeVisible()
-    await expect(page.getByText('Current')).toBeVisible()
+    await expect(page.getByText('Previous', { exact: true })).toBeVisible()
+    await expect(page.getByText('Current', { exact: true })).toBeVisible()
     await page.keyboard.press('Escape')
 
     await findSecretRow(page, updatedSecret.key).getByLabel('Rollback secret').click()
@@ -99,8 +104,10 @@ test.describe.serial('core workspace flows', () => {
 
     await addSecret(page, onlyDevSecret.key, onlyDevSecret.value)
 
+    await page.reload()
     await page.getByRole('tab', { name: 'prod' }).click()
     await expect(page.getByText(updatedSecret.key, { exact: true })).toBeVisible()
+    await expect(page.getByTestId('missing-keys-open')).toBeVisible()
 
     await page.getByTestId('missing-keys-open').click()
     await page.getByTestId('missing-keys-confirm').click()

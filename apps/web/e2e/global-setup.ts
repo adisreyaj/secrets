@@ -1,6 +1,9 @@
-import path from 'path'
 import { chromium } from '@playwright/test'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 const storageStatePath = path.resolve(__dirname, '.auth', 'storage.json')
 const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
 
@@ -20,7 +23,22 @@ export default async function globalSetup() {
   await page.getByTestId('auth-email').fill(testUser.email)
   await page.getByTestId('auth-password').fill(testUser.password)
   await page.getByTestId('auth-submit').click()
-  await page.waitForURL('**/#/projects')
+
+  const projectsHeading = page.getByRole('heading', { name: 'Projects' })
+  const authError = page.locator('p.text-rose-600')
+
+  await Promise.race([
+    projectsHeading.waitFor({ state: 'visible', timeout: 15_000 }),
+    authError.waitFor({ state: 'visible', timeout: 15_000 }),
+  ])
+
+  if (await authError.isVisible()) {
+    await page.getByTestId('auth-toggle-mode').click()
+    await page.getByTestId('auth-email').fill(testUser.email)
+    await page.getByTestId('auth-password').fill(testUser.password)
+    await page.getByTestId('auth-submit').click()
+    await projectsHeading.waitFor({ state: 'visible', timeout: 30_000 })
+  }
 
   await page.context().storageState({ path: storageStatePath })
   await browser.close()
