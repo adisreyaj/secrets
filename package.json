@@ -24,6 +24,15 @@
     "format:check:web": "pnpm -C apps/web format:check",
     "test:server": "pnpm -C apps/server test",
     "prisma:generate": "pnpm -C apps/server prisma:generate",
-    "prisma:migrate": "pnpm -C apps/server prisma:migrate"
+    "prisma:migrate": "pnpm -C apps/server prisma:migrate",
+    "yalc:publish:sdk": "pnpm -C packages/sdk build && pnpm -C packages/sdk exec yalc publish --private",
+    "yalc:publish:cli": "pnpm -C packages/cli build && pnpm -C packages/cli exec yalc publish --private",
+    "yalc:publish:all": "pnpm yalc:publish:sdk && pnpm yalc:publish:cli",
+    "yalc:push:sdk": "pnpm -C packages/sdk build && pnpm -C packages/sdk exec yalc push --private",
+    "yalc:push:cli": "pnpm -C packages/cli build && pnpm -C packages/cli exec yalc push --private",
+    "yalc:push:all": "pnpm yalc:push:sdk && pnpm yalc:push:cli"
+  },
+  "devDependencies": {
+    "yalc": "1.0.0-pre.53"
   }
 }
