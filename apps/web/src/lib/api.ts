@@ -9,6 +9,8 @@ import type {
   CreateInviteRequest,
   CreateInviteResponse,
   CreateEnvironmentRequest,
+  DeleteEnvironmentRequest,
+  DeleteProjectRequest,
   CreateProjectRequest,
   CreateSecretRequest,
   CreateTokenRequest,
@@ -186,6 +188,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  deleteProject: (projectId: string, payload: DeleteProjectRequest) =>
+    apiFetch<{ ok: true }>(`/projects/${projectId}`, {
+      method: 'DELETE',
+      body: JSON.stringify(payload),
+    }),
   getProjectBySlug: (slug: string) =>
     apiFetch<ProjectDto>(`/projects/slug/${slug}`),
 
@@ -196,6 +203,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  deleteEnvironment: (
+    projectId: string,
+    environmentId: string,
+    payload: DeleteEnvironmentRequest,
+  ) =>
+    apiFetch<{ ok: true }>(
+      `/projects/${projectId}/environments/${environmentId}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify(payload),
+      },
+    ),
   getEnvironmentBySlug: (projectId: string, slug: string) =>
     apiFetch<EnvironmentDto>(`/projects/${projectId}/environments/slug/${slug}`),
 

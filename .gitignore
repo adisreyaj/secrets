@@ -5,3 +5,7 @@ apps/**/dist
 packages/**/dist
 apps/**/.env*
 .vscode
+
+*.tgz
+yalc.lock
+.yalc

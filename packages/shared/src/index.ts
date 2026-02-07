@@ -172,6 +172,15 @@ export interface CreateEnvironmentRequest {
   copyFromEnvironmentId?: string;
 }
 
+export interface DeleteProjectRequest {
+  confirmText: string;
+}
+
+export interface DeleteEnvironmentRequest {
+  confirmText: string;
+  forceLastEnvironment?: boolean;
+}
+
 export interface CreateSecretRequest {
   key: string;
   value: string;
