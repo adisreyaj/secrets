@@ -25,6 +25,7 @@
     "test:server": "pnpm -C apps/server test",
     "prisma:generate": "pnpm -C apps/server prisma:generate",
     "prisma:migrate": "pnpm -C apps/server prisma:migrate",
+    "postprisma:migrate": "pnpm run prisma:generate",
     "yalc:publish:sdk": "pnpm -C packages/sdk build && pnpm -C packages/sdk exec yalc publish --private",
     "yalc:publish:cli": "pnpm -C packages/cli build && pnpm -C packages/cli exec yalc publish --private",
     "yalc:publish:all": "pnpm yalc:publish:sdk && pnpm yalc:publish:cli",
