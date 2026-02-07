@@ -9,7 +9,7 @@ export const buttonVariants = cva(
         default: 'bg-foreground text-background hover:bg-foreground/90',
         // Destructive / danger
         destructive:
-          'border border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700',
+          'border border-rose-200/10 bg-rose-500/10 text-rose-400 hover:border-rose-200/20 hover:bg-rose-500/20',
         // Outline / secondary nav-style button
         outline:
           'border border-border text-foreground bg-transparent hover:border-foreground/40',
