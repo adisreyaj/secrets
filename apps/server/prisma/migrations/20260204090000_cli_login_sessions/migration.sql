@@ -1,7 +1,7 @@
 CREATE TABLE `cli_login_sessions` (
     `id` VARCHAR(191) NOT NULL,
     `code` VARCHAR(191) NOT NULL,
-    `token` TEXT NULL,
+    `token` VARCHAR(191) NULL,
     `user_id` VARCHAR(191) NULL,
     `project_id` VARCHAR(191) NULL,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
