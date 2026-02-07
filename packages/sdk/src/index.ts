@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 export const CONFIG_FILENAME = '.secretsrc.json'
-const DEFAULT_BASE_URL = 'http://localhost:3001'
+const DEFAULT_BASE_URL = 'https://secrets.api.adi.so';
 
 export interface SecretsConfigFile {
   apiBaseUrl?: string
