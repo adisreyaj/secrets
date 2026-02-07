@@ -67,7 +67,8 @@ export const TokensPage = ({ projectId, navigate }: TokensPageProps) => {
 
   const handleDeleteToken = useCallback(
     async (tokenId: string) =>
-      runMutationWithToast(
+      Boolean(
+        await runMutationWithToast(
         async () => {
           await api.deleteToken(projectId, tokenId)
           await queryClient.invalidateQueries({
@@ -75,7 +76,7 @@ export const TokensPage = ({ projectId, navigate }: TokensPageProps) => {
           })
         },
         { successMessage: 'Token deleted.' },
-      ),
+      )),
     [projectId, queryClient],
   )
 

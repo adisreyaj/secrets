@@ -64,8 +64,10 @@ export const EnvironmentsPage = ({
           queryKey: queryKeys.environments(projectId),
         })
         toast.success('Environment created.')
+        return true
       } catch (error) {
         toast.error(getErrorMessage(error))
+        return false
       }
     },
     [projectId, queryClient],

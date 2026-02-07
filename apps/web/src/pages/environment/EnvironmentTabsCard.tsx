@@ -19,7 +19,7 @@ export const EnvironmentTabsCard = ({
   onCreateEnvironment: (payload: {
     name: string
     copyFromEnvironmentId?: string | null
-  }) => Promise<void>
+  }) => Promise<boolean>
 }) => {
   return (
     <SectionCard className="-mb-px rounded-b-none border-b-0 p-4">

@@ -65,15 +65,15 @@ type SecretsTableProps = {
   missingKeysByEnvironment: Record<string, string[]>
   pendingBySecretId?: Map<string, ApprovalRequestDto>
   onToggleValues: (next: boolean) => void
-  onCreate: (payload: { key: string; value: string }) => Promise<void>
+  onCreate: (payload: { key: string; value: string }) => Promise<boolean>
   onUpdateMany: (changes: SecretEditorChange[]) => Promise<void>
-  onRollback: (secretId: string) => Promise<void>
+  onRollback: (secretId: string) => Promise<boolean>
   onDiff: (
     secretId: string,
     versions?: { from?: string; to?: string },
   ) => Promise<SecretDiffResponse>
   onListVersions: (secretId: string) => Promise<SecretVersionDto[]>
-  onDelete: (secretId: string) => Promise<void>
+  onDelete: (secretId: string) => Promise<boolean>
   onCopy: (
     secretId: string,
     payload: { targetEnvironmentIds: string[]; overwrite: boolean },

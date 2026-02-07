@@ -29,7 +29,7 @@ export const NewEnvironmentDialog = ({
   onCreateEnvironment: (payload: {
     name: string
     copyFromEnvironmentId?: string | null
-  }) => Promise<void>
+  }) => Promise<boolean>
 }) => {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -51,11 +51,13 @@ export const NewEnvironmentDialog = ({
     if (!trimmedName || creating) return
     setCreating(true)
     try {
-      await onCreateEnvironment({
+      const created = await onCreateEnvironment({
         name: trimmedName,
         copyFromEnvironmentId: copyFromId !== 'none' ? copyFromId : undefined,
       })
-      setOpen(false)
+      if (created) {
+        setOpen(false)
+      }
     } finally {
       setCreating(false)
     }

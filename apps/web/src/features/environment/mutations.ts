@@ -48,8 +48,10 @@ export const createEnvironmentMutations = ({
         queryKey: queryKeys.environments(projectId),
       })
       toast.success('Environment created.')
+      return true
     } catch (error) {
       toast.error(getErrorMessage(error))
+      return false
     }
   }
 
@@ -59,13 +61,15 @@ export const createEnvironmentMutations = ({
       if ('status' in result && result.status === 'pending') {
         await loadApprovals()
         toast.info('Approval requested for secret.')
-        return
+        return true
       }
       await loadSecrets()
       await loadSecretCoverage()
       toast.success('Secret created.')
+      return true
     } catch (error) {
       toast.error(getErrorMessage(error))
+      return false
     }
   }
 
@@ -113,12 +117,14 @@ export const createEnvironmentMutations = ({
       if ('status' in result && result.status === 'pending') {
         await loadApprovals()
         toast.info('Rollback submitted for approval.')
-        return
+        return true
       }
       await loadSecrets()
       toast.success('Secret rolled back.')
+      return true
     } catch (error) {
       toast.error(getErrorMessage(error))
+      return false
     }
   }
 
@@ -128,13 +134,15 @@ export const createEnvironmentMutations = ({
       if ('status' in result && result.status === 'pending') {
         await loadApprovals()
         toast.info('Delete submitted for approval.')
-        return
+        return true
       }
       await loadSecrets()
       await loadSecretCoverage()
       toast.success('Secret deleted.')
+      return true
     } catch (error) {
       toast.error(getErrorMessage(error))
+      return false
     }
   }
 

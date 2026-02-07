@@ -21,7 +21,7 @@ export const SecretsTableHeader = ({
   savingChanges: boolean
   onSaveChanges: () => void
   onDiscardChanges: () => void
-  onCreate: (payload: { key: string; value: string }) => Promise<void>
+  onCreate: (payload: { key: string; value: string }) => Promise<boolean>
   includeValues: boolean
   onToggleValues: (next: boolean) => void
 }) => {
