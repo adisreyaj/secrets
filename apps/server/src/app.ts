@@ -22,6 +22,7 @@ import { toEnvironmentDto, toProjectDto } from './server/mappers/projects.js';
 import { toUserDto } from './server/mappers/users.js';
 import { findMatchingApprovalRules, findPendingApprovalRequest, createApprovalRequest } from './server/services/approvals.js';
 import { logAudit } from './server/services/audit.js';
+import { deleteEnvironmentWithGuards, deleteProjectWithGuards } from './server/services/deletions.js';
 import { buildCliLoginUrl, formatDotenvValue } from './server/services/format.js';
 import { ensureUniqueEnvironmentSlug, ensureUniqueProjectSlug } from './server/services/slugs.js';
 import { getRequestOrigin, isRole, parseDateInput, parseHeaderValue } from './server/http/validators.js';
@@ -781,6 +782,39 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.send(memberships.map((membership) => toProjectDto(membership.project, membership.role)));
+  });
+
+  app.delete('/projects/:id', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const body = request.body as { confirmText?: string } | undefined;
+    if (!body?.confirmText?.trim()) {
+      reply.code(400).send({ error: 'confirmText is required' });
+      return;
+    }
+
+    const result = await deleteProjectWithGuards({
+      projectId,
+      confirmText: body.confirmText,
+      actorUserId: auth.user?.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+    });
+
+    if (!result.ok) {
+      reply.code(result.status).send({ error: result.error });
+      return;
+    }
+
+    reply.send({ ok: true });
   });
 
   app.get('/projects/:id/audit-retention', async (request, reply) => {
@@ -1957,6 +1991,43 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     reply.send(toEnvironmentDto(env));
+  });
+
+  app.delete('/projects/:id/environments/:environmentId', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId, environmentId } = request.params as { id: string; environmentId: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const body = request.body as
+      | { confirmText?: string; forceLastEnvironment?: boolean }
+      | undefined;
+    if (!body?.confirmText?.trim()) {
+      reply.code(400).send({ error: 'confirmText is required' });
+      return;
+    }
+
+    const result = await deleteEnvironmentWithGuards({
+      projectId,
+      environmentId,
+      confirmText: body.confirmText,
+      forceLastEnvironment: body.forceLastEnvironment === true,
+      actorUserId: auth.user?.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+    });
+
+    if (!result.ok) {
+      reply.code(result.status).send({ error: result.error });
+      return;
+    }
+
+    reply.send({ ok: true });
   });
 
   app.get('/projects/:id/secrets/search', async (request, reply) => {

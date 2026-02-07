@@ -1,5 +1,5 @@
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
   CheckCircle,
@@ -10,9 +10,11 @@ import {
   ShieldCheck,
   Users,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
+import { DeleteProjectDialog } from '../components/projects/DeleteProjectDialog'
+import { SectionCard } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
@@ -23,6 +25,7 @@ import { environmentsPath, projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import { toast } from 'sonner'
 
 export const ProjectOverviewPage = ({
   projectId,
@@ -32,6 +35,11 @@ export const ProjectOverviewPage = ({
   navigate: (path: string) => void
 }) => {
   const { user } = useRequireAuth(navigate)
+  const queryClient = useQueryClient()
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [projectDeleted, setProjectDeleted] = useState(false)
   const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
     queryKey: queryKeys.projects(),
     queryFn: () => api.listProjects(),
@@ -41,8 +49,8 @@ export const ProjectOverviewPage = ({
     useQuery<EnvironmentDto[]>({
       queryKey: queryKeys.environments(projectId),
       queryFn: () => api.listEnvironments(projectId),
-      enabled: Boolean(user) && Boolean(projectId),
-  })
+      enabled: Boolean(user) && Boolean(projectId) && !projectDeleted,
+    })
   const projects = useMemo(() => projectsData ?? [], [projectsData])
   const environments = environmentsData ?? []
   const environmentsEnabled = useFlagEnabled(
@@ -106,6 +114,42 @@ export const ProjectOverviewPage = ({
     { enabled: serviceAccountsEnabled },
   )
   useRegisterShortcut('b', () => navigate('/projects'))
+
+  const handleDeleteProject = async (confirmText: string) => {
+    if (!selectedProject || deleting) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await api.deleteProject(projectId, { confirmText })
+      setProjectDeleted(true)
+      toast.success('Project deleted.')
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: queryKeys.project(projectId) }),
+        queryClient.cancelQueries({ queryKey: queryKeys.environments(projectId) }),
+        queryClient.cancelQueries({ queryKey: queryKeys.tokens(projectId) }),
+        queryClient.cancelQueries({ queryKey: queryKeys.serviceAccounts(projectId) }),
+        queryClient.cancelQueries({ queryKey: queryKeys.audit(projectId) }),
+        queryClient.cancelQueries({ queryKey: queryKeys.approvals(projectId) }),
+        queryClient.cancelQueries({ queryKey: queryKeys.approvalRules(projectId) }),
+      ])
+      queryClient.removeQueries({ queryKey: queryKeys.project(projectId) })
+      queryClient.removeQueries({ queryKey: queryKeys.environments(projectId) })
+      queryClient.removeQueries({ queryKey: queryKeys.tokens(projectId) })
+      queryClient.removeQueries({ queryKey: queryKeys.serviceAccounts(projectId) })
+      queryClient.removeQueries({ queryKey: queryKeys.audit(projectId) })
+      queryClient.removeQueries({ queryKey: queryKeys.approvals(projectId) })
+      queryClient.removeQueries({ queryKey: queryKeys.approvalRules(projectId) })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+      setDeleteDialogOpen(false)
+      navigate('/projects')
+    } catch (error) {
+      const message = getErrorMessage(error)
+      setDeleteError(message)
+      toast.error(message)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <section className="flex flex-col gap-6">
@@ -314,6 +358,35 @@ export const ProjectOverviewPage = ({
           </li>
         ) : null}
       </ul>
+
+      <SectionCard className="border-destructive/30">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-destructive text-lg font-semibold">Danger Zone</h3>
+            <p className="text-muted-foreground text-xs">
+              Deleting this project is permanent and removes all nested resources.
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            onClick={() => setDeleteDialogOpen(true)}
+            disabled={selectedProject?.role !== 'ADMIN'}
+          >
+            Delete project
+          </Button>
+        </div>
+      </SectionCard>
+
+      {selectedProject ? (
+        <DeleteProjectDialog
+          open={deleteDialogOpen}
+          projectName={selectedProject.name}
+          deleting={deleting}
+          error={deleteError}
+          onOpenChange={setDeleteDialogOpen}
+          onConfirm={handleDeleteProject}
+        />
+      ) : null}
     </section>
   )
 }
