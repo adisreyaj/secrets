@@ -1,9 +1,12 @@
-node_modules/
-apps/**/node_modules
-packages/**/node_modules
-apps/**/dist
-packages/**/dist
-apps/**/.env*
-.vscode
+**/dist
+**/node_modules
+**/.env*
+!**/.env.example
 
+.vscode
+.cursor/plans
 *.tgz
+
+
+.yalc
+yalc.lock
