@@ -44,7 +44,7 @@ const getFeatureFlagAdapter = (
 export const FeatureFlagProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth()
   const config = useMemo(() => getFeatureFlagConfig(), [])
-  const adapterRef = useRef<FeatureFlagProviderAdapter>()
+  const adapterRef = useRef<FeatureFlagProviderAdapter | null>(null)
   if (!adapterRef.current) {
     adapterRef.current = getFeatureFlagAdapter(config)
   }
@@ -53,6 +53,7 @@ export const FeatureFlagProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const adapter = adapterRef.current
+    if (!adapter) return
     void adapter.init(config)
     const unsubscribe = adapter.onFlagsChanged?.(() => {
       setVersion((current) => current + 1)
@@ -64,6 +65,7 @@ export const FeatureFlagProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const adapter = adapterRef.current
+    if (!adapter) return
     if (!user) {
       adapter.reset()
       return
@@ -77,7 +79,7 @@ export const FeatureFlagProvider = ({ children }: { children: ReactNode }) => {
 
   const value = useMemo(
     () => ({
-      adapter: adapterRef.current,
+      adapter: adapterRef.current!,
       version,
     }),
     [version],
