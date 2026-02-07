@@ -53,5 +53,5 @@ export const ErrorTrackingProvider = ({ children }: { children: ReactNode }) => 
 
 export const useErrorTracking = () => {
   const ctx = useContext(ErrorTrackingContext)
-  return ctx ?? initAdapter()
+  return ctx ?? initErrorTracking()
 }
