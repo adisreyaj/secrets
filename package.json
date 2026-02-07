@@ -1,7 +1,10 @@
 {
   "name": "secrets-manager",
   "private": true,
-  "packageManager": "pnpm@9.12.0",
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=20.19"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -13,6 +16,12 @@
     "build:web": "pnpm -C apps/web build",
     "build:cli": "pnpm -C packages/cli build",
     "build:sdk": "pnpm -C packages/sdk build",
+    "start:server": "pnpm -C apps/server start",
+    "start:web": "pnpm -C apps/web start",
+    "lint:web": "pnpm -C apps/web lint",
+    "lint:server": "pnpm -C apps/server lint",
+    "format:web": "pnpm -C apps/web format",
+    "format:check:web": "pnpm -C apps/web format:check",
     "test:server": "pnpm -C apps/server test",
     "test:db:reset": "NODE_ENV=test pnpm --dir apps/server exec prisma migrate reset --force",
     "test:e2e": "pnpm test:db:reset && NODE_ENV=test pnpm playwright test",

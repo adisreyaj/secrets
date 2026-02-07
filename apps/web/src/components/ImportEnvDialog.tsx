@@ -1,11 +1,17 @@
 import type { EnvironmentDto, SecretDto } from '@secrets/shared'
-import type { ChangeEvent, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { api, ApiError } from '../lib/api'
-import { parseDotenv, type DotenvEntry, type DotenvInvalidLine } from '../lib/parseDotenv'
+import { toast } from 'sonner'
+import { api } from '../lib/api'
+import { getErrorMessage } from '../lib/errors'
+import {
+  parseDotenv,
+  type DotenvEntry,
+  type DotenvInvalidLine,
+} from '../lib/parseDotenv'
+import { ErrorBanner } from './ErrorBanner'
 import { ImportDropzone } from './import/ImportDropzone'
 import { ImportPreviewList } from './import/ImportPreviewList'
-import { ImportSummaryBanner } from './import/ImportSummaryBanner'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import {
@@ -18,9 +24,6 @@ import {
   DialogTrigger,
 } from './ui/dialog'
 import { Textarea } from './ui/textarea'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
 
 export const ImportEnvDialog = ({
   open,
@@ -51,12 +54,8 @@ export const ImportEnvDialog = ({
   const [importError, setImportError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [importOverwrite, setImportOverwrite] = useState(false)
-  const [importPreviewed, setImportPreviewed] = useState(false)
-  const [importSummary, setImportSummary] = useState<{
-    created: number
-    updated: number
-    skipped: number
-  } | null>(null)
+  const [, setImportPreviewed] = useState(false)
+  const [step, setStep] = useState<'input' | 'preview'>('input')
 
   useEffect(() => {
     if (!open) {
@@ -69,7 +68,7 @@ export const ImportEnvDialog = ({
       setImporting(false)
       setImportOverwrite(false)
       setImportPreviewed(false)
-      setImportSummary(null)
+      setStep('input')
     }
   }, [open])
 
@@ -78,27 +77,8 @@ export const ImportEnvDialog = ({
     [importEntries, secretByKey],
   )
 
-  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-    setImportError(null)
-    setImportSummary(null)
-    setImportFileName(file.name)
-    try {
-      const content = await file.text()
-      setImportText(content)
-      setImportEntries([])
-      setImportInvalidLines([])
-      setImportDuplicateKeys([])
-      setImportPreviewed(false)
-    } catch (error) {
-      setImportError(getErrorMessage(error))
-    }
-  }
-
   const handleImportDrop = async (file: File) => {
     setImportError(null)
-    setImportSummary(null)
     setImportFileName(file.name)
     try {
       const content = await file.text()
@@ -123,6 +103,7 @@ export const ImportEnvDialog = ({
     setImportInvalidLines(parsed.invalidLines)
     setImportDuplicateKeys(parsed.duplicateKeys)
     setImportPreviewed(true)
+    setStep('preview')
     if (parsed.entries.length === 0) {
       setImportError('No valid environment variables found in this input.')
     }
@@ -132,32 +113,30 @@ export const ImportEnvDialog = ({
     if (!environment || importing || importEntries.length === 0) return
     setImporting(true)
     setImportError(null)
-    let created = 0
-    let updated = 0
-    let skipped = 0
-
     try {
+      const deduped = new Map<string, string>()
       for (const entry of importEntries) {
-        const existing = secretByKey.get(entry.key)
-        if (existing) {
-          if (!importOverwrite) {
-            skipped += 1
-            continue
-          }
-          await api.updateSecret(existing.id, { value: entry.value })
-          updated += 1
-          continue
-        }
-        await api.createSecret(environment.id, {
-          key: entry.key,
-          value: entry.value,
-        })
-        created += 1
+        deduped.set(entry.key, entry.value)
       }
-
-      setImportSummary({ created, updated, skipped })
+      const entries = Array.from(deduped.entries()).map(([key, value]) => ({
+        key,
+        value,
+      }))
+      const result = await api.bulkImportSecrets(environment.id, {
+        entries,
+        overwrite: importOverwrite,
+      })
       await loadSecrets(valuesLoaded)
       await loadSecretCoverage()
+      const summary = [
+        `Imported ${result.created} new`,
+        `updated ${result.updated}`,
+        `skipped ${result.skipped}`,
+      ]
+      const pendingSuffix =
+        result.pending > 0 ? `, pending approval ${result.pending}` : ''
+      toast.success(`${summary.join(', ')}${pendingSuffix}.`)
+      onOpenChange(false)
     } catch (error) {
       setImportError(getErrorMessage(error))
     } finally {
@@ -177,77 +156,84 @@ export const ImportEnvDialog = ({
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
-          <div className="grid gap-2 text-sm">
-            <Textarea
-              value={importText}
-              onChange={(event) => {
-                setImportText(event.target.value)
-                setImportPreviewed(false)
-              }}
-              placeholder={
-                '# Paste your .env here\n# Comments before a key-value pair will be parsed\nFOO=BAR\n\nAPI_BASE_URL=https://api.myapp.com # Inline comments will also be parsed\n\nHEALTH_CHECK_URL=${API_BASE_URL} # You can also reference secrets'
-              }
-              rows={8}
-              className="border-border bg-card/70 text-foreground focus:border-foreground/60 min-h-45 w-full resize-none rounded-2xl border px-4 py-3 font-mono text-xs shadow-inner transition outline-none"
-            />
-            <ImportDropzone
-              fileName={importFileName}
-              onFileSelected={(file) => void handleImportDrop(file)}
-            />
-          </div>
-
-          {importPreviewed && importEntries.length > 0 ? (
-            <ImportPreviewList
-              entries={importEntries}
-              conflictKeys={new Set(importConflicts.map((entry) => entry.key))}
-              duplicateKeys={importDuplicateKeys}
-              invalidLines={importInvalidLines}
-            />
-          ) : null}
-
-          <label className="flex items-center gap-3 text-sm">
-            <Checkbox
-              checked={importOverwrite}
-              onCheckedChange={(value) => setImportOverwrite(Boolean(value))}
-            />
-            <span>Overwrite existing keys in this environment</span>
-          </label>
+          {step === 'input' ? (
+            <div className="grid gap-2 text-sm">
+              <Textarea
+                value={importText}
+                onChange={(event) => {
+                  setImportText(event.target.value)
+                  setImportPreviewed(false)
+                }}
+                placeholder={
+                  '# Paste your .env here\n# Comments before a key-value pair will be parsed\nFOO=BAR\n\nAPI_BASE_URL=https://api.myapp.com # Inline comments will also be parsed\n\nHEALTH_CHECK_URL=${API_BASE_URL} # You can also reference secrets'
+                }
+                rows={8}
+                className="border-border bg-card/70 text-foreground focus:border-foreground/60 min-h-45 w-full resize-none rounded-2xl border px-4 py-3 font-mono text-xs shadow-inner transition outline-none"
+              />
+              <ImportDropzone
+                fileName={importFileName}
+                onFileSelected={(file) => handleImportDrop(file)}
+              />
+            </div>
+          ) : (
+            <>
+              <ImportPreviewList
+                entries={importEntries}
+                conflictKeys={
+                  new Set(importConflicts.map((entry) => entry.key))
+                }
+                duplicateKeys={importDuplicateKeys}
+                invalidLines={importInvalidLines}
+              />
+              {importDuplicateKeys.length > 0 ? (
+                <p className="text-muted-foreground text-xs">
+                  Duplicates resolve to the last value in the import list.
+                </p>
+              ) : null}
+              <label className="flex items-center gap-3 text-sm">
+                <Checkbox
+                  checked={importOverwrite}
+                  onCheckedChange={(value) =>
+                    setImportOverwrite(Boolean(value))
+                  }
+                />
+                <span>Overwrite existing keys in this environment</span>
+              </label>
+            </>
+          )}
 
           {importError ? (
-            <p className="text-sm text-rose-600">{importError}</p>
-          ) : null}
-
-          {importSummary ? (
-            <ImportSummaryBanner
-              created={importSummary.created}
-              updated={importSummary.updated}
-              skipped={importSummary.skipped}
-            />
+            <ErrorBanner message={importError} className="mt-3" />
           ) : null}
         </div>
         <DialogFooter className="mt-4">
           <Button
             type="button"
             variant="ghost"
-            className="rounded-full px-4 text-sm"
-            onClick={() => onOpenChange(false)}
+            onClick={() => {
+              if (step === 'preview') {
+                setStep('input')
+                setImportPreviewed(false)
+                return
+              }
+              onOpenChange(false)
+            }}
           >
-            Close
+            {step === 'preview' ? 'Back' : 'Close'}
           </Button>
           <Button
             type="button"
-            className="rounded-full bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
-            onClick={importPreviewed ? handleImportEnv : handlePreviewImport}
+            onClick={step === 'preview' ? handleImportEnv : handlePreviewImport}
             disabled={
               importing ||
               !environment ||
-              (!importPreviewed && importText.trim().length === 0) ||
-              (importPreviewed && importEntries.length === 0)
+              (step === 'input' && importText.trim().length === 0) ||
+              (step === 'preview' && importEntries.length === 0)
             }
           >
             {importing
               ? 'Importing...'
-              : importPreviewed
+              : step === 'preview'
                 ? 'Import secrets'
                 : 'Preview import'}
           </Button>

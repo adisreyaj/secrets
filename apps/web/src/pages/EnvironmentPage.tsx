@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SecretsTable } from '../components/SecretsTable'
-import { useAuth } from '../lib/auth'
+import { environmentPath, environmentsPath } from '../lib/paths'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { useRequireAuth } from '../lib/useRequireAuth'
 import { EnvironmentHeaderActions } from './environment/EnvironmentHeaderActions'
 import { EnvironmentTabsCard } from './environment/EnvironmentTabsCard'
 import { useEnvironmentData } from './environment/useEnvironmentData'
@@ -16,15 +18,9 @@ export const EnvironmentPage = ({
   environmentId: string
   navigate: (path: string) => void
 }) => {
-  const { user, loading } = useAuth()
+  const { user } = useRequireAuth(navigate)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
 
   const {
     projectsError,
@@ -38,6 +34,8 @@ export const EnvironmentPage = ({
     valuesLoaded,
     coverageLoading,
     coverageError,
+    approvalsError,
+    pendingBySecretId,
     missingKeys,
     missingKeysByEnvironment,
     secretByKey,
@@ -51,6 +49,7 @@ export const EnvironmentPage = ({
     handleRollbackSecret,
     handleDeleteSecret,
     handleDiffSecret,
+    handleListSecretVersions,
     handleCopySecret,
     handleCopyMissingSecrets,
     handleExportEnv,
@@ -68,7 +67,8 @@ export const EnvironmentPage = ({
     if (!query) return secrets
     return secrets.filter((secret) => {
       if (secret.key.toLowerCase().includes(query)) return true
-      if (valuesLoaded && secret.value?.toLowerCase().includes(query)) return true
+      if (valuesLoaded && secret.value?.toLowerCase().includes(query))
+        return true
       return false
     })
   }, [secrets, searchQuery, valuesLoaded])
@@ -77,7 +77,14 @@ export const EnvironmentPage = ({
     const selectByIndex = (index: number) => {
       const target = environments[index]
       if (target) {
-        navigate(`/projects/${projectId}/environments/${target.id}`)
+        navigate(
+          environmentPath(
+            projectId,
+            selectedProject?.slug,
+            target.id,
+            target.slug,
+          ),
+        )
       }
     }
 
@@ -100,7 +107,7 @@ export const EnvironmentPage = ({
   }, [environments, navigate, projectId])
 
   useRegisterShortcut('b', () =>
-    navigate(`/projects/${projectId}/environments`),
+    navigate(environmentsPath(projectId, selectedProject?.slug)),
   )
   useRegisterShortcut('v', () => handleToggleValues(!valuesVisible))
   useRegisterShortcut('d', () => handleExportEnv())
@@ -123,15 +130,27 @@ export const EnvironmentPage = ({
             loadSecretCoverage={loadSecretCoverage}
             onExport={handleExportEnv}
             onExportCsv={handleExportCsv}
-            onBack={() => navigate(`/projects/${projectId}/environments`)}
+            onBack={() =>
+              navigate(environmentsPath(projectId, selectedProject?.slug))
+            }
           />
         }
       />
 
-      {(projectsError || envError || secretsError || coverageError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || envError || secretsError || coverageError}
-        </div>
+      {(projectsError ||
+        envError ||
+        secretsError ||
+        coverageError ||
+        approvalsError) && (
+        <ErrorBanner
+          message={
+            (projectsError ||
+              envError ||
+              secretsError ||
+              coverageError ||
+              approvalsError) as string
+          }
+        />
       )}
 
       <section className="flex flex-col gap-0">
@@ -140,7 +159,14 @@ export const EnvironmentPage = ({
           envLoading={envLoading}
           environmentId={environmentId}
           onSelectEnvironment={(envId) =>
-            navigate(`/projects/${projectId}/environments/${envId}`)
+            navigate(
+              environmentPath(
+                projectId,
+                selectedProject?.slug,
+                envId,
+                environments.find((env) => env.id === envId)?.slug,
+              ),
+            )
           }
           environmentOptions={environmentOptions}
           onCreateEnvironment={handleCreateEnvironment}
@@ -156,11 +182,13 @@ export const EnvironmentPage = ({
           error={secretsError}
           missingKeys={missingKeys}
           missingKeysByEnvironment={missingKeysByEnvironment}
+          pendingBySecretId={pendingBySecretId}
           onToggleValues={handleToggleValues}
           onCreate={handleCreateSecret}
           onUpdateMany={handleUpdateSecrets}
           onRollback={handleRollbackSecret}
           onDiff={handleDiffSecret}
+          onListVersions={handleListSecretVersions}
           onDelete={handleDeleteSecret}
           onCopy={handleCopySecret}
           onCopyMissing={handleCopyMissingSecrets}

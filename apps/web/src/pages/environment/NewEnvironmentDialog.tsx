@@ -1,5 +1,5 @@
+import { Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { useRegisterShortcut } from '../../lib/shortcuts'
 import { ShortcutHint } from '../../components/ShortcutHint'
 import { Button } from '../../components/ui/button'
 import {
@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select'
+import { useRegisterShortcut } from '../../lib/shortcuts'
 
 export const NewEnvironmentDialog = ({
   environmentOptions,
@@ -63,10 +64,8 @@ export const NewEnvironmentDialog = ({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          className="border-border text-foreground hover:border-foreground/40 flex items-center gap-2 rounded-full px-4 text-sm font-semibold"
-        >
+        <Button variant="outline">
+          <Plus className="h-4 w-4" />
           New environment
           <ShortcutHint keys="Shift+n" />
         </Button>
@@ -81,26 +80,21 @@ export const NewEnvironmentDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Environment name
-            </span>
+            <span className="muted-label">Environment name</span>
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="e.g. staging"
-              className="bg-background h-11 rounded-2xl px-4"
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-muted-foreground text-xs font-semibold tracking-[0.2em] uppercase">
-              Copy keys from
-            </span>
+            <span className="muted-label">Copy keys from</span>
             <Select
               value={copyFromId}
               onValueChange={setCopyFromId}
               disabled={environmentOptions.length === 0}
             >
-              <SelectTrigger className="h-11 px-4">
+              <SelectTrigger>
                 <SelectValue placeholder="Don't copy anything" />
               </SelectTrigger>
               <SelectContent>
@@ -120,16 +114,11 @@ export const NewEnvironmentDialog = ({
             <Button
               type="button"
               variant="ghost"
-              className="rounded-full px-4 text-sm"
               onClick={() => setOpen(false)}
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              className="bg-foreground text-background hover:bg-foreground/90 rounded-full px-6 text-sm font-semibold"
-              disabled={creating || !name.trim()}
-            >
+            <Button type="submit" disabled={creating || !name.trim()}>
               {creating ? 'Creating...' : 'Create environment'}
             </Button>
           </DialogFooter>

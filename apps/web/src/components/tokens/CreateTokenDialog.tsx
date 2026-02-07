@@ -1,5 +1,6 @@
+import type { CreateTokenResponse } from '@secrets/shared'
+import { Copy, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { KeyRound } from 'lucide-react'
 import { useRegisterShortcut } from '../../lib/shortcuts'
 import { ShortcutHint } from '../ShortcutHint'
 import { Button } from '../ui/button'
@@ -14,16 +15,21 @@ import {
   DialogTrigger,
 } from '../ui/dialog'
 import { Input } from '../ui/input'
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 
 export const CreateTokenDialog = ({
   onCreate,
 }: {
-  onCreate: (name: string, readOnly: boolean) => Promise<void>
+  onCreate: (
+    name: string,
+    readOnly: boolean,
+  ) => Promise<CreateTokenResponse | undefined>
 }) => {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [readOnly, setReadOnly] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [issuedToken, setIssuedToken] = useState<string | null>(null)
   const nameInputRef = useRef<HTMLInputElement | null>(null)
 
   useRegisterShortcut('n', () => setOpen(true))
@@ -38,6 +44,7 @@ export const CreateTokenDialog = ({
     }
     setName('')
     setReadOnly(true)
+    setIssuedToken(null)
   }, [open])
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -45,8 +52,8 @@ export const CreateTokenDialog = ({
     if (!name.trim() || creating) return
     setCreating(true)
     try {
-      await onCreate(name.trim(), readOnly)
-      setOpen(false)
+      const result = await onCreate(name.trim(), readOnly)
+      setIssuedToken(result?.token ?? null)
     } finally {
       setCreating(false)
     }
@@ -55,16 +62,13 @@ export const CreateTokenDialog = ({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
-        >
-          <KeyRound className="h-4 w-4" />
+        <Button variant="outline">
+          <Plus className="h-4 w-4" />
           New token
           <ShortcutHint keys="n" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="rounded-3xl border-border/70 bg-popover text-popover-foreground">
+      <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
         <DialogHeader className="text-left">
           <DialogTitle>Create API token</DialogTitle>
           <DialogDescription>
@@ -73,41 +77,63 @@ export const CreateTokenDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Token name
-            </span>
+            <span className="muted-label">Token name</span>
             <Input
               ref={nameInputRef}
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="e.g. CI deploy"
               autoComplete="off"
-              className="h-11 rounded-2xl bg-background px-4"
             />
           </label>
-          <label className="flex items-center gap-3 text-sm text-muted-foreground">
+          <label className="text-muted-foreground flex items-center gap-3 text-sm">
             <Checkbox
               checked={readOnly}
               onCheckedChange={(checked) => setReadOnly(Boolean(checked))}
             />
             Read-only token (recommended for CI)
           </label>
+          {issuedToken ? (
+            <div className="text-muted-foreground grid gap-2 text-xs">
+              <p className="text-foreground font-semibold">New token</p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 p-3 font-mono text-sm break-all text-emerald-800">
+                  {issuedToken}
+                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        if (!issuedToken) return
+                        await navigator.clipboard.writeText(issuedToken)
+                      }}
+                      aria-label="Copy token"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Copy token</TooltipContent>
+                </Tooltip>
+              </div>
+              <p>This token is only visible now. Copy and store it securely.</p>
+            </div>
+          ) : null}
           <DialogFooter>
             <Button
               type="button"
               variant="ghost"
-              className="rounded-full px-4 text-sm"
               onClick={() => setOpen(false)}
             >
-              Cancel
+              {issuedToken ? 'Close' : 'Cancel'}
             </Button>
-            <Button
-              type="submit"
-              className="rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
-              disabled={creating || !name.trim()}
-            >
-              {creating ? 'Creating...' : 'Create token'}
-            </Button>
+            {issuedToken ? null : (
+              <Button type="submit" disabled={creating || !name.trim()}>
+                {creating ? 'Creating...' : 'Create token'}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

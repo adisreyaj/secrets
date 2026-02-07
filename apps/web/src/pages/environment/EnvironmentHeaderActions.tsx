@@ -40,7 +40,6 @@ export const EnvironmentHeaderActions = ({
       >
         <Button
           variant="outline"
-          className="border-border bg-muted/40 text-foreground hover:bg-muted flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
           disabled={!selectedEnvironment}
         >
           <FileUp className="h-4 w-4" />
@@ -50,7 +49,6 @@ export const EnvironmentHeaderActions = ({
       </ImportEnvDialog>
       <Button
         variant="outline"
-        className="border-border bg-muted/40 text-foreground hover:bg-muted flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
         onClick={onExport}
         disabled={!selectedEnvironment}
       >
@@ -60,7 +58,6 @@ export const EnvironmentHeaderActions = ({
       </Button>
       <Button
         variant="outline"
-        className="border-border bg-muted/40 text-foreground hover:bg-muted flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold"
         onClick={onExportCsv}
         disabled={!selectedEnvironment}
       >
@@ -70,7 +67,6 @@ export const EnvironmentHeaderActions = ({
       </Button>
       <Button
         variant="outline"
-        className="border-border text-foreground hover:border-foreground/40 flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold transition"
         onClick={onBack}
       >
         <ArrowLeft className="h-4 w-4" />

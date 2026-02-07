@@ -1,0 +1,30 @@
+providers = ['node']
+
+[variables]
+CI = 'true'
+NIXPACKS_METADATA = 'node'
+NIXPACKS_NODE_VERSION = '24'
+NODE_ENV = 'production'
+
+[phases.setup]
+nixPkgs = [
+    'nodejs_24'
+]
+nixOverlays = ['https://github.com/railwayapp/nix-npm-overlay/archive/main.tar.gz']
+nixpkgsArchive = 'cf93ceb06388f5714302b702cccf2c77f6064442'
+
+[phases.install]
+dependsOn = ['setup']
+cmds = ['corepack enable pnpm', 'pnpm install -P false']
+# Only cache pnpm store; do not cache node_modules so the symlink layout
+# is recreated each build and Prisma CLI finds its module (avoids "Cannot find
+# module .../prisma/build/index.js" when using cache on Coolify/Nixpacks).
+cacheDirectories = ['/root/.local/share/pnpm/store']
+paths = ['/app/node_modules/.bin']
+
+[phases.build]
+dependsOn = ['install']
+cmds = ['pnpm run build:server']
+
+[start]
+cmd = 'pnpm run start:server'

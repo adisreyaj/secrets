@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useState } from 'react'
 import type {
   ApiTokenDto,
   AuditLogDto,
@@ -6,12 +5,22 @@ import type {
   ProjectDto,
   ProjectInviteDto,
   Role,
+  SecretSearchResultDto,
 } from '@secrets/shared'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useState,
+} from 'react'
 import { AuditLog } from '../components/AuditLog'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { Hero } from '../components/Hero'
-import { ProjectsSection, type ProjectTemplate } from '../components/ProjectsSection'
+import { ProjectsSection } from '../components/ProjectsSection'
+import { SectionCard } from '../components/SectionCard'
 import { TokensPanel } from '../components/TokensPanel'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -22,202 +31,249 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
-import { SectionCard } from '../components/SectionCard'
-import { api, ApiError } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { PROJECT_TEMPLATE_ENVIRONMENTS } from '../features/projects/constants'
+import type { CreateProjectPayload } from '../features/projects/types'
+import { api } from '../lib/api'
+import { getErrorMessage } from '../lib/errors'
+import { formatDate, formatDateTime } from '../lib/format'
+import { environmentPath, projectPath } from '../lib/paths'
+import { runMutationWithToast } from '../lib/mutationFeedback'
+import { queryKeys } from '../lib/queryKeys'
+import { asArray } from '../lib/queryResult'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
-
-export const ProjectPage = ({
-  projectId,
-  navigate,
-}: {
+type ProjectPageProps = {
   projectId: string
   navigate: (path: string) => void
-}) => {
-  const { user, loading } = useAuth()
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsLoading, setProjectsLoading] = useState(false)
-  const [projectsError, setProjectsError] = useState<string | null>(null)
+}
 
-  const [environments, setEnvironments] = useState<EnvironmentDto[]>([])
-  const [envLoading, setEnvLoading] = useState(false)
-  const [envError, setEnvError] = useState<string | null>(null)
-  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null)
+export const ProjectPage = ({ projectId, navigate }: ProjectPageProps) => {
+  const { user } = useRequireAuth(navigate)
+  const queryClient = useQueryClient()
 
-  const [auditLogs, setAuditLogs] = useState<AuditLogDto[]>([])
-  const [auditLoading, setAuditLoading] = useState(false)
-  const [auditError, setAuditError] = useState<string | null>(null)
+  const {
+    data: projectsData,
+    isLoading: projectsLoading,
+    error: projectsErrorRaw,
+  } = useQuery<ProjectDto[]>({
+    queryKey: queryKeys.projects(),
+    queryFn: () => api.listProjects(),
+    enabled: Boolean(user),
+  })
 
-  const [tokens, setTokens] = useState<ApiTokenDto[]>([])
-  const [tokensLoading, setTokensLoading] = useState(false)
-  const [tokensError, setTokensError] = useState<string | null>(null)
-  const [lastToken, setLastToken] = useState<Awaited<ReturnType<typeof api.createToken>> | null>(null)
+  const {
+    data: environmentsData,
+    isLoading: envLoading,
+    error: envErrorRaw,
+  } = useQuery<EnvironmentDto[]>({
+    queryKey: queryKeys.environments(projectId),
+    queryFn: () => api.listEnvironments(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
 
-  const [invites, setInvites] = useState<ProjectInviteDto[]>([])
-  const [invitesLoading, setInvitesLoading] = useState(false)
-  const [invitesError, setInvitesError] = useState<string | null>(null)
+  const projects = asArray(projectsData)
+  const environments = asArray(environmentsData)
+
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<
+    string | null
+  >(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const deferredSearchQuery = useDeferredValue(searchQuery)
+  const [searchEnvFilter, setSearchEnvFilter] = useState<string | null>(null)
+
+  const {
+    data: auditLogsData,
+    isLoading: auditLoading,
+    error: auditErrorRaw,
+  } = useQuery<AuditLogDto[]>({
+    queryKey: queryKeys.audit(projectId),
+    queryFn: () => api.listAudit(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+
+  const {
+    data: tokensData,
+    isLoading: tokensLoading,
+    error: tokensErrorRaw,
+  } = useQuery<ApiTokenDto[]>({
+    queryKey: queryKeys.tokens(projectId),
+    queryFn: () => api.listTokens(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+
+  const {
+    data: invitesData,
+    isLoading: invitesLoading,
+    error: invitesErrorRaw,
+  } = useQuery<ProjectInviteDto[]>({
+    queryKey: queryKeys.invites(projectId),
+    queryFn: () => api.listInvites(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+
+  const trimmedSearch = deferredSearchQuery.trim()
+  const {
+    data: searchResultsData,
+    isFetching: searchLoading,
+    error: searchErrorRaw,
+  } = useQuery<SecretSearchResultDto[]>({
+    queryKey: queryKeys.searchSecrets(
+      projectId,
+      trimmedSearch,
+      searchEnvFilter,
+      true,
+    ),
+    queryFn: () =>
+      api.searchProjectSecrets(projectId, {
+        query: trimmedSearch,
+        environmentId: searchEnvFilter,
+        includeValues: true,
+      }),
+    enabled: Boolean(user) && Boolean(projectId) && trimmedSearch.length > 0,
+    staleTime: 30_000,
+    gcTime: 300_000,
+  })
+
+  const auditLogs = asArray(auditLogsData)
+  const tokens = asArray(tokensData)
+  const invites = asArray(invitesData)
+  const searchResults = asArray(searchResultsData)
+
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<Role>('VIEWER')
   const [inviteCreating, setInviteCreating] = useState(false)
   const [lastInviteLink, setLastInviteLink] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
-
-  const loadProjects = useCallback(async () => {
-    setProjectsLoading(true)
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    } finally {
-      setProjectsLoading(false)
-    }
-  }, [])
-
-  const loadEnvironments = useCallback(async () => {
-    setEnvLoading(true)
-    setEnvError(null)
-    try {
-      const data = await api.listEnvironments(projectId)
-      setEnvironments(data)
-      if (data.length > 0) {
-        setSelectedEnvironmentId((prev) => prev ?? data[0].id)
-      }
-    } catch (error) {
-      setEnvError(getErrorMessage(error))
-    } finally {
-      setEnvLoading(false)
-    }
-  }, [projectId])
-
-  const loadAudit = useCallback(async () => {
-    setAuditLoading(true)
-    setAuditError(null)
-    try {
-      const data = await api.listAudit(projectId)
-      setAuditLogs(data)
-    } catch (error) {
-      setAuditError(getErrorMessage(error))
-    } finally {
-      setAuditLoading(false)
-    }
-  }, [projectId])
-
-  const loadTokens = useCallback(async () => {
-    setTokensLoading(true)
-    setTokensError(null)
-    try {
-      const data = await api.listTokens(projectId)
-      setTokens(data)
-    } catch (error) {
-      setTokensError(getErrorMessage(error))
-    } finally {
-      setTokensLoading(false)
-    }
-  }, [projectId])
-
-  const loadInvites = useCallback(async () => {
-    setInvitesLoading(true)
-    setInvitesError(null)
-    try {
-      const data = await api.listInvites(projectId)
-      setInvites(data)
-    } catch (error) {
-      setInvitesError(getErrorMessage(error))
-    } finally {
-      setInvitesLoading(false)
-    }
-  }, [projectId])
-
-  useEffect(() => {
     setSelectedEnvironmentId(null)
   }, [projectId])
 
   useEffect(() => {
-    if (user) {
-      void loadProjects()
-      void loadEnvironments()
-      void loadAudit()
-      void loadTokens()
-      void loadInvites()
-    }
-  }, [user, projectId, loadProjects, loadEnvironments, loadAudit, loadTokens, loadInvites])
-
-  const handleCreateProject = async (payload: { name: string; template: ProjectTemplate }) => {
-    const project = await api.createProject({ name: payload.name })
-    const templates: Record<ProjectTemplate, string[]> = {
-      starter: ['development', 'prod'],
-      full: ['development', 'staging', 'prod'],
-      empty: [],
-    }
-
-    const environments = templates[payload.template] ?? []
     if (environments.length > 0) {
-      await Promise.all(
-        environments.map((envName) =>
-          api.createEnvironment(project.id, { name: envName }),
-        ),
-      )
+      setSelectedEnvironmentId((prev) => prev ?? environments[0].id)
     }
-    await loadProjects()
-  }
+  }, [environments])
 
-  const handleCreateEnvironment = async (payload: {
-    name: string
-    copyFromEnvironmentId?: string | null
-  }) => {
-    await api.createEnvironment(projectId, {
-      name: payload.name,
-      copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
-    })
-    await loadEnvironments()
-  }
+  const handleCreateProject = useCallback(
+    async (payload: CreateProjectPayload) =>
+      runMutationWithToast(
+        async () => {
+        const project = await api.createProject({ name: payload.name })
+        const envNames = PROJECT_TEMPLATE_ENVIRONMENTS[payload.template] ?? []
+        if (envNames.length > 0) {
+          await Promise.all(
+            envNames.map((envName) =>
+              api.createEnvironment(project.id, { name: envName }),
+            ),
+          )
+        }
+        await queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+      },
+      { successMessage: 'Project created.' },
+    ),
+    [queryClient],
+  )
 
-  const handleCreateToken = async (name: string, readOnly: boolean) => {
-    const data = await api.createToken(projectId, { name, readOnly })
-    setLastToken(data)
-    await loadTokens()
-    return data
-  }
+  const handleCreateEnvironment = useCallback(
+    async (payload: { name: string; copyFromEnvironmentId?: string | null }) =>
+      runMutationWithToast(
+        async () => {
+        await api.createEnvironment(projectId, {
+          name: payload.name,
+          copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
+        })
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.environments(projectId),
+        })
+      },
+      { successMessage: 'Environment created.' },
+    ),
+    [projectId, queryClient],
+  )
 
-  const handleDeleteToken = async (tokenId: string) => {
-    await api.deleteToken(projectId, tokenId)
-    await loadTokens()
-  }
+  const handleCreateToken = useCallback(
+    async (name: string, readOnly: boolean) =>
+      runMutationWithToast(
+        async () => {
+          const data = await api.createToken(projectId, { name, readOnly })
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.tokens(projectId),
+        })
+        return data
+      },
+      { successMessage: 'Token created.' },
+    ),
+    [projectId, queryClient],
+  )
 
-  const handleCreateInvite = async () => {
+  const handleDeleteToken = useCallback(
+    async (tokenId: string) =>
+      runMutationWithToast(
+        async () => {
+        await api.deleteToken(projectId, tokenId)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.tokens(projectId),
+        })
+      },
+      { successMessage: 'Token deleted.' },
+    ),
+    [projectId, queryClient],
+  )
+
+  const handleCreateInvite = useCallback(async () => {
     if (!inviteEmail.trim() || inviteCreating) return
     setInviteCreating(true)
     try {
-      const data = await api.createInvite(projectId, {
-        email: inviteEmail.trim(),
-        role: inviteRole,
-      })
-      const link = `${window.location.origin}${window.location.pathname}#/invite?token=${encodeURIComponent(
-        data.token,
-      )}`
-      setLastInviteLink(link)
-      setInviteEmail('')
-      await loadInvites()
+      await runMutationWithToast(
+        () =>
+          api.createInvite(projectId, {
+            email: inviteEmail.trim(),
+            role: inviteRole,
+          }),
+        {
+          successMessage: 'Invite sent.',
+          onSuccess: async (data) => {
+            const link = `${window.location.origin}/invite?token=${encodeURIComponent(
+              data.token,
+            )}`
+            setLastInviteLink(link)
+            setInviteEmail('')
+            await queryClient.invalidateQueries({
+              queryKey: queryKeys.invites(projectId),
+            })
+          },
+        },
+      )
     } finally {
       setInviteCreating(false)
     }
-  }
+  }, [inviteCreating, inviteEmail, inviteRole, projectId, queryClient])
 
-  const handleRevokeInvite = async (inviteId: string) => {
-    await api.revokeInvite(projectId, inviteId)
-    await loadInvites()
-  }
+  const handleRevokeInvite = useCallback(
+    async (inviteId: string) =>
+      runMutationWithToast(
+        async () => {
+        await api.revokeInvite(projectId, inviteId)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.invites(projectId),
+        })
+      },
+      { successMessage: 'Invite revoked.' },
+    ),
+    [projectId, queryClient],
+  )
 
-  const selectedProject = projects.find((project) => project.id === projectId) ?? null
+  const selectedProject =
+    projects.find((project) => project.id === projectId) ?? null
+
+  const projectsError = projectsErrorRaw
+    ? getErrorMessage(projectsErrorRaw)
+    : null
+  const envError = envErrorRaw ? getErrorMessage(envErrorRaw) : null
+  const auditError = auditErrorRaw ? getErrorMessage(auditErrorRaw) : null
+  const tokensError = tokensErrorRaw ? getErrorMessage(tokensErrorRaw) : null
+  const invitesError = invitesErrorRaw ? getErrorMessage(invitesErrorRaw) : null
+  const searchError = searchErrorRaw ? getErrorMessage(searchErrorRaw) : null
 
   return (
     <section className="flex flex-col gap-10">
@@ -233,7 +289,6 @@ export const ProjectPage = ({
         actions={
           <Button
             variant="outline"
-            className="gap-2 rounded-full border-border px-6 py-3 text-sm font-semibold text-foreground transition hover:border-foreground/40"
             onClick={() => navigate('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -247,9 +302,123 @@ export const ProjectPage = ({
         selectedProjectId={projectId}
         loading={projectsLoading}
         error={projectsError}
-        onSelect={(id) => navigate(`/projects/${id}`)}
+        onSelect={(id) => {
+          const project = projects.find((item) => item.id === id)
+          navigate(projectPath(id, project?.slug))
+        }}
         onCreate={handleCreateProject}
       />
+
+      <SectionCard>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-foreground text-lg font-semibold">
+              Global secret search
+            </h3>
+            <p className="text-muted-foreground text-xs">
+              Search across all environments in this project.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[1.2fr_0.5fr]">
+          <Input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Search by key..."
+          />
+          <Select
+            value={searchEnvFilter ?? 'all'}
+            onValueChange={(value) =>
+              setSearchEnvFilter(value === 'all' ? null : value)
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="All environments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All environments</SelectItem>
+              {environments.map((env) => (
+                <SelectItem key={env.id} value={env.id}>
+                  {env.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            variant={searchEnvFilter ? 'outline' : 'default'}
+            size="sm"
+            onClick={() => setSearchEnvFilter(null)}
+          >
+            All
+          </Button>
+          {environments.map((env) => (
+            <Button
+              key={env.id}
+              variant={searchEnvFilter === env.id ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSearchEnvFilter(env.id)}
+            >
+              {env.name}
+            </Button>
+          ))}
+        </div>
+
+        {searchError ? (
+          <ErrorBanner message={searchError} className="mt-4" />
+        ) : null}
+
+        <div className="mt-4 space-y-2">
+          {searchLoading ? (
+            <p className="text-muted-foreground text-sm">
+              Searching secrets...
+            </p>
+          ) : trimmedSearch.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              Start typing to search for keys across environments.
+            </p>
+          ) : searchResults.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No secrets matched.</p>
+          ) : (
+            searchResults.map((secret) => (
+              <button
+                key={secret.id}
+                type="button"
+                className="border-border bg-card/80 hover:border-foreground/20 flex w-full flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left text-sm transition"
+                onClick={() =>
+                  navigate(
+                    environmentPath(
+                      projectId,
+                      selectedProject?.slug,
+                      secret.environmentId,
+                      environments.find(
+                        (env) => env.id === secret.environmentId,
+                      )?.slug,
+                    ),
+                  )
+                }
+              >
+                <div>
+                  <p className="text-foreground font-semibold">{secret.key}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {secret.environmentName} · updated{' '}
+                    {formatDateTime(secret.updatedAt)}
+                  </p>
+                </div>
+                {secret.value ? (
+                  <span className="text-muted-foreground text-xs">
+                    {secret.value.slice(0, 48)}
+                    {secret.value.length > 48 ? '…' : ''}
+                  </span>
+                ) : null}
+              </button>
+            ))
+          )}
+        </div>
+      </SectionCard>
 
       <section>
         <EnvironmentsSection
@@ -261,39 +430,48 @@ export const ProjectPage = ({
           coverageLoading={false}
           onSelect={(environmentId) => {
             setSelectedEnvironmentId(environmentId)
-            navigate(`/projects/${projectId}/environments/${environmentId}`)
+            navigate(
+              environmentPath(
+                projectId,
+                selectedProject?.slug,
+                environmentId,
+                environments.find((env) => env.id === environmentId)?.slug,
+              ),
+            )
           }}
           onCreate={handleCreateEnvironment}
         />
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        <AuditLog audits={auditLogs} loading={auditLoading} error={auditError} />
+        <AuditLog
+          audits={auditLogs}
+          loading={auditLoading}
+          error={auditError}
+        />
         <TokensPanel
           tokens={tokens}
           loading={tokensLoading}
           error={tokensError}
           onCreate={handleCreateToken}
           onDelete={handleDeleteToken}
-          lastCreated={lastToken}
-          onClearLastCreated={() => setLastToken(null)}
         />
       </section>
 
       <SectionCard>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Team invites</h3>
-            <p className="text-xs text-muted-foreground">
+            <h3 className="text-foreground text-lg font-semibold">
+              Team invites
+            </h3>
+            <p className="text-muted-foreground text-xs">
               Invite teammates to this project workspace.
             </p>
           </div>
         </div>
 
-        {(invitesError && !invitesLoading) ? (
-          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-            {invitesError}
-          </div>
+        {invitesError && !invitesLoading ? (
+          <ErrorBanner message={invitesError} className="mt-4" />
         ) : null}
 
         <div className="mt-4 grid gap-4 md:grid-cols-[1.2fr_0.6fr_auto]">
@@ -301,10 +479,12 @@ export const ProjectPage = ({
             value={inviteEmail}
             onChange={(event) => setInviteEmail(event.target.value)}
             placeholder="teammate@company.com"
-            className="h-11 rounded-2xl px-4"
           />
-          <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as Role)}>
-            <SelectTrigger className="h-11 px-4">
+          <Select
+            value={inviteRole}
+            onValueChange={(value) => setInviteRole(value as Role)}
+          >
+            <SelectTrigger>
               <SelectValue placeholder="Role" />
             </SelectTrigger>
             <SelectContent>
@@ -315,7 +495,6 @@ export const ProjectPage = ({
           </Select>
           <Button
             onClick={handleCreateInvite}
-            className="h-11 rounded-full px-6 text-sm font-semibold"
             disabled={inviteCreating || !inviteEmail.trim()}
           >
             {inviteCreating ? 'Inviting...' : 'Send invite'}
@@ -332,32 +511,35 @@ export const ProjectPage = ({
         ) : null}
 
         <div className="mt-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            Pending invites
-          </p>
+          <p className="muted-label">Pending invites</p>
           {invitesLoading ? (
-            <p className="mt-3 text-sm text-muted-foreground">Loading invites...</p>
+            <p className="text-muted-foreground mt-3 text-sm">
+              Loading invites...
+            </p>
           ) : invites.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">No invites yet.</p>
+            <p className="text-muted-foreground mt-3 text-sm">
+              No invites yet.
+            </p>
           ) : (
             <div className="mt-3 space-y-2">
               {invites.map((invite) => (
                 <div
                   key={invite.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card/80 px-4 py-3 text-sm"
+                  className="border-border bg-card/80 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm"
                 >
                   <div>
-                    <p className="font-semibold text-foreground">{invite.email}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-foreground font-semibold">
+                      {invite.email}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
                       {invite.role} · {invite.status} · expires{' '}
-                      {new Date(invite.expiresAt).toLocaleDateString()}
+                      {formatDate(invite.expiresAt)}
                     </p>
                   </div>
                   {invite.status === 'PENDING' ? (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="rounded-full px-4 text-xs"
                       onClick={() => handleRevokeInvite(invite.id)}
                     >
                       Revoke

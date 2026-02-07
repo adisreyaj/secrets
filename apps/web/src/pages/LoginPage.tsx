@@ -2,7 +2,11 @@ import { useEffect } from 'react'
 import { AuthPanel } from '../components/AuthPanel'
 import { useAuth } from '../lib/auth'
 
-export const LoginPage = ({ navigate }: { navigate: (path: string) => void }) => {
+export const LoginPage = ({
+  navigate,
+}: {
+  navigate: (path: string) => void
+}) => {
   const { user, loading, error, login, register } = useAuth()
 
   useEffect(() => {

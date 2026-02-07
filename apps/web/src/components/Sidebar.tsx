@@ -10,24 +10,86 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from './ui/button'
+import { formatDate } from '../lib/format'
+import { projectPath } from '../lib/paths'
 
 const navItems: {
-  key: 'overview' | 'environments' | 'secrets' | 'audit' | 'tokens' | 'team'
+  key:
+    | 'overview'
+    | 'environments'
+    | 'secrets'
+    | 'audit'
+    | 'approvals'
+    | 'approval-rules'
+    | 'tokens'
+    | 'service-accounts'
+    | 'team'
   label: string
   icon: LucideIcon
-  path: (id: string) => string
+  path: (id: string, slug?: string | null) => string
 }[] = [
-  { key: 'overview', label: 'Overview', icon: LayoutDashboard, path: (id: string) => `/projects/${id}` },
+  {
+    key: 'overview',
+    label: 'Overview',
+    icon: LayoutDashboard,
+    path: (id: string, slug?: string | null) => projectPath(id, slug),
+  },
   {
     key: 'environments',
     label: 'Environments',
     icon: Layers,
-    path: (id: string) => `/projects/${id}/environments`,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'environments'),
   },
-  { key: 'secrets', label: 'Secrets', icon: Key, path: (id: string) => `/projects/${id}/environments` },
-  { key: 'audit', label: 'Audit log', icon: ShieldCheck, path: (id: string) => `/projects/${id}/audit` },
-  { key: 'team', label: 'Team', icon: Users, path: (id: string) => `/projects/${id}/team` },
-  { key: 'tokens', label: 'API tokens', icon: KeyRound, path: (id: string) => `/projects/${id}/tokens` },
+  {
+    key: 'secrets',
+    label: 'Secrets',
+    icon: Key,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'environments'),
+  },
+  {
+    key: 'audit',
+    label: 'Audit log',
+    icon: ShieldCheck,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'audit'),
+  },
+  {
+    key: 'approvals',
+    label: 'Approvals',
+    icon: ShieldCheck,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'approvals'),
+  },
+  {
+    key: 'approval-rules',
+    label: 'Approval rules',
+    icon: ShieldCheck,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'approval-rules'),
+  },
+  {
+    key: 'team',
+    label: 'Team',
+    icon: Users,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'team'),
+  },
+  {
+    key: 'tokens',
+    label: 'API tokens',
+    icon: KeyRound,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'tokens'),
+  },
+  {
+    key: 'service-accounts',
+    label: 'Service accounts',
+    icon: KeyRound,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'service-accounts'),
+  },
 ]
 
 export const Sidebar = ({
@@ -42,23 +104,32 @@ export const Sidebar = ({
   environmentCount: number
   secretCount: number
   projectId: string
-  active: 'overview' | 'environments' | 'audit' | 'tokens' | 'secrets' | 'team'
+  active:
+    | 'overview'
+    | 'environments'
+    | 'audit'
+    | 'approvals'
+    | 'approval-rules'
+    | 'tokens'
+    | 'service-accounts'
+    | 'secrets'
+    | 'team'
   onNavigate: (path: string) => void
 }) => (
-  <aside className="space-y-4 rounded-3xl border border-border/60 bg-card/70 p-6 shadow-soft">
+  <aside className="border-border/60 bg-card/70 shadow-soft space-y-4 rounded-3xl border p-6">
     <header>
-      <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
+      <p className="text-muted-foreground text-xs tracking-[0.3em] uppercase">
         Workspace
       </p>
-      <p className="mt-2 text-lg font-semibold text-foreground">
+      <p className="text-foreground mt-2 text-lg font-semibold">
         {project?.name ?? 'No project'}
       </p>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         {project ? (
           <>
             Updated{' '}
             <time dateTime={project.updatedAt}>
-              {new Date(project.updatedAt).toLocaleDateString()}
+              {formatDate(project.updatedAt)}
             </time>
           </>
         ) : (
@@ -67,14 +138,14 @@ export const Sidebar = ({
       </p>
     </header>
     <nav aria-label="Project sections">
-      <ul className="space-y-3 text-sm text-muted-foreground">
+      <ul className="text-muted-foreground space-y-3 text-sm">
         {navItems.map((item) => {
           const isActive = item.key === active
           return (
             <li key={item.key}>
               <Button
                 variant="ghost"
-                onClick={() => onNavigate(item.path(projectId))}
+                onClick={() => onNavigate(item.path(projectId, project?.slug))}
                 className={`flex h-auto w-full items-center justify-between rounded-full px-3 py-2 text-left transition ${
                   isActive
                     ? 'bg-foreground text-background hover:bg-foreground'
@@ -94,12 +165,12 @@ export const Sidebar = ({
         })}
       </ul>
     </nav>
-    <section className="rounded-2xl bg-foreground p-4 text-background">
-      <p className="text-xs uppercase tracking-[0.3em] text-background/70">
+    <section className="bg-foreground text-background rounded-2xl p-4">
+      <p className="text-background/70 text-xs tracking-[0.3em] uppercase">
         Coverage
       </p>
       <p className="mt-2 text-lg font-semibold">{secretCount}</p>
-      <p className="text-xs text-background/70">
+      <p className="text-background/70 text-xs">
         {environmentCount} environments with secrets
       </p>
     </section>

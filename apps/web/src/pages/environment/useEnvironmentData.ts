@@ -1,305 +1,269 @@
-import type { EnvironmentDto, ProjectDto, SecretDto } from '@secrets/shared'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, ApiError } from '../../lib/api'
+import type {
+  ApprovalRequestDto,
+  EnvironmentDto,
+  ProjectDto,
+  SecretDto,
+} from '@secrets/shared'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
+import { api } from '../../lib/api'
+import { downloadTextFile, buildEnvFilename, buildSecretsCsv, slugify } from '../../lib/download'
+import { getErrorMessage } from '../../lib/errors'
+import { queryKeys } from '../../lib/queryKeys'
+import { asArray } from '../../lib/queryResult'
+import { createEnvironmentMutations } from '../../features/environment/mutations'
+import {
+  buildEnvironmentOptions,
+  buildMissingKeys,
+  buildMissingKeysByEnvironment,
+  buildPendingBySecretId,
+  buildSecretByKey,
+} from '../../features/environment/selectors'
 
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
-
-const toSlug = (value: string) =>
-  value
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
+type UseEnvironmentDataProps = {
+  projectId: string
+  environmentId: string
+  enabled: boolean
+}
 
 export const useEnvironmentData = ({
   projectId,
   environmentId,
   enabled,
-}: {
-  projectId: string
-  environmentId: string
-  enabled: boolean
-}) => {
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
+}: UseEnvironmentDataProps) => {
+  const queryClient = useQueryClient()
 
-  const [environments, setEnvironments] = useState<EnvironmentDto[]>([])
-  const [envLoading, setEnvLoading] = useState(false)
-  const [envError, setEnvError] = useState<string | null>(null)
+  const {
+    data: projectsData,
+    error: projectsErrorRaw,
+  } = useQuery<ProjectDto[]>({
+    queryKey: queryKeys.projects(),
+    queryFn: () => api.listProjects(),
+    enabled,
+  })
 
-  const [secrets, setSecrets] = useState<SecretDto[]>([])
-  const [secretsLoading, setSecretsLoading] = useState(false)
-  const [secretsError, setSecretsError] = useState<string | null>(null)
+  const projects = asArray(projectsData)
+
+  const {
+    data: environmentsData,
+    isLoading: envLoading,
+    error: envErrorRaw,
+  } = useQuery<EnvironmentDto[]>({
+    queryKey: queryKeys.environments(projectId),
+    queryFn: () => api.listEnvironments(projectId),
+    enabled: enabled && Boolean(projectId),
+  })
+
+  const environments = asArray(environmentsData)
+
+  const resolvedEnvironmentId = environmentId
+
   const [valuesVisible, setValuesVisible] = useState(false)
   const [valuesLoaded, setValuesLoaded] = useState(false)
-  const [secretKeyIndex, setSecretKeyIndex] = useState<Record<string, string[]>>(
-    {},
-  )
-  const [coverageLoading, setCoverageLoading] = useState(false)
-  const [coverageError, setCoverageError] = useState<string | null>(null)
 
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
+  const {
+    data: secretsKeysData,
+    isLoading: secretsKeysLoading,
+    error: secretsKeysErrorRaw,
+  } = useQuery<SecretDto[]>({
+    queryKey: queryKeys.secrets(resolvedEnvironmentId, false),
+    queryFn: () => api.listSecrets(resolvedEnvironmentId, false),
+    enabled: enabled && Boolean(resolvedEnvironmentId),
+  })
+
+  const {
+    data: secretsValuesData,
+    isLoading: secretsValuesLoading,
+    error: secretsValuesErrorRaw,
+  } = useQuery<SecretDto[]>({
+    queryKey: queryKeys.secrets(resolvedEnvironmentId, true),
+    queryFn: () => api.listSecrets(resolvedEnvironmentId, true),
+    enabled: enabled && Boolean(resolvedEnvironmentId) && valuesLoaded,
+  })
+
+  const secrets = useMemo(() => {
+    if (valuesLoaded) {
+      return secretsValuesData ?? secretsKeysData ?? []
     }
-  }, [])
+    return secretsKeysData ?? []
+  }, [secretsKeysData, secretsValuesData, valuesLoaded])
 
-  const loadEnvironments = useCallback(async () => {
-    setEnvLoading(true)
-    setEnvError(null)
-    try {
-      const data = await api.listEnvironments(projectId)
-      setEnvironments(data)
-    } catch (error) {
-      setEnvError(getErrorMessage(error))
-    } finally {
-      setEnvLoading(false)
-    }
-  }, [projectId])
+  const secretsLoading = valuesLoaded ? secretsValuesLoading : secretsKeysLoading
+  const secretsErrorRaw = valuesLoaded
+    ? secretsValuesErrorRaw ?? secretsKeysErrorRaw
+    : secretsKeysErrorRaw
 
-  const loadSecrets = useCallback(
-    async (include: boolean) => {
-      setSecretsLoading(true)
-      setSecretsError(null)
-      try {
-        const data = await api.listSecrets(environmentId, include)
-        setSecrets(data)
-        return true
-      } catch (error) {
-        setSecretsError(getErrorMessage(error))
-        return false
-      } finally {
-        setSecretsLoading(false)
-      }
-    },
-    [environmentId],
-  )
+  const {
+    data: approvalsData,
+    isLoading: approvalsLoading,
+    error: approvalsErrorRaw,
+  } = useQuery<ApprovalRequestDto[]>({
+    queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+    queryFn: () =>
+      api.listApprovals(projectId, {
+        status: 'PENDING',
+        environmentId: resolvedEnvironmentId,
+      }),
+    enabled: enabled && Boolean(projectId) && Boolean(resolvedEnvironmentId),
+  })
 
-  const loadSecretCoverage = useCallback(async () => {
-    if (environments.length === 0) {
-      setSecretKeyIndex({})
-      return
-    }
+  const approvals = asArray(approvalsData)
 
-    setCoverageLoading(true)
-    setCoverageError(null)
-    try {
+  const {
+    data: secretCoverageData,
+    isLoading: coverageLoading,
+    error: coverageErrorRaw,
+  } = useQuery<Record<string, string[]>>({
+    queryKey: queryKeys.secretCoverage(projectId),
+    queryFn: async () => {
+      if (environments.length === 0) return {}
       const entries = await Promise.all(
         environments.map(async (env) => {
           const data = await api.listSecrets(env.id, false)
           return [env.id, data.map((secret) => secret.key)] as const
         }),
       )
-      const next: Record<string, string[]> = {}
-      for (const [envId, keys] of entries) {
-        next[envId] = keys
-      }
-      setSecretKeyIndex(next)
-    } catch (error) {
-      setCoverageError(getErrorMessage(error))
-    } finally {
-      setCoverageLoading(false)
-    }
-  }, [environments])
+      return Object.fromEntries(entries)
+    },
+    enabled: enabled && environments.length > 0,
+  })
 
-  useEffect(() => {
-    if (enabled) {
-      void loadProjects()
-      void loadEnvironments()
-    }
-  }, [enabled, loadProjects, loadEnvironments])
+  const secretKeyIndex = secretCoverageData ?? {}
 
-  useEffect(() => {
-    if (enabled) {
-      void loadSecrets(valuesLoaded)
-    }
-  }, [enabled, valuesLoaded, loadSecrets])
-
-  useEffect(() => {
-    if (enabled && environments.length > 0) {
-      void loadSecretCoverage()
-    }
-  }, [enabled, environments, loadSecretCoverage])
+  const projectsError = projectsErrorRaw
+    ? getErrorMessage(projectsErrorRaw)
+    : null
+  const envError = envErrorRaw ? getErrorMessage(envErrorRaw) : null
+  const secretsError = secretsErrorRaw ? getErrorMessage(secretsErrorRaw) : null
+  const approvalsError = approvalsErrorRaw
+    ? getErrorMessage(approvalsErrorRaw)
+    : null
+  const coverageError = coverageErrorRaw
+    ? getErrorMessage(coverageErrorRaw)
+    : null
 
   const handleToggleValues = async (nextVisible: boolean) => {
-    if (nextVisible && !valuesLoaded) {
-      const loaded = await loadSecrets(true)
-      if (loaded) {
+    if (nextVisible && !valuesLoaded && resolvedEnvironmentId) {
+      try {
+        await queryClient.fetchQuery({
+          queryKey: queryKeys.secrets(resolvedEnvironmentId, true),
+          queryFn: () => api.listSecrets(resolvedEnvironmentId, true),
+        })
         setValuesLoaded(true)
+      } catch {
+        // leave valuesLoaded false on failure
       }
     }
     setValuesVisible(nextVisible)
   }
 
-  const handleCreateEnvironment = async (payload: {
-    name: string
-    copyFromEnvironmentId?: string | null
-  }) => {
-    await api.createEnvironment(projectId, {
-      name: payload.name,
-      copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
-    })
-    await loadEnvironments()
-  }
+  const {
+    handleCreateEnvironment,
+    handleCreateSecret,
+    handleUpdateSecrets,
+    handleRollbackSecret,
+    handleDeleteSecret,
+    handleCopySecret,
+    handleCopyMissingSecrets,
+  } = createEnvironmentMutations({
+    queryClient,
+    projectId,
+    environmentId: resolvedEnvironmentId,
+    valuesLoaded,
+  })
 
-  const handleCreateSecret = async (payload: { key: string; value: string }) => {
-    await api.createSecret(environmentId, payload)
-    await loadSecrets(valuesLoaded)
-  }
-
-  const handleUpdateSecrets = async (
-    changes: { id: string; key?: string; value?: string }[],
-  ) => {
-    let keyUpdated = false
-    for (const change of changes) {
-      if (change.key !== undefined) {
-        keyUpdated = true
-      }
-      await api.updateSecret(change.id, {
-        key: change.key,
-        value: change.value,
-      })
-    }
-    await loadSecrets(valuesLoaded)
-    if (keyUpdated) {
-      await loadSecretCoverage()
-    }
-  }
-
-  const handleRollbackSecret = async (secretId: string) => {
-    await api.rollbackSecret(secretId)
-    await loadSecrets(valuesLoaded)
-  }
-
-  const handleDeleteSecret = async (secretId: string) => {
-    await api.deleteSecret(secretId)
-    await loadSecrets(valuesLoaded)
-  }
-
-  const handleDiffSecret = async (secretId: string) => {
-    return api.getSecretDiff(secretId)
-  }
-
-  const handleCopySecret = async (
+  const handleDiffSecret = async (
     secretId: string,
-    payload: { targetEnvironmentIds: string[]; overwrite: boolean },
+    versions?: { from?: string; to?: string },
   ) => {
-    const result = await api.copySecret(secretId, payload)
-    await loadSecretCoverage()
-    return result
+    return api.getSecretDiff(secretId, versions)
   }
 
-  const handleCopyMissingSecrets = async (
-    sourceEnvironmentId: string,
-    keys: string[],
-  ) => {
-    const result = await api.copySecretsFromEnvironment(environmentId, {
-      sourceEnvironmentId,
-      keys,
-      overwrite: false,
-    })
-    await loadSecretCoverage()
-    await loadSecrets(valuesLoaded)
-    return result
+  const handleListSecretVersions = async (secretId: string) => {
+    return api.listSecretVersions(secretId)
   }
 
   const selectedEnvironment =
-    environments.find((env) => env.id === environmentId) ?? null
+    environments.find((env) => env.id === (resolvedEnvironmentId ?? environmentId)) ??
+    null
   const selectedProject =
     projects.find((project) => project.id === projectId) ?? null
+
   const environmentOptions = useMemo(
-    () => environments.map((env) => ({ id: env.id, name: env.name })),
+    () => buildEnvironmentOptions(environments),
     [environments],
   )
 
-  const allSecretKeys = useMemo(() => {
-    const keys = new Set<string>()
-    for (const list of Object.values(secretKeyIndex)) {
-      for (const key of list) {
-        keys.add(key)
-      }
-    }
-    return keys
-  }, [secretKeyIndex])
+  const missingKeys = useMemo(
+    () => buildMissingKeys(secretKeyIndex, secrets),
+    [secretKeyIndex, secrets],
+  )
 
-  const missingKeys = useMemo(() => {
-    const currentKeys = new Set(secretKeyIndex[environmentId] ?? [])
-    const missing: string[] = []
-    for (const key of allSecretKeys) {
-      if (!currentKeys.has(key)) {
-        missing.push(key)
-      }
-    }
-    missing.sort((a, b) => a.localeCompare(b))
-    return missing
-  }, [allSecretKeys, environmentId, secretKeyIndex])
+  const missingKeysByEnvironment = useMemo(
+    () =>
+      buildMissingKeysByEnvironment(
+        environments,
+        resolvedEnvironmentId ?? environmentId,
+        secretKeyIndex,
+        secrets,
+      ),
+    [environmentId, environments, resolvedEnvironmentId, secretKeyIndex, secrets],
+  )
 
-  const missingKeysByEnvironment = useMemo(() => {
-    const currentKeys = new Set(secretKeyIndex[environmentId] ?? [])
-    const map: Record<string, string[]> = {}
-    for (const env of environments) {
-      if (env.id === environmentId) continue
-      const keys = secretKeyIndex[env.id] ?? []
-      const candidates = keys.filter((key) => !currentKeys.has(key))
-      if (candidates.length > 0) {
-        map[env.id] = candidates.sort((a, b) => a.localeCompare(b))
-      }
-    }
-    return map
-  }, [environmentId, environments, secretKeyIndex])
+  const secretByKey = useMemo(() => buildSecretByKey(secrets), [secrets])
 
-  const secretByKey = useMemo(() => {
-    const map = new Map<string, SecretDto>()
-    for (const secret of secrets) {
-      map.set(secret.key, secret)
-    }
-    return map
-  }, [secrets])
+  const pendingBySecretId = useMemo(
+    () => buildPendingBySecretId(approvals),
+    [approvals],
+  )
 
   const handleExportEnv = async () => {
     if (!selectedEnvironment) return
     const content = await api.exportEnv(selectedEnvironment.id)
-    const projectSlug =
-      toSlug(selectedProject?.name ?? projectId.slice(0, 6)) ||
-      projectId.slice(0, 6)
-    const environmentSlug =
-      toSlug(selectedEnvironment.name) || selectedEnvironment.id.slice(0, 6)
-    const filename = `${projectSlug}-${environmentSlug}.env`
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = filename
-    anchor.click()
-    URL.revokeObjectURL(url)
+    const filename = buildEnvFilename(
+      selectedProject?.name,
+      projectId,
+      selectedEnvironment.name,
+      selectedEnvironment.id,
+    )
+    downloadTextFile(content, filename, 'text/plain')
   }
 
   const handleExportCsv = () => {
     if (!selectedEnvironment) return
-    const escape = (value: string) =>
-      value.includes(',') || value.includes('"') || value.includes('\n')
-        ? `"${value.replace(/"/g, '""')}"`
-        : value
-    const lines = ['key,value,updated_at']
-    for (const secret of secrets) {
-      const value = valuesLoaded ? secret.value ?? '' : ''
-      lines.push(
-        `${escape(secret.key)},${escape(value)},${escape(secret.updatedAt)}`,
-      )
-    }
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `${toSlug(selectedEnvironment.name)}-secrets.csv`
-    anchor.click()
-    URL.revokeObjectURL(url)
+
+    const content = buildSecretsCsv(
+      secrets.map((secret) => ({
+        key: secret.key,
+        value: valuesLoaded ? (secret.value ?? '') : '',
+        updatedAt: secret.updatedAt,
+      })),
+    )
+    downloadTextFile(
+      content,
+      `${slugify(selectedEnvironment.name)}-secrets.csv`,
+      'text/csv',
+    )
+  }
+
+  const loadSecrets = async (include: boolean): Promise<boolean> => {
+    if (!resolvedEnvironmentId) return false
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secrets(resolvedEnvironmentId, include),
+    })
+    return true
+  }
+
+  const loadSecretCoverage = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.secretCoverage(projectId),
+    })
+  }
+
+  const loadApprovals = async () => {
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
+    })
   }
 
   return {
@@ -315,9 +279,13 @@ export const useEnvironmentData = ({
     valuesLoaded,
     coverageLoading,
     coverageError,
+    approvals,
+    approvalsLoading,
+    approvalsError,
     missingKeys,
     missingKeysByEnvironment,
     secretByKey,
+    pendingBySecretId,
     selectedEnvironment,
     selectedProject,
     environmentOptions,
@@ -328,11 +296,13 @@ export const useEnvironmentData = ({
     handleRollbackSecret,
     handleDeleteSecret,
     handleDiffSecret,
+    handleListSecretVersions,
     handleCopySecret,
     handleCopyMissingSecrets,
     handleExportEnv,
     handleExportCsv,
     loadSecrets,
     loadSecretCoverage,
+    loadApprovals,
   }
 }

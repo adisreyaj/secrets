@@ -1,5 +1,5 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 import type { RouteMatch } from '../lib/router'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'
 
 type ShortcutItem = { keys: string; label: string }
 
@@ -8,10 +8,12 @@ const globalShortcuts: ShortcutItem[] = [
   { keys: 'g p', label: 'Projects' },
   { keys: 'g o', label: 'Project overview' },
   { keys: 'g e', label: 'Environments list' },
-  { keys: 'g s', label: 'Secrets' },
-  { keys: 'g a', label: 'Audit log' },
+  { keys: 'g c', label: 'Secrets' },
+  { keys: 'g a', label: 'Approvals' },
+  { keys: 'g l', label: 'Audit log' },
   { keys: 'g m', label: 'Team' },
   { keys: 'g t', label: 'API tokens' },
+  { keys: 'g s', label: 'Service accounts' },
 ]
 
 const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
@@ -21,9 +23,11 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
   projects: [{ keys: 'n', label: 'New project' }],
   project: [
     { keys: 'e', label: 'Environments' },
-    { keys: 'a', label: 'Audit log' },
+    { keys: 'l', label: 'Audit log' },
+    { keys: 'a', label: 'Approvals' },
     { keys: 'm', label: 'Team' },
     { keys: 't', label: 'API tokens' },
+    { keys: 's', label: 'Service accounts' },
     { keys: 'b', label: 'Back to projects' },
   ],
   environments: [
@@ -40,11 +44,14 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
     { keys: 'b', label: 'Back to environments' },
   ],
   audit: [{ keys: 'b', label: 'Back to overview' }],
+  approvals: [{ keys: 'b', label: 'Back to overview' }],
+  'approval-rules': [{ keys: 'b', label: 'Back to overview' }],
   team: [{ keys: 'b', label: 'Back to overview' }],
   tokens: [
     { keys: 'n', label: 'Focus token name' },
     { keys: 'b', label: 'Back to overview' },
   ],
+  'service-accounts': [{ keys: 'b', label: 'Back to overview' }],
   profile: [],
 }
 
@@ -53,10 +60,10 @@ const ShortcutList = ({ items }: { items: ShortcutItem[] }) => (
     {items.map((item) => (
       <div
         key={`${item.keys}-${item.label}`}
-        className="flex items-center justify-between rounded-xl border border-border/70 bg-card/80 px-3 py-2 text-sm"
+        className="border-border/70 bg-card/80 flex items-center justify-between rounded-xl border px-3 py-2 text-sm"
       >
         <span className="text-muted-foreground">{item.label}</span>
-        <kbd className="rounded-lg border border-border bg-muted px-2 py-1 font-mono text-xs text-foreground">
+        <kbd className="border-border bg-muted text-foreground rounded-lg border px-2 py-1 font-mono text-xs">
           {item.keys}
         </kbd>
       </div>
@@ -77,22 +84,18 @@ export const ShortcutsHelpDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg rounded-3xl border-border/70 bg-popover text-popover-foreground">
+      <DialogContent className="border-border/70 bg-popover text-popover-foreground max-w-lg rounded-3xl">
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
         </DialogHeader>
         <div className="space-y-5 text-sm">
           <section className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Global
-            </p>
+            <p className="muted-label">Global</p>
             <ShortcutList items={globalShortcuts} />
           </section>
           {currentShortcuts.length > 0 ? (
             <section className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                This page
-              </p>
+              <p className="muted-label">This page</p>
               <ShortcutList items={currentShortcuts} />
             </section>
           ) : null}

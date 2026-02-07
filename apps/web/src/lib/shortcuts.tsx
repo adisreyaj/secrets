@@ -1,5 +1,17 @@
 import type { ReactNode } from 'react'
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import {
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react'
+import {
+    getShortcutHintsEnabled,
+    setShortcutHintsEnabled
+} from './shortcuts.utils'
 
 type ShortcutHandler = () => void
 
@@ -35,19 +47,19 @@ type ShortcutHintsContextValue = {
   setEnabled: (next: boolean) => void
 }
 
-const ShortcutHintsContext = createContext<ShortcutHintsContextValue | null>(null)
-
-const LAST_PROJECT_KEY = 'secrets:lastProjectId'
-const SHORTCUT_HINTS_KEY = 'secrets:showShortcutHints'
-const lastEnvironmentKey = (projectId: string) =>
-  `secrets:lastEnvironmentId:${projectId}`
+const ShortcutHintsContext = createContext<ShortcutHintsContextValue | null>(
+  null,
+)
 
 const normalizeKey = (value: string) => value.trim().toLowerCase()
 
 const parseToken = (token: string) => {
   const normalized = token.trim()
   if (normalized.startsWith('shift+')) {
-    return { key: normalizeKey(normalized.replace(/^shift\+/, '')), shift: true }
+    return {
+      key: normalizeKey(normalized.replace(/^shift\+/, '')),
+      shift: true,
+    }
   }
   return { key: normalizeKey(normalized), shift: false }
 }
@@ -102,7 +114,9 @@ export const ShortcutsProvider = ({ children }: { children: ReactNode }) => {
   const register = useCallback((entry: ShortcutRegistration) => {
     registryRef.current = [...registryRef.current, entry]
     return () => {
-      registryRef.current = registryRef.current.filter((item) => item.id !== entry.id)
+      registryRef.current = registryRef.current.filter(
+        (item) => item.id !== entry.id,
+      )
     }
   }, [])
 
@@ -122,7 +136,9 @@ export const ShortcutsProvider = ({ children }: { children: ReactNode }) => {
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
 
       if (pendingChordRef.current) {
-        const matches = registryRef.current.filter((entry) => entry.key.type === 'chord')
+        const matches = registryRef.current.filter(
+          (entry) => entry.key.type === 'chord',
+        )
         for (const entry of matches) {
           if (
             entry.key.type === 'chord' &&
@@ -138,7 +154,13 @@ export const ShortcutsProvider = ({ children }: { children: ReactNode }) => {
         clearChord()
       }
 
-      if (key === 'g' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (
+        key === 'g' &&
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
         pendingChordRef.current = 'g'
         if (chordTimeoutRef.current !== null) {
           window.clearTimeout(chordTimeoutRef.current)
@@ -150,7 +172,9 @@ export const ShortcutsProvider = ({ children }: { children: ReactNode }) => {
         return
       }
 
-      const matches = registryRef.current.filter((entry) => entry.key.type === 'single')
+      const matches = registryRef.current.filter(
+        (entry) => entry.key.type === 'single',
+      )
       for (const entry of matches) {
         if (entry.key.type === 'single' && matchesSingleKey(event, entry.key)) {
           event.preventDefault()
@@ -166,28 +190,18 @@ export const ShortcutsProvider = ({ children }: { children: ReactNode }) => {
 
   const value = useMemo<ShortcutsContextValue>(() => ({ register }), [register])
 
-  return <ShortcutsContext.Provider value={value}>{children}</ShortcutsContext.Provider>
+  return (
+    <ShortcutsContext.Provider value={value}>
+      {children}
+    </ShortcutsContext.Provider>
+  )
 }
 
-export const getShortcutHintsEnabled = () => {
-  try {
-    const value = window.localStorage.getItem(SHORTCUT_HINTS_KEY)
-    if (value === null) return true
-    return value === 'true'
-  } catch {
-    return true
-  }
-}
-
-export const setShortcutHintsEnabled = (value: boolean) => {
-  try {
-    window.localStorage.setItem(SHORTCUT_HINTS_KEY, String(value))
-  } catch {
-    // no-op
-  }
-}
-
-export const ShortcutHintsProvider = ({ children }: { children: ReactNode }) => {
+export const ShortcutHintsProvider = ({
+  children,
+}: {
+  children: ReactNode
+}) => {
   const [enabled, setEnabledState] = useState(getShortcutHintsEnabled)
 
   const setEnabled = useCallback((next: boolean) => {
@@ -241,36 +255,4 @@ export const useRegisterShortcut = (
       cleanups.forEach((cleanup) => cleanup())
     }
   }, [context, enabled, keys])
-}
-
-export const setLastProjectId = (projectId: string) => {
-  try {
-    window.localStorage.setItem(LAST_PROJECT_KEY, projectId)
-  } catch {
-    // no-op
-  }
-}
-
-export const getLastProjectId = () => {
-  try {
-    return window.localStorage.getItem(LAST_PROJECT_KEY)
-  } catch {
-    return null
-  }
-}
-
-export const setLastEnvironmentId = (projectId: string, environmentId: string) => {
-  try {
-    window.localStorage.setItem(lastEnvironmentKey(projectId), environmentId)
-  } catch {
-    // no-op
-  }
-}
-
-export const getLastEnvironmentId = (projectId: string) => {
-  try {
-    return window.localStorage.getItem(lastEnvironmentKey(projectId))
-  } catch {
-    return null
-  }
 }

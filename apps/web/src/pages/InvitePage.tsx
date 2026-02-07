@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { AuthPanel } from '../components/AuthPanel'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard } from '../components/SectionCard'
 import { Button } from '../components/ui/button'
-import { api, ApiError } from '../lib/api'
+import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { getErrorMessage } from '../lib/errors'
+import { projectPath } from '../lib/paths'
 
 export const InvitePage = ({
   token,
@@ -17,7 +17,9 @@ export const InvitePage = ({
   navigate: (path: string) => void
 }) => {
   const { user, loading, error, login, register } = useAuth()
-  const [status, setStatus] = useState<'idle' | 'accepting' | 'accepted'>('idle')
+  const [status, setStatus] = useState<'idle' | 'accepting' | 'accepted'>(
+    'idle',
+  )
   const [acceptError, setAcceptError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -29,7 +31,7 @@ export const InvitePage = ({
       .acceptInvite({ token })
       .then((data) => {
         setStatus('accepted')
-        navigate(`/projects/${data.projectId}`)
+        navigate(projectPath(data.projectId, data.projectSlug))
       })
       .catch((err) => {
         setStatus('idle')
@@ -56,24 +58,18 @@ export const InvitePage = ({
         title="Accept invite"
         subtitle="Join your team workspace."
         actions={
-          <Button
-            variant="outline"
-            className="rounded-full px-4 text-sm"
-            onClick={() => navigate('/projects')}
-          >
+          <Button variant="outline" onClick={() => navigate('/projects')}>
             Back to projects
           </Button>
         }
       />
       <SectionCard>
         {acceptError ? (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-            {acceptError}
-          </div>
+          <ErrorBanner message={acceptError} />
         ) : status === 'accepting' ? (
-          <p className="text-sm text-muted-foreground">Accepting invite...</p>
+          <p className="text-muted-foreground text-sm">Accepting invite...</p>
         ) : (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Use the invite link provided by your team.
           </p>
         )}

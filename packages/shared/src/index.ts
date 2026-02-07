@@ -1,4 +1,6 @@
 export type Role = 'ADMIN' | 'EDITOR' | 'VIEWER';
+export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'DENIED' | 'CANCELED';
+export type ApprovalAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'ROLLBACK' | 'COPY' | 'COPY_FROM';
 
 export interface UserDto {
   id: string;
@@ -10,6 +12,7 @@ export interface ProjectDto {
   id: string;
   name: string;
   slug?: string | null;
+  auditRetentionDays?: number | null;
   createdAt: string;
   updatedAt: string;
   role?: Role;
@@ -33,15 +36,67 @@ export interface SecretDto {
   value?: string;
 }
 
+export interface ApprovalRuleDto {
+  id: string;
+  projectId: string;
+  name: string;
+  environmentId?: string | null;
+  keyPattern: string;
+  actions: ApprovalAction[];
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApprovalRequestDto {
+  id: string;
+  projectId: string;
+  environmentId: string;
+  secretId?: string | null;
+  action: ApprovalAction;
+  status: ApprovalStatus;
+  requestedBy: string;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  deniedAt?: string | null;
+  canceledAt?: string | null;
+  key: string;
+  targetEnvironmentId?: string | null;
+  expectedVersionId?: string | null;
+  metadataJson?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  proposedValue?: string | null;
+  currentValue?: string | null;
+}
+
 export interface AuditLogDto {
   id: string;
   projectId: string;
   actorUserId?: string | null;
+  actorServiceAccountId?: string | null;
   action: string;
   resourceType: string;
   resourceId?: string | null;
   metadataJson?: Record<string, unknown> | null;
   createdAt: string;
+}
+
+export interface AuditLogFilters {
+  start?: string;
+  end?: string;
+  action?: string;
+  resourceType?: string;
+  resourceId?: string;
+  actorUserId?: string;
+  actorServiceAccountId?: string;
+  limit?: number;
+}
+
+export interface AuditRetentionDto {
+  projectId: string;
+  auditRetentionDays: number | null;
 }
 
 export interface ApiTokenDto {
@@ -84,6 +139,7 @@ export interface AcceptInviteRequest {
 export interface AcceptInviteResponse {
   ok: true;
   projectId: string;
+  projectSlug?: string | null;
 }
 
 export interface AuthResponse {
@@ -151,6 +207,33 @@ export interface CopyEnvironmentSecretsResponse {
   created: string[];
   updated: string[];
   skipped: string[];
+  skippedDetails?: {
+    key: string;
+    reason: string;
+    code: string;
+  }[];
+}
+
+export interface ApprovalRequestResponse {
+  status: 'pending';
+  approvalRequestId?: string;
+  approvalRequestIds?: string[];
+}
+
+export interface CreateApprovalRuleRequest {
+  name: string;
+  environmentId?: string | null;
+  keyPattern: string;
+  actions: ApprovalAction[];
+  isActive?: boolean;
+}
+
+export interface UpdateApprovalRuleRequest {
+  name?: string;
+  environmentId?: string | null;
+  keyPattern?: string;
+  actions?: ApprovalAction[];
+  isActive?: boolean;
 }
 
 export interface CreateTokenRequest {
@@ -203,6 +286,70 @@ export interface SecretDiffResponse {
     value: string;
     createdAt: string;
   };
+}
+
+export interface SecretVersionDto {
+  id: string;
+  createdAt: string;
+  isActive: boolean;
+}
+
+export interface SecretSearchResultDto {
+  id: string;
+  key: string;
+  environmentId: string;
+  environmentName: string;
+  updatedAt: string;
+  value?: string;
+}
+
+export interface BulkImportRequest {
+  entries: { key: string; value: string }[];
+  overwrite?: boolean;
+}
+
+export interface BulkImportResponse {
+  created: number;
+  updated: number;
+  skipped: number;
+  pending: number;
+  approvalRequestIds: string[];
+}
+
+export interface ServiceAccountDto {
+  id: string;
+  projectId: string;
+  name: string;
+  createdAt: string;
+  createdBy: string;
+  environmentIds: string[];
+}
+
+export interface ServiceAccountTokenDto {
+  id: string;
+  serviceAccountId: string;
+  name: string;
+  readOnly: boolean;
+  createdAt: string;
+  lastUsedAt?: string | null;
+  expiresAt?: string | null;
+}
+
+export interface CreateServiceAccountRequest {
+  name: string;
+  environmentIds: string[];
+}
+
+export interface CreateServiceAccountTokenRequest {
+  name: string;
+  readOnly?: boolean;
+  environmentIds: string[];
+  expiresAt?: string | null;
+}
+
+export interface CreateServiceAccountTokenResponse {
+  token: string;
+  tokenMeta: ServiceAccountTokenDto;
 }
 
 export interface AddMemberRequest {

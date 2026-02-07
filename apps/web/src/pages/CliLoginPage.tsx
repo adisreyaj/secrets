@@ -1,6 +1,7 @@
 import type { ProjectDto } from '@secrets/shared'
 import { useEffect, useState } from 'react'
 import { AuthPanel } from '../components/AuthPanel'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard } from '../components/SectionCard'
 import { Button } from '../components/ui/button'
@@ -12,11 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
-import { api, ApiError } from '../lib/api'
+import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
-
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+import { getErrorMessage } from '../lib/errors'
 
 export const CliLoginPage = ({
   code,
@@ -86,44 +85,30 @@ export const CliLoginPage = ({
         title="CLI login"
         subtitle="Finish the browser login to issue a CLI token."
         actions={
-          <Button
-            variant="outline"
-            className="rounded-full px-4 text-sm"
-            onClick={() => navigate('/projects')}
-          >
+          <Button variant="outline" onClick={() => navigate('/projects')}>
             Back to projects
           </Button>
         }
       />
 
       {(projectsError || issueError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || issueError}
-        </div>
+        <ErrorBanner message={projectsError || issueError} />
       )}
 
       <SectionCard>
         <div className="grid gap-4 md:grid-cols-2">
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Login code
-            </span>
+            <span className="muted-label">Login code</span>
             <Input
               value={loginCode}
               onChange={(event) => setLoginCode(event.target.value)}
               placeholder="Paste the CLI code"
-              className="h-11 rounded-2xl px-4"
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Project
-            </span>
-            <Select
-              value={selectedProject}
-              onValueChange={setSelectedProject}
-            >
-              <SelectTrigger className="h-11 px-4">
+            <span className="muted-label">Project</span>
+            <Select value={selectedProject} onValueChange={setSelectedProject}>
+              <SelectTrigger>
                 <SelectValue placeholder="Select a project" />
               </SelectTrigger>
               <SelectContent>
@@ -136,22 +121,20 @@ export const CliLoginPage = ({
             </Select>
           </label>
           <label className="grid gap-2 text-sm md:col-span-2">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Token name
-            </span>
+            <span className="muted-label">Token name</span>
             <Input
               value={tokenName}
               onChange={(event) => setTokenName(event.target.value)}
               placeholder="CLI login"
-              className="h-11 rounded-2xl px-4"
             />
           </label>
         </div>
         <div className="mt-6 flex items-center gap-3">
           <Button
-            className="rounded-full px-6 text-sm font-semibold"
             onClick={handleIssue}
-            disabled={issuing || !loginCode.trim() || selectedProject === 'none'}
+            disabled={
+              issuing || !loginCode.trim() || selectedProject === 'none'
+            }
           >
             {issuing ? 'Issuing...' : 'Issue CLI token'}
           </Button>

@@ -2,6 +2,7 @@
 import { CONFIG_FILENAME, createClient, normalizeConfigInput, readConfigFile } from '@secrets/sdk';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
+import { parseEnvFile, summarizeImportResults } from './env.js';
 
 const DEFAULT_BASE_URL = 'https://secrets.api.adi.so';
 
@@ -251,24 +252,6 @@ async function promptYesNo(question: string, defaultYes = false) {
   return normalized === 'y' || normalized === 'yes';
 }
 
-function parseEnvFile(content: string): { key: string; value: string }[] {
-  const lines = content.split(/\r?\n/);
-  const items: { key: string; value: string }[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const index = trimmed.indexOf('=');
-    if (index <= 0) continue;
-    const key = trimmed.slice(0, index).trim();
-    let value = trimmed.slice(index + 1).trim();
-    if (value.startsWith('"') && value.endsWith('"')) {
-      value = value.slice(1, -1).replace(/\\"/g, '"');
-    }
-    items.push({ key, value });
-  }
-  return items;
-}
-
 async function loginCommand(args: string[]) {
   const { flags, rest } = parseFlags(args);
   if (rest.length > 0) {
@@ -405,23 +388,46 @@ async function initCommand(args: string[]) {
     } catch {
       gitignore = '';
     }
-    if (!gitignore.includes('.env')) {
-      console.warn('Warning: .env is not in .gitignore');
+    const hasEnvIgnore = gitignore.split(/\r?\n/).some((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return false;
+      if (trimmed.startsWith('!')) return false;
+      return (
+        /^\.env$/.test(trimmed) ||
+        /^\.env\/$/.test(trimmed) ||
+        /^\.env\*$/.test(trimmed) ||
+        /^\.env\..+/.test(trimmed) ||
+        /^(?:\*\/|\*\*\/)\.env(\..+)?$/.test(trimmed) ||
+        /^(?:\*\/|\*\*\/)\.env\*$/.test(trimmed)
+      );
+    });
+    if (!hasEnvIgnore) {
+      console.warn('Warning: .env is not ignored in .gitignore (add .env, .env.*, or **/.env*).');
     }
 
     const shouldImport = await promptYesNo('Import .env into secrets?', true);
     if (shouldImport) {
       const raw = await fs.readFile(envPath, 'utf-8');
       const entries = parseEnvFile(raw);
-      let created = 0;
+      const results: { status?: string }[] = [];
       for (const entry of entries) {
-        await apiRequest(baseUrl, token, `/environments/${environment.id}/secrets`, {
-          method: 'POST',
-          body: JSON.stringify(entry),
-        });
-        created += 1;
+        const result = await apiRequest<{ status?: string }>(
+          baseUrl,
+          token,
+          `/environments/${environment.id}/secrets`,
+          {
+            method: 'POST',
+            body: JSON.stringify(entry),
+          },
+        );
+        results.push(result ?? {});
       }
-      console.log(`Imported ${created} secrets from .env`);
+      const { created, pending } = summarizeImportResults(results);
+      if (pending > 0) {
+        console.log(`Imported ${created} secrets from .env (pending approval: ${pending})`);
+      } else {
+        console.log(`Imported ${created} secrets from .env`);
+      }
     }
   } else {
     console.log('No .env found in current directory.');

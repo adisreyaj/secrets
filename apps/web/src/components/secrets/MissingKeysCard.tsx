@@ -15,23 +15,25 @@ export const MissingKeysCard = ({
   const missingOverflow = missingKeys.length - missingPreview.length
 
   return (
-    <div className="mt-4 rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm">
+    <div className="border-border bg-card/70 mt-4 rounded-2xl border border-dashed p-4 text-sm">
       {loading ? (
-        <p className="text-muted-foreground">Checking coverage across environments…</p>
+        <p className="text-muted-foreground">
+          Checking coverage across environments…
+        </p>
       ) : missingKeys.length > 0 ? (
-        <div className="space-y-2 text-muted-foreground">
+        <div className="text-muted-foreground space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="font-semibold text-foreground">Missing in this environment</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-foreground font-semibold">
+                Missing in this environment
+              </p>
+              <p className="text-muted-foreground text-xs">
                 These keys exist in other environments but not here.
               </p>
             </div>
             <Button
               variant="outline"
               size="sm"
-              data-testid="missing-keys-open"
-              className="rounded-full text-xs"
               onClick={onOpenDialog}
               disabled={missingSourcesCount === 0}
             >
@@ -48,14 +50,16 @@ export const MissingKeysCard = ({
               </span>
             ))}
             {missingOverflow > 0 ? (
-              <span className="rounded-full border border-border bg-muted px-3 py-1 text-muted-foreground">
+              <span className="border-border bg-muted text-muted-foreground rounded-full border px-3 py-1">
                 +{missingOverflow} more
               </span>
             ) : null}
           </div>
         </div>
       ) : (
-        <p className="text-muted-foreground">All environments share the same keys.</p>
+        <p className="text-muted-foreground">
+          All environments share the same keys.
+        </p>
       )}
     </div>
   )

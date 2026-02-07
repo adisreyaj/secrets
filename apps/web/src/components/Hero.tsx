@@ -14,13 +14,13 @@ export const Hero = ({
 }) => (
   <section className="relative mx-auto grid w-full max-w-6xl gap-8 px-6 pb-12 md:grid-cols-[1.1fr_0.9fr]">
     <div className="space-y-5">
-      <p className="text-xs font-semibold uppercase tracking-[0.4em] text-muted-foreground">
+      <p className="text-muted-foreground text-xs font-semibold tracking-[0.4em] uppercase">
         Secrets workspace
       </p>
-      <h1 className="font-display text-4xl font-semibold text-foreground sm:text-5xl">
+      <h1 className="font-display text-foreground text-4xl font-semibold sm:text-5xl">
         {title}
       </h1>
-      <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
+      <p className="text-muted-foreground max-w-xl text-base sm:text-lg">
         {subtitle}
       </p>
       {actions ? <div className="flex flex-wrap gap-3">{actions}</div> : null}

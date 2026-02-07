@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useFlagEnabled } from '../lib/feature-flags'
+import { FEATURE_FLAGS } from '../lib/feature-flags/keys'
+import { ErrorBanner } from './ErrorBanner'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Input } from './ui/input'
@@ -12,18 +15,30 @@ export const AuthPanel = ({
   loading: boolean
   error: string | null
   onLogin: (payload: { email: string; password: string }) => Promise<void>
-  onRegister: (payload: { email: string; password: string; name?: string }) => Promise<void>
+  onRegister: (payload: {
+    email: string
+    password: string
+    name?: string
+  }) => Promise<void>
 }) => {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [form, setForm] = useState({ name: '', email: '', password: '' })
-  const passwordAutoComplete = mode === 'login' ? 'current-password' : 'new-password'
+  const signupAllowed = useFlagEnabled(FEATURE_FLAGS.SIGNUP_ALLOW, false)
+  const passwordAutoComplete =
+    mode === 'login' ? 'current-password' : 'new-password'
+
+  useEffect(() => {
+    if (!signupAllowed && mode === 'register') {
+      setMode('login')
+    }
+  }, [signupAllowed, mode])
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!form.email || !form.password) return
     if (mode === 'login') {
       await onLogin({ email: form.email, password: form.password })
-    } else {
+    } else if (signupAllowed) {
       await onRegister({
         name: form.name || undefined,
         email: form.email,
@@ -33,28 +48,30 @@ export const AuthPanel = ({
   }
 
   return (
-    <Card className="mx-auto w-full max-w-md rounded-3xl border-border/70 bg-card/90 p-8 shadow-soft">
+    <Card className="border-border/70 bg-card/90 shadow-soft mx-auto w-full max-w-md rounded-3xl p-8">
       <div className="flex flex-col items-center gap-3 text-center">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-foreground text-background">
-          SM
-        </div>
+        <img
+          src="/logo.svg"
+          alt="Secrets"
+          className="h-10 w-10 rounded-2xl object-contain dark:invert"
+        />
         <div>
-          <p className="text-sm font-semibold">Secrets Manager</p>
-          <p className="text-xs text-muted-foreground">Single-tenant vault</p>
+          <p className="text-sm font-semibold">Secrets</p>
+          <p className="text-muted-foreground text-xs">Secure your secrets!</p>
         </div>
       </div>
-      <p className="mt-6 text-center text-xs uppercase tracking-[0.3em] text-muted-foreground">
+      <p className="text-muted-foreground mt-6 text-center text-xs tracking-[0.3em] uppercase">
         {mode === 'login' ? 'Welcome back' : 'Create account'}
       </p>
-      <h2 className="mt-3 text-center text-2xl font-semibold text-foreground">
-        {mode === 'login' ? 'Sign in to manage secrets' : 'Start your secure workspace'}
+      <h2 className="text-foreground mt-3 text-center text-2xl font-semibold">
+        {mode === 'login'
+          ? 'Sign in to manage secrets'
+          : 'Start your secure workspace'}
       </h2>
       <form onSubmit={handleSubmit} className="mt-6 space-y-3">
         {mode === 'register' ? (
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Full name
-            </span>
+            <span className="muted-label">Full name</span>
             <Input
               id="auth-name"
               data-testid="auth-name"
@@ -64,14 +81,11 @@ export const AuthPanel = ({
               }
               placeholder="Full name"
               autoComplete="name"
-              className="h-11 rounded-2xl"
             />
           </label>
         ) : null}
         <label className="grid gap-2 text-sm">
-          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            Email
-          </span>
+          <span className="muted-label">Email</span>
           <Input
             id="auth-email"
             data-testid="auth-email"
@@ -82,13 +96,10 @@ export const AuthPanel = ({
             placeholder="Email"
             type="email"
             autoComplete="email"
-            className="h-11 rounded-2xl"
           />
         </label>
         <label className="grid gap-2 text-sm">
-          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            Password
-          </span>
+          <span className="muted-label">Password</span>
           <Input
             id="auth-password"
             data-testid="auth-password"
@@ -99,27 +110,27 @@ export const AuthPanel = ({
             placeholder="Password"
             type="password"
             autoComplete={passwordAutoComplete}
-            className="h-11 rounded-2xl"
           />
         </label>
-        {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-        <Button
-          type="submit"
-          data-testid="auth-submit"
-          disabled={loading}
-          className="h-11 w-full rounded-full bg-foreground text-sm font-semibold text-background hover:bg-foreground/90"
-        >
-          {loading ? 'Loading...' : mode === 'login' ? 'Sign in' : 'Create account'}
+        {error ? <ErrorBanner message={error} className="mt-3" /> : null}
+        <Button type="submit" disabled={loading} className="w-full">
+          {loading
+            ? 'Loading...'
+            : mode === 'login'
+              ? 'Sign in'
+              : 'Create account'}
         </Button>
       </form>
-      <Button
-        variant="ghost"
-        data-testid="auth-toggle-mode"
-        onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-        className="mt-4 h-auto px-0 text-xs font-semibold text-muted-foreground hover:bg-transparent"
-      >
-        {mode === 'login' ? 'Need an account? Register' : 'Already have an account? Sign in'}
-      </Button>
+      {signupAllowed ? (
+        <Button
+          variant="ghost"
+          onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+        >
+          {mode === 'login'
+            ? 'Need an account? Register'
+            : 'Already have an account? Sign in'}
+        </Button>
+      ) : null}
     </Card>
   )
 }

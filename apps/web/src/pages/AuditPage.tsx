@@ -1,74 +1,220 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { AuditLogDto, ProjectDto } from '@secrets/shared'
-import { ArrowLeft } from 'lucide-react'
+import type { AuditLogDto, AuditLogFilters, ProjectDto } from '@secrets/shared'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { endOfDay, startOfDay } from 'date-fns'
+import { ArrowLeft, CalendarIcon, RefreshCcw } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import type { DateRange } from 'react-day-picker'
 import { AuditLog } from '../components/AuditLog'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
+import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
-import { api, ApiError } from '../lib/api'
-import { useAuth } from '../lib/auth'
+import { Calendar } from '../components/ui/calendar'
+import { Input } from '../components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select'
+import { humanizeAction, humanizeResourceType } from '../features/audit/labels'
+import { api } from '../lib/api'
+import { getErrorMessage } from '../lib/errors'
+import { projectPath } from '../lib/paths'
+import { runMutationWithToast } from '../lib/mutationFeedback'
+import { queryKeys } from '../lib/queryKeys'
+import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
-const getErrorMessage = (error: unknown) =>
-  error instanceof ApiError ? error.message : 'Something went wrong.'
+type AuditActorType = 'user' | 'service'
 
-export const AuditPage = ({
-  projectId,
-  navigate,
-}: {
+type AuditFilterState = {
+  action: string
+  resourceType: string
+  resourceId: string
+  actorType: AuditActorType
+  actorId: string
+  dateRange: DateRange | undefined
+}
+
+type AuditPageProps = {
   projectId: string
   navigate: (path: string) => void
-}) => {
-  const { user, loading } = useAuth()
-  const [projects, setProjects] = useState<ProjectDto[]>([])
-  const [projectsError, setProjectsError] = useState<string | null>(null)
+}
 
-  const [auditLogs, setAuditLogs] = useState<AuditLogDto[]>([])
-  const [auditLoading, setAuditLoading] = useState(false)
-  const [auditError, setAuditError] = useState<string | null>(null)
+export const AuditPage = ({ projectId, navigate }: AuditPageProps) => {
+  const { user } = useRequireAuth(navigate)
+  const queryClient = useQueryClient()
+
+  const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>(
+    {
+      queryKey: queryKeys.projects(),
+      queryFn: () => api.listProjects(),
+      enabled: Boolean(user),
+    },
+  )
+  const projects = asArray(projectsData)
+
+  const [filterError, setFilterError] = useState<string | null>(null)
+  const [filters, setFilters] = useState<AuditFilterState>({
+    action: '',
+    resourceType: '',
+    resourceId: '',
+    actorType: 'user',
+    actorId: '',
+    dateRange: undefined,
+  })
+  const [appliedFilters, setAppliedFilters] = useState<
+    AuditLogFilters | undefined
+  >(undefined)
+
+  const filtersKey = useMemo(
+    () => (appliedFilters ? JSON.stringify(appliedFilters) : 'all'),
+    [appliedFilters],
+  )
+
+  const {
+    data: auditLogsData,
+    isLoading: auditLoading,
+    error: auditErrorRaw,
+    refetch: refetchAudit,
+  } = useQuery<AuditLogDto[]>({
+    queryKey: queryKeys.audit(projectId, filtersKey),
+    queryFn: () => api.listAudit(projectId, appliedFilters),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+
+  const auditLogs = asArray(auditLogsData)
+
+  const actionOptions = useMemo(() => {
+    if (appliedFilters) return []
+    return Array.from(
+      new Set(auditLogs.map((log) => log.action).filter(Boolean)),
+    ).sort()
+  }, [appliedFilters, auditLogs])
+
+  const resourceTypeOptions = useMemo(() => {
+    if (appliedFilters) return []
+    return Array.from(
+      new Set(auditLogs.map((log) => log.resourceType).filter(Boolean)),
+    ).sort()
+  }, [appliedFilters, auditLogs])
+
+  const {
+    data: retentionData,
+    isLoading: retentionLoading,
+    error: retentionErrorRaw,
+  } = useQuery({
+    queryKey: ['projects', projectId, 'audit-retention'],
+    queryFn: () => api.getAuditRetention(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+
+  const retentionInitial = useMemo(() => {
+    if (!retentionData) return '90'
+    return retentionData.auditRetentionDays === null
+      ? 'forever'
+      : `${retentionData.auditRetentionDays}`
+  }, [retentionData])
+
+  const [retentionValue, setRetentionValue] = useState('90')
+  const [retentionSaving, setRetentionSaving] = useState(false)
+  const retentionDirty = retentionValue !== retentionInitial
 
   useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
+    setRetentionValue(retentionInitial)
+  }, [retentionInitial])
 
-  const loadProjects = useCallback(async () => {
-    setProjectsError(null)
-    try {
-      const data = await api.listProjects()
-      setProjects(data)
-    } catch (error) {
-      setProjectsError(getErrorMessage(error))
-    }
-  }, [])
+  const updateRetentionMutation = useMutation({
+    mutationFn: async (value: string) => {
+      const auditRetentionDays = value === 'forever' ? null : Number(value)
+      return api.updateAuditRetention(projectId, { auditRetentionDays })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['projects', projectId, 'audit-retention'],
+      })
+    },
+  })
 
-  const loadAudit = useCallback(async () => {
-    setAuditLoading(true)
-    setAuditError(null)
+  const handleApplyFilters = () => {
+    setFilterError(null)
+    const nextFilters: AuditLogFilters = {}
+
+    if (filters.dateRange?.from) {
+      nextFilters.start = startOfDay(filters.dateRange.from).toISOString()
+    }
+    if (filters.dateRange?.to) {
+      nextFilters.end = endOfDay(filters.dateRange.to).toISOString()
+    }
+    if (filters.action.trim()) nextFilters.action = filters.action.trim()
+    if (filters.resourceType.trim())
+      nextFilters.resourceType = filters.resourceType.trim()
+    if (filters.resourceId.trim())
+      nextFilters.resourceId = filters.resourceId.trim()
+    if (filters.actorId.trim()) {
+      if (filters.actorType === 'user') {
+        nextFilters.actorUserId = filters.actorId.trim()
+      } else {
+        nextFilters.actorServiceAccountId = filters.actorId.trim()
+      }
+    }
+
+    setAppliedFilters(nextFilters)
+    void refetchAudit()
+  }
+
+  const handleClearFilters = () => {
+    setFilters({
+      action: '',
+      resourceType: '',
+      resourceId: '',
+      actorType: 'user',
+      actorId: '',
+      dateRange: undefined,
+    })
+    setAppliedFilters(undefined)
+    setFilterError(null)
+    void refetchAudit()
+  }
+
+  const handleSaveRetention = async () => {
+    if (retentionSaving) return
+    setRetentionSaving(true)
     try {
-      const data = await api.listAudit(projectId)
-      setAuditLogs(data)
-    } catch (error) {
-      setAuditError(getErrorMessage(error))
+      await runMutationWithToast(
+        () => updateRetentionMutation.mutateAsync(retentionValue),
+        {
+          successMessage: 'Retention settings saved.',
+          errorMessage: 'Failed to save retention settings.',
+        },
+      )
     } finally {
-      setAuditLoading(false)
+      setRetentionSaving(false)
     }
-  }, [projectId])
-
-  useEffect(() => {
-    if (user) {
-      void loadProjects()
-      void loadAudit()
-    }
-  }, [user, loadProjects, loadAudit])
+  }
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
     [projects, projectId],
   )
+  const isAdmin = selectedProject?.role === 'ADMIN'
 
-  useRegisterShortcut('b', () => navigate(`/projects/${projectId}`))
+  useRegisterShortcut('b', () =>
+    navigate(projectPath(projectId, selectedProject?.slug)),
+  )
+
+  const auditError = auditErrorRaw ? getErrorMessage(auditErrorRaw) : null
+  const projectsError = projectsErrorRaw
+    ? getErrorMessage(projectsErrorRaw)
+    : null
+  const retentionError = retentionErrorRaw
+    ? getErrorMessage(retentionErrorRaw)
+    : null
 
   return (
     <section className="flex flex-col gap-6">
@@ -78,8 +224,9 @@ export const AuditPage = ({
         actions={
           <Button
             variant="outline"
-            className="flex items-center gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
-            onClick={() => navigate(`/projects/${projectId}`)}
+            onClick={() =>
+              navigate(projectPath(projectId, selectedProject?.slug))
+            }
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview
@@ -88,13 +235,209 @@ export const AuditPage = ({
         }
       />
 
-      {(projectsError || auditError) && (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          {projectsError || auditError}
-        </div>
+      {(projectsError || auditError || filterError || retentionError) && (
+        <ErrorBanner
+          message={projectsError || auditError || filterError || retentionError}
+        />
       )}
 
+      <SectionCard>
+        <SectionHeader
+          kicker="Audit"
+          title="Audit log"
+          action={
+            <Button variant="outline" onClick={() => refetchAudit()}>
+              <RefreshCcw className="h-4 w-4" />
+              Refresh
+            </Button>
+          }
+        />
+
+        <div className="mt-4 grid gap-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2">
+              <p className="muted-label">Date range</p>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="border-input placeholder:text-muted-foreground focus-visible:ring-ring bg-background text-foreground flex h-11 w-full items-center justify-between gap-2 rounded-md border px-4 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {filters.dateRange?.from ? (
+                      filters.dateRange.to ? (
+                        `${filters.dateRange.from.toLocaleDateString()} - ${filters.dateRange.to.toLocaleDateString()}`
+                      ) : (
+                        filters.dateRange.from.toLocaleDateString()
+                      )
+                    ) : (
+                      <span className="text-muted-foreground">Pick dates</span>
+                    )}
+                    <CalendarIcon className="h-4 w-4 opacity-60" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={filters.dateRange?.from}
+                    selected={filters.dateRange}
+                    onSelect={(range) =>
+                      setFilters((prev) => ({ ...prev, dateRange: range }))
+                    }
+                    numberOfMonths={2}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="grid gap-2">
+              <p className="muted-label">Action</p>
+              <Select
+                value={filters.action || 'all'}
+                onValueChange={(value) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    action: value === 'all' ? '' : value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All actions" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {actionOptions.map((action) => (
+                    <SelectItem key={action} value={action}>
+                      {humanizeAction(action)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <p className="muted-label">Resource type</p>
+              <Select
+                value={filters.resourceType || 'all'}
+                onValueChange={(value) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    resourceType: value === 'all' ? '' : value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {resourceTypeOptions.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {humanizeResourceType(type)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <p className="muted-label">Resource ID</p>
+              <Input
+                value={filters.resourceId}
+                onChange={(event) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    resourceId: event.target.value,
+                  }))
+                }
+                placeholder="Optional ID"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <p className="muted-label">Actor type</p>
+              <Select
+                value={filters.actorType}
+                onValueChange={(value) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    actorType: value as AuditActorType,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Actor type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="service">Service account</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <p className="muted-label">Actor ID</p>
+              <Input
+                value={filters.actorId}
+                onChange={(event) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    actorId: event.target.value,
+                  }))
+                }
+                placeholder="Optional ID"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleApplyFilters}>Apply filters</Button>
+            <Button variant="ghost" onClick={handleClearFilters}>
+              Clear filters
+            </Button>
+          </div>
+        </div>
+      </SectionCard>
+
       <AuditLog audits={auditLogs} loading={auditLoading} error={auditError} />
+
+      <SectionCard>
+        <SectionHeader
+          kicker="Retention"
+          title="Retention settings"
+          action={
+            <Button
+              variant="outline"
+              onClick={handleSaveRetention}
+              disabled={!retentionDirty || retentionSaving || !isAdmin}
+            >
+              Save retention
+            </Button>
+          }
+        />
+        <div className="mt-4 grid gap-3">
+          <p className="text-muted-foreground text-sm">
+            Configure how long audit data should be retained.
+          </p>
+          <Select
+            value={retentionValue}
+            onValueChange={(value) => setRetentionValue(value)}
+            disabled={retentionLoading || !isAdmin}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select retention" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="30">30 days</SelectItem>
+              <SelectItem value="60">60 days</SelectItem>
+              <SelectItem value="90">90 days</SelectItem>
+              <SelectItem value="180">180 days</SelectItem>
+              <SelectItem value="365">365 days</SelectItem>
+              <SelectItem value="forever">Forever</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </SectionCard>
     </section>
   )
 }

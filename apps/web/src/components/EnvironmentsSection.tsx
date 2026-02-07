@@ -3,8 +3,10 @@ import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDateTime } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
-import { ShortcutHint } from './ShortcutHint'
+import { EmptyState } from './EmptyState'
+import { ErrorBanner } from './ErrorBanner'
 import { SectionCard, SectionHeader } from './SectionCard'
+import { ShortcutHint } from './ShortcutHint'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import {
@@ -65,15 +67,42 @@ export const EnvironmentsSection = ({
   }, [dialogOpen])
 
   useRegisterShortcut('n', () => setDialogOpen(true))
-  useRegisterShortcut('1', () => environments[0] && onSelect(environments[0].id))
-  useRegisterShortcut('2', () => environments[1] && onSelect(environments[1].id))
-  useRegisterShortcut('3', () => environments[2] && onSelect(environments[2].id))
-  useRegisterShortcut('4', () => environments[3] && onSelect(environments[3].id))
-  useRegisterShortcut('5', () => environments[4] && onSelect(environments[4].id))
-  useRegisterShortcut('6', () => environments[5] && onSelect(environments[5].id))
-  useRegisterShortcut('7', () => environments[6] && onSelect(environments[6].id))
-  useRegisterShortcut('8', () => environments[7] && onSelect(environments[7].id))
-  useRegisterShortcut('9', () => environments[8] && onSelect(environments[8].id))
+  useRegisterShortcut(
+    '1',
+    () => environments[0] && onSelect(environments[0].id),
+  )
+  useRegisterShortcut(
+    '2',
+    () => environments[1] && onSelect(environments[1].id),
+  )
+  useRegisterShortcut(
+    '3',
+    () => environments[2] && onSelect(environments[2].id),
+  )
+  useRegisterShortcut(
+    '4',
+    () => environments[3] && onSelect(environments[3].id),
+  )
+  useRegisterShortcut(
+    '5',
+    () => environments[4] && onSelect(environments[4].id),
+  )
+  useRegisterShortcut(
+    '6',
+    () => environments[5] && onSelect(environments[5].id),
+  )
+  useRegisterShortcut(
+    '7',
+    () => environments[6] && onSelect(environments[6].id),
+  )
+  useRegisterShortcut(
+    '8',
+    () => environments[7] && onSelect(environments[7].id),
+  )
+  useRegisterShortcut(
+    '9',
+    () => environments[8] && onSelect(environments[8].id),
+  )
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -99,17 +128,13 @@ export const EnvironmentsSection = ({
         action={
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                data-testid="envs-new"
-                className="flex h-10 items-center gap-2 rounded-full border-border px-4 text-sm font-semibold text-foreground hover:border-foreground/40"
-              >
+              <Button variant="outline">
                 <Plus className="h-4 w-4" />
                 New environment
                 <ShortcutHint keys="n" />
               </Button>
             </DialogTrigger>
-            <DialogContent className="rounded-3xl border-border/70 bg-popover text-popover-foreground">
+            <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
               <DialogHeader className="text-left">
                 <DialogTitle>Create environment</DialogTitle>
                 <DialogDescription>
@@ -119,27 +144,22 @@ export const EnvironmentsSection = ({
               </DialogHeader>
               <form onSubmit={handleSubmit} className="grid gap-4">
                 <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-                    Environment name
-                  </span>
+                  <span className="muted-label">Environment name</span>
                   <Input
                     data-testid="env-name-input"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="e.g. staging"
-                    className="h-11 rounded-2xl bg-background px-4"
                   />
                 </label>
                 <label className="grid gap-2 text-sm">
-                  <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-                    Copy keys from
-                  </span>
+                  <span className="muted-label">Copy keys from</span>
                   <Select
                     value={copyFromId}
                     onValueChange={setCopyFromId}
                     disabled={environmentOptions.length === 0}
                   >
-                    <SelectTrigger className="h-11 px-4" data-testid="env-copy-select">
+                    <SelectTrigger>
                       <SelectValue placeholder="Don't copy anything" />
                     </SelectTrigger>
                     <SelectContent>
@@ -153,7 +173,7 @@ export const EnvironmentsSection = ({
                       ))}
                     </SelectContent>
                   </Select>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-muted-foreground text-xs">
                     Copies keys (and current values) into the new environment.
                   </span>
                 </label>
@@ -161,17 +181,11 @@ export const EnvironmentsSection = ({
                   <Button
                     type="button"
                     variant="ghost"
-                    className="rounded-full px-4 text-sm"
                     onClick={() => setDialogOpen(false)}
                   >
                     Cancel
                   </Button>
-                  <Button
-                    type="submit"
-                    data-testid="env-create-submit"
-                    className="rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
-                    disabled={creating || !name.trim()}
-                  >
+                  <Button type="submit" disabled={creating || !name.trim()}>
                     {creating ? 'Creating...' : 'Create environment'}
                   </Button>
                 </DialogFooter>
@@ -180,15 +194,15 @@ export const EnvironmentsSection = ({
           </Dialog>
         }
       />
-      {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
+      {error ? <ErrorBanner message={error} className="mt-4" /> : null}
       <ul className="mt-5 space-y-3">
         {loading ? (
-          <li className="rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm text-muted-foreground">
-            Loading environments...
+          <li>
+            <EmptyState title="Loading environments..." />
           </li>
         ) : environments.length === 0 ? (
-          <li className="rounded-2xl border border-dashed border-border bg-card/70 p-4 text-sm text-muted-foreground">
-            Create your first environment.
+          <li>
+            <EmptyState title="Create your first environment." />
           </li>
         ) : (
           environments.map((env, index) => {
@@ -210,7 +224,9 @@ export const EnvironmentsSection = ({
                     <p className="font-semibold">{env.name}</p>
                     <p
                       className={`text-xs ${
-                        isSelected ? 'text-background/70' : 'text-muted-foreground'
+                        isSelected
+                          ? 'text-background/70'
+                          : 'text-muted-foreground'
                       }`}
                     >
                       Updated{' '}
@@ -247,7 +263,7 @@ export const EnvironmentsSection = ({
                         variant={isSelected ? 'default' : 'secondary'}
                         className={
                           isSelected
-                            ? 'bg-amber-400/20 text-background'
+                            ? 'text-background bg-amber-400/20'
                             : 'bg-amber-50 text-amber-700'
                         }
                       >
@@ -258,7 +274,7 @@ export const EnvironmentsSection = ({
                         variant={isSelected ? 'default' : 'secondary'}
                         className={
                           isSelected
-                            ? 'bg-emerald-400/20 text-background'
+                            ? 'text-background bg-emerald-400/20'
                             : 'bg-emerald-50 text-emerald-700'
                         }
                       >

@@ -39,7 +39,7 @@ export const useSecretsEditor = ({
           ...prev,
           [secret.id]: {
             key: secret.key,
-            value: includeValues ? secret.value ?? '' : '',
+            value: includeValues ? (secret.value ?? '') : '',
             dirtyKey: false,
             dirtyValue: false,
           },
@@ -184,7 +184,9 @@ export const useSecretsEditor = ({
         }
         return payload
       })
-      .filter((change) => change.key !== undefined || change.value !== undefined)
+      .filter(
+        (change) => change.key !== undefined || change.value !== undefined,
+      )
 
     if (changes.length === 0) return
     setSavingChanges(true)
@@ -193,7 +195,9 @@ export const useSecretsEditor = ({
       await onUpdateMany(changes)
       discardChanges()
     } catch (error) {
-      setTopError(error instanceof Error ? error.message : 'Failed to save changes.')
+      setTopError(
+        error instanceof Error ? error.message : 'Failed to save changes.',
+      )
     } finally {
       setSavingChanges(false)
     }

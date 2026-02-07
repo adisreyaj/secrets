@@ -4,9 +4,9 @@ const KEY_LENGTH = 32;
 const IV_LENGTH = 12;
 
 export interface EncryptedPayload {
-  ciphertext: Buffer;
-  iv: Buffer;
-  tag: Buffer;
+  ciphertext: Uint8Array<ArrayBuffer>;
+  iv: Uint8Array<ArrayBuffer>;
+  tag: Uint8Array<ArrayBuffer>;
 }
 
 export function loadMasterKey(): Buffer {
@@ -36,7 +36,11 @@ export function encryptSecret(plaintext: string, key: Buffer): EncryptedPayload 
   const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
 
-  return { ciphertext, iv, tag };
+  return {
+    ciphertext: new Uint8Array(ciphertext),
+    iv: new Uint8Array(iv),
+    tag: new Uint8Array(tag),
+  };
 }
 
 export function decryptSecret(payload: EncryptedPayload, key: Buffer): string {

@@ -1,74 +1,246 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom'
 import { Header } from './components/Header'
 import { ShortcutsHelpDialog } from './components/ShortcutsHelpDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useAuth } from './lib/auth'
-import { useHashRouter } from './lib/router'
+import { environmentPath, environmentsPath, projectPath } from './lib/paths'
 import {
-  ShortcutsProvider,
+  getEnvironmentId,
+  getProjectId,
+  getRouteMatch,
+  isProjectScopedRoute,
+} from './lib/router'
+import {
   ShortcutHintsProvider,
+  ShortcutsProvider,
+  useRegisterShortcut,
+} from './lib/shortcuts'
+import {
   getLastEnvironmentId,
   getLastProjectId,
   setLastEnvironmentId,
   setLastProjectId,
-  useRegisterShortcut,
-} from './lib/shortcuts'
-import { AuditPage } from './pages/AuditPage'
-import { CliLoginPage } from './pages/CliLoginPage'
-import { EnvironmentPage } from './pages/EnvironmentPage'
-import { EnvironmentsPage } from './pages/EnvironmentsPage'
-import { InvitePage } from './pages/InvitePage'
-import { LoginPage } from './pages/LoginPage'
-import { ProfilePage } from './pages/ProfilePage'
-import { ProjectOverviewPage } from './pages/ProjectOverviewPage'
-import { ProjectsPage } from './pages/ProjectsPage'
-import { TeamPage } from './pages/TeamPage'
-import { TokensPage } from './pages/TokensPage'
+} from './lib/shortcuts.utils'
+const ApprovalRulesPage = lazy(() =>
+  import('./pages/ApprovalRulesPage').then((m) => ({
+    default: m.ApprovalRulesPage,
+  })),
+)
+const ApprovalsPage = lazy(() =>
+  import('./pages/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })),
+)
+const AuditPage = lazy(() =>
+  import('./pages/AuditPage').then((m) => ({ default: m.AuditPage })),
+)
+const CliLoginPage = lazy(() =>
+  import('./pages/CliLoginPage').then((m) => ({ default: m.CliLoginPage })),
+)
+const EnvironmentPage = lazy(() =>
+  import('./pages/EnvironmentPage').then((m) => ({
+    default: m.EnvironmentPage,
+  })),
+)
+const EnvironmentsPage = lazy(() =>
+  import('./pages/EnvironmentsPage').then((m) => ({
+    default: m.EnvironmentsPage,
+  })),
+)
+const InvitePage = lazy(() =>
+  import('./pages/InvitePage').then((m) => ({ default: m.InvitePage })),
+)
+const LoginPage = lazy(() =>
+  import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })),
+)
+const ProfilePage = lazy(() =>
+  import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })),
+)
+const ProjectOverviewPage = lazy(() =>
+  import('./pages/ProjectOverviewPage').then((m) => ({
+    default: m.ProjectOverviewPage,
+  })),
+)
+const ProjectsPage = lazy(() =>
+  import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })),
+)
+const ServiceAccountsPage = lazy(() =>
+  import('./pages/ServiceAccountsPage').then((m) => ({
+    default: m.ServiceAccountsPage,
+  })),
+)
+const TeamPage = lazy(() =>
+  import('./pages/TeamPage').then((m) => ({ default: m.TeamPage })),
+)
+const TokensPage = lazy(() =>
+  import('./pages/TokensPage').then((m) => ({ default: m.TokensPage })),
+)
+
+const LoginRoute = () => {
+  const navigate = useNavigate()
+  return <LoginPage navigate={navigate} />
+}
+
+const CliLoginRoute = () => {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  return <CliLoginPage code={searchParams.get('code')} navigate={navigate} />
+}
+
+const InviteRoute = () => {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  return <InvitePage token={searchParams.get('token')} navigate={navigate} />
+}
+
+const ProfileRoute = () => {
+  const navigate = useNavigate()
+  return <ProfilePage navigate={navigate} />
+}
+
+const ProjectsRoute = () => {
+  const navigate = useNavigate()
+  return <ProjectsPage navigate={navigate} />
+}
+
+const ProjectOverviewRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId) return <Navigate to="/projects" replace />
+  return <ProjectOverviewPage projectId={params.projectId} navigate={navigate} />
+}
+
+const EnvironmentsRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId) return <Navigate to="/projects" replace />
+  return <EnvironmentsPage projectId={params.projectId} navigate={navigate} />
+}
+
+const EnvironmentRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId || !params.environmentId) {
+    return <Navigate to="/projects" replace />
+  }
+  return (
+    <EnvironmentPage
+      projectId={params.projectId}
+      environmentId={params.environmentId}
+      navigate={navigate}
+    />
+  )
+}
+
+const AuditRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId) return <Navigate to="/projects" replace />
+  return <AuditPage projectId={params.projectId} navigate={navigate} />
+}
+
+const ApprovalsRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId) return <Navigate to="/projects" replace />
+  return <ApprovalsPage projectId={params.projectId} navigate={navigate} />
+}
+
+const ApprovalRulesRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId) return <Navigate to="/projects" replace />
+  return <ApprovalRulesPage projectId={params.projectId} navigate={navigate} />
+}
+
+const TokensRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId) return <Navigate to="/projects" replace />
+  return <TokensPage projectId={params.projectId} navigate={navigate} />
+}
+
+const ServiceAccountsRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId) return <Navigate to="/projects" replace />
+  return <ServiceAccountsPage projectId={params.projectId} navigate={navigate} />
+}
+
+const TeamRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId) return <Navigate to="/projects" replace />
+  return <TeamPage projectId={params.projectId} navigate={navigate} />
+}
 
 const AppShell = () => {
-  const { user, logout } = useAuth()
-  const { match, navigate } = useHashRouter()
+  const { user, loading: authLoading, logout } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [resolvedProjectId, setResolvedProjectId] = useState<string | null>(
+    null,
+  )
+
+  const match = useMemo(
+    () => getRouteMatch(location.pathname, location.search),
+    [location.pathname, location.search],
+  )
+
   const shortcutsEnabled =
-    !!user && match.name !== 'login' && match.name !== 'cli-login' && match.name !== 'invite'
+    !!user &&
+    match.name !== 'login' &&
+    match.name !== 'cli-login' &&
+    match.name !== 'invite'
+  const isPublicRoute =
+    match.name === 'login' ||
+    match.name === 'cli-login' ||
+    match.name === 'invite'
+  const shouldWaitForAuth = authLoading && !isPublicRoute
+  const shouldBlockProtectedRoute = !isPublicRoute && !user
+  const isProjectScoped = isProjectScopedRoute(match)
+  const isResolvingProject = isProjectScoped && !resolvedProjectId
 
   useEffect(() => {
-    if (match.name === 'project') {
-      setLastProjectId(match.projectId)
+    if (!authLoading && !user && !isPublicRoute) {
+      navigate('/login')
     }
-    if (match.name === 'environments') {
-      setLastProjectId(match.projectId)
+  }, [authLoading, user, isPublicRoute, navigate])
+
+  useEffect(() => {
+    const projectSegment = getProjectId(match)
+    if (!projectSegment) {
+      setResolvedProjectId(null)
+      return
     }
-    if (match.name === 'environment') {
-      setLastProjectId(match.projectId)
-      setLastEnvironmentId(match.projectId, match.environmentId)
-    }
-    if (match.name === 'audit') {
-      setLastProjectId(match.projectId)
-    }
-    if (match.name === 'team') {
-      setLastProjectId(match.projectId)
-    }
-    if (match.name === 'tokens') {
-      setLastProjectId(match.projectId)
-    }
+    setResolvedProjectId(projectSegment)
   }, [match])
 
-  const resolveProjectId = () =>
-    match.name === 'project' ||
-    match.name === 'environments' ||
-    match.name === 'environment' ||
-    match.name === 'audit' ||
-    match.name === 'team' ||
-    match.name === 'tokens'
-      ? match.projectId
-      : getLastProjectId()
+  useEffect(() => {
+    const projectId = resolvedProjectId
+    if (projectId) {
+      setLastProjectId(projectId)
+    }
+    const environmentId =
+      match.name === 'environment' ? getEnvironmentId(match) : null
+    if (projectId && environmentId) {
+      setLastEnvironmentId(projectId, environmentId)
+    }
+  }, [match, resolvedProjectId])
+
+  const resolveProjectId = () => resolvedProjectId ?? getLastProjectId()
 
   const resolveEnvironmentId = (projectId: string | null) => {
     if (!projectId) return null
-    if (match.name === 'environment') {
-      return match.environmentId
-    }
     return getLastEnvironmentId(projectId)
   }
 
@@ -84,7 +256,7 @@ const AppShell = () => {
     'g o',
     () => {
       const projectId = resolveProjectId()
-      navigate(projectId ? `/projects/${projectId}` : '/projects')
+      navigate(projectId ? projectPath(projectId) : '/projects')
     },
     { enabled: shortcutsEnabled },
   )
@@ -93,13 +265,26 @@ const AppShell = () => {
     'g e',
     () => {
       const projectId = resolveProjectId()
-      navigate(projectId ? `/projects/${projectId}/environments` : '/projects')
+      navigate(projectId ? environmentsPath(projectId) : '/projects')
     },
     { enabled: shortcutsEnabled },
   )
 
   useRegisterShortcut(
     'g s',
+    () => {
+      const projectId = resolveProjectId()
+      navigate(
+        projectId
+          ? projectPath(projectId, undefined, 'service-accounts')
+          : '/projects',
+      )
+    },
+    { enabled: shortcutsEnabled },
+  )
+
+  useRegisterShortcut(
+    'g c',
     () => {
       const projectId = resolveProjectId()
       if (!projectId) {
@@ -109,8 +294,8 @@ const AppShell = () => {
       const environmentId = resolveEnvironmentId(projectId)
       navigate(
         environmentId
-          ? `/projects/${projectId}/environments/${environmentId}`
-          : `/projects/${projectId}/environments`,
+          ? environmentPath(projectId, undefined, environmentId, undefined)
+          : environmentsPath(projectId),
       )
     },
     { enabled: shortcutsEnabled },
@@ -120,7 +305,9 @@ const AppShell = () => {
     'g a',
     () => {
       const projectId = resolveProjectId()
-      navigate(projectId ? `/projects/${projectId}/audit` : '/projects')
+      navigate(
+        projectId ? projectPath(projectId, undefined, 'approvals') : '/projects',
+      )
     },
     { enabled: shortcutsEnabled },
   )
@@ -129,7 +316,20 @@ const AppShell = () => {
     'g t',
     () => {
       const projectId = resolveProjectId()
-      navigate(projectId ? `/projects/${projectId}/tokens` : '/projects')
+      navigate(
+        projectId ? projectPath(projectId, undefined, 'tokens') : '/projects',
+      )
+    },
+    { enabled: shortcutsEnabled },
+  )
+
+  useRegisterShortcut(
+    'g l',
+    () => {
+      const projectId = resolveProjectId()
+      navigate(
+        projectId ? projectPath(projectId, undefined, 'audit') : '/projects',
+      )
     },
     { enabled: shortcutsEnabled },
   )
@@ -138,17 +338,21 @@ const AppShell = () => {
     'g m',
     () => {
       const projectId = resolveProjectId()
-      navigate(projectId ? `/projects/${projectId}/team` : '/projects')
+      navigate(
+        projectId ? projectPath(projectId, undefined, 'team') : '/projects',
+      )
     },
     { enabled: shortcutsEnabled },
   )
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="bg-background text-foreground min-h-screen flex flex-col">
+      <div className="bg-background text-foreground flex min-h-screen flex-col">
         <div className="relative overflow-hidden">
           <div className="absolute inset-0" aria-hidden="true" />
-          {match.name !== 'login' && match.name !== 'cli-login' && match.name !== 'invite' ? (
+          {match.name !== 'login' &&
+          match.name !== 'cli-login' &&
+          match.name !== 'invite' ? (
             <Header
               user={user}
               onLogout={logout}
@@ -168,35 +372,65 @@ const AppShell = () => {
           aria-hidden="true"
         />
         <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 pb-16">
-          {match.name === 'login' ? (
-            <LoginPage navigate={navigate} />
-          ) : match.name === 'cli-login' ? (
-            <CliLoginPage code={match.code} navigate={navigate} />
-          ) : match.name === 'invite' ? (
-            <InvitePage token={match.token} navigate={navigate} />
-          ) : match.name === 'profile' ? (
-            <ProfilePage navigate={navigate} />
-          ) : match.name === 'projects' ? (
-            <ProjectsPage navigate={navigate} />
-          ) : match.name === 'project' ? (
-            <ProjectOverviewPage
-              projectId={match.projectId}
-              navigate={navigate}
-            />
-          ) : match.name === 'environments' ? (
-            <EnvironmentsPage projectId={match.projectId} navigate={navigate} />
-          ) : match.name === 'audit' ? (
-            <AuditPage projectId={match.projectId} navigate={navigate} />
-          ) : match.name === 'tokens' ? (
-            <TokensPage projectId={match.projectId} navigate={navigate} />
-          ) : match.name === 'team' ? (
-            <TeamPage projectId={match.projectId} navigate={navigate} />
+          {shouldWaitForAuth || shouldBlockProtectedRoute ? (
+            <section className="flex flex-1 flex-col items-center justify-center gap-2">
+              <p className="text-foreground text-base font-medium">
+                Checking your session
+              </p>
+              <p className="text-muted-foreground text-sm">
+                Redirecting to login...
+              </p>
+            </section>
+          ) : isResolvingProject ? (
+            <div className="text-muted-foreground text-sm">
+              Loading project...
+            </div>
           ) : (
-            <EnvironmentPage
-              projectId={match.projectId}
-              environmentId={match.environmentId}
-              navigate={navigate}
-            />
+            <Suspense
+              fallback={
+                <div className="text-muted-foreground text-sm">Loading…</div>
+              }
+            >
+              <Routes>
+                <Route path="/" element={<Navigate to="/projects" replace />} />
+                <Route path="/login" element={<LoginRoute />} />
+                <Route path="/cli-login" element={<CliLoginRoute />} />
+                <Route path="/invite" element={<InviteRoute />} />
+                <Route path="/profile" element={<ProfileRoute />} />
+                <Route path="/projects" element={<ProjectsRoute />} />
+                <Route
+                  path="/projects/:projectId"
+                  element={<ProjectOverviewRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/environments"
+                  element={<EnvironmentsRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/environments/:environmentId"
+                  element={<EnvironmentRoute />}
+                />
+                <Route path="/projects/:projectId/audit" element={<AuditRoute />} />
+                <Route
+                  path="/projects/:projectId/approvals"
+                  element={<ApprovalsRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/approval-rules"
+                  element={<ApprovalRulesRoute />}
+                />
+                <Route path="/projects/:projectId/team" element={<TeamRoute />} />
+                <Route
+                  path="/projects/:projectId/tokens"
+                  element={<TokensRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/service-accounts"
+                  element={<ServiceAccountsRoute />}
+                />
+                <Route path="*" element={<Navigate to="/projects" replace />} />
+              </Routes>
+            </Suspense>
           )}
         </main>
         <ShortcutsHelpDialog
@@ -211,10 +445,12 @@ const AppShell = () => {
 
 export default function App() {
   return (
-    <ShortcutsProvider>
-      <ShortcutHintsProvider>
-        <AppShell />
-      </ShortcutHintsProvider>
-    </ShortcutsProvider>
+    <BrowserRouter>
+      <ShortcutsProvider>
+        <ShortcutHintsProvider>
+          <AppShell />
+        </ShortcutHintsProvider>
+      </ShortcutsProvider>
+    </BrowserRouter>
   )
 }

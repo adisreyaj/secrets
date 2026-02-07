@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { Plus, X } from 'lucide-react'
+import { useState } from 'react'
 import { useRegisterShortcut } from '../../lib/shortcuts'
 import { ShortcutHint } from '../ShortcutHint'
 import { Button } from '../ui/button'
@@ -113,18 +113,13 @@ export const AddSecretDialog = ({
       }}
     >
       <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          data-testid="secret-add-open"
-          className="flex h-9 items-center gap-2 rounded-full text-xs"
-        >
+        <Button variant="outline" size="sm" className="h-9">
           <Plus className="h-3.5 w-3.5" />
           Add secret
           <ShortcutHint keys="n" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="rounded-3xl border-white/70 bg-white/95">
+      <DialogContent>
         <DialogHeader className="text-left">
           <DialogTitle>Add secret</DialogTitle>
           <DialogDescription>
@@ -133,14 +128,11 @@ export const AddSecretDialog = ({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Secret details
-            </p>
+            <p className="muted-label">Secret details</p>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="h-8 rounded-full px-3 text-xs"
               onClick={() => {
                 setShowPasteInput((prev) => !prev)
                 if (showPasteInput) {
@@ -163,9 +155,7 @@ export const AddSecretDialog = ({
 
           {showPasteInput ? (
             <label className="grid gap-2 text-sm">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                Paste key=value
-              </span>
+              <span className="muted-label">Paste key=value</span>
               <Input
                 value={pasteLine}
                 onChange={(event) => {
@@ -184,24 +174,23 @@ export const AddSecretDialog = ({
                   }
                 }}
                 placeholder="SECRET_KEY=secret-value"
-                className="h-11 rounded-2xl bg-white px-4"
               />
               {pasteError ? (
                 <span className="text-xs text-rose-600">{pasteError}</span>
               ) : null}
               {!pasteError && pasteHint ? (
-                <span className="text-xs text-muted-foreground">{pasteHint}</span>
+                <span className="text-muted-foreground text-xs">
+                  {pasteHint}
+                </span>
               ) : null}
-              <span className="text-xs text-muted-foreground">
+              <span className="text-muted-foreground text-xs">
                 We’ll split this into key and value automatically.
               </span>
             </label>
           ) : null}
 
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Secret key
-            </span>
+            <span className="muted-label">Secret key</span>
             <Input
               data-testid="secret-key-input"
               value={form.key}
@@ -212,13 +201,10 @@ export const AddSecretDialog = ({
                 }))
               }
               placeholder="SECRET_KEY"
-              className="h-11 rounded-2xl bg-white px-4"
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-              Secret value
-            </span>
+            <span className="muted-label">Secret value</span>
             <Input
               data-testid="secret-value-input"
               value={form.value}
@@ -229,15 +215,14 @@ export const AddSecretDialog = ({
                 }))
               }
               placeholder="secret-value"
-              className="h-11 rounded-2xl bg-white px-4"
             />
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="text-muted-foreground flex items-center gap-2 text-xs">
               <span>Quick set:</span>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 rounded-full px-3 text-xs"
+                className="h-7"
                 onClick={() => setForm((prev) => ({ ...prev, value: 'true' }))}
               >
                 true
@@ -246,7 +231,7 @@ export const AddSecretDialog = ({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 rounded-full px-3 text-xs"
+                className="h-7"
                 onClick={() => setForm((prev) => ({ ...prev, value: 'false' }))}
               >
                 false
@@ -257,15 +242,12 @@ export const AddSecretDialog = ({
             <Button
               type="button"
               variant="ghost"
-              className="rounded-full px-4 text-sm"
               onClick={() => setOpen(false)}
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              data-testid="secret-add-submit"
-              className="rounded-full bg-slate-900 px-6 text-sm font-semibold text-white hover:bg-slate-800"
               disabled={creating || !form.key.trim() || !form.value.trim()}
             >
               {creating ? 'Saving...' : 'Add secret'}

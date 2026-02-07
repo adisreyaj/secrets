@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { matchRoutes, type RouteObject } from 'react-router-dom'
 
 export type RouteMatch =
   | { name: 'login' }
@@ -10,82 +10,105 @@ export type RouteMatch =
   | { name: 'environments'; projectId: string }
   | { name: 'environment'; projectId: string; environmentId: string }
   | { name: 'audit'; projectId: string }
+  | { name: 'approvals'; projectId: string }
+  | { name: 'approval-rules'; projectId: string }
   | { name: 'team'; projectId: string }
   | { name: 'tokens'; projectId: string }
+  | { name: 'service-accounts'; projectId: string }
 
-const normalize = (value: string) => value.replace(/^#/, '').trim()
+export const appRoutes: RouteObject[] = [
+  { path: '/login', handle: { name: 'login' } },
+  { path: '/cli-login', handle: { name: 'cli-login' } },
+  { path: '/invite', handle: { name: 'invite' } },
+  { path: '/profile', handle: { name: 'profile' } },
+  { path: '/projects', handle: { name: 'projects' } },
+  { path: '/projects/:projectId', handle: { name: 'project' } },
+  {
+    path: '/projects/:projectId/environments',
+    handle: { name: 'environments' },
+  },
+  {
+    path: '/projects/:projectId/environments/:environmentId',
+    handle: { name: 'environment' },
+  },
+  { path: '/projects/:projectId/audit', handle: { name: 'audit' } },
+  { path: '/projects/:projectId/approvals', handle: { name: 'approvals' } },
+  {
+    path: '/projects/:projectId/approval-rules',
+    handle: { name: 'approval-rules' },
+  },
+  { path: '/projects/:projectId/team', handle: { name: 'team' } },
+  { path: '/projects/:projectId/tokens', handle: { name: 'tokens' } },
+  {
+    path: '/projects/:projectId/service-accounts',
+    handle: { name: 'service-accounts' },
+  },
+]
 
-const parseRoute = (hash: string): RouteMatch => {
-  const raw = normalize(hash) || '/'
-  const [path, query] = raw.split('?')
-  const segments = path.replace(/^\//, '').split('/').filter(Boolean)
-  const queryParams = new URLSearchParams(query ?? '')
+export const getRouteMatch = (pathname: string, search: string): RouteMatch => {
+  const matches = matchRoutes(appRoutes, { pathname })
+  const current = matches?.[matches.length - 1]
+  const name = current?.route.handle?.name as RouteMatch['name'] | undefined
+  const params = current?.params ?? {}
+  const queryParams = new URLSearchParams(search)
 
-  if (segments.length === 0) {
-    return { name: 'projects' }
-  }
-
-  if (segments[0] === 'login') {
-    return { name: 'login' }
-  }
-
-  if (segments[0] === 'cli-login') {
+  if (name === 'login') return { name: 'login' }
+  if (name === 'cli-login') {
     return { name: 'cli-login', code: queryParams.get('code') }
   }
-
-  if (segments[0] === 'invite') {
+  if (name === 'invite') {
     return { name: 'invite', token: queryParams.get('token') }
   }
-
-  if (segments[0] === 'profile') {
-    return { name: 'profile' }
+  if (name === 'profile') return { name: 'profile' }
+  if (name === 'projects') return { name: 'projects' }
+  if (name === 'project' && params.projectId) {
+    return { name: 'project', projectId: params.projectId }
   }
-
-  if (segments[0] === 'projects') {
-    if (segments.length === 1) {
-      return { name: 'projects' }
+  if (name === 'environments' && params.projectId) {
+    return { name: 'environments', projectId: params.projectId }
+  }
+  if (name === 'environment' && params.projectId && params.environmentId) {
+    return {
+      name: 'environment',
+      projectId: params.projectId,
+      environmentId: params.environmentId,
     }
-    if (segments.length >= 2) {
-      const projectId = segments[1]
-      if (segments[2] === 'environments' && segments[3]) {
-        return { name: 'environment', projectId, environmentId: segments[3] }
-      }
-      if (segments[2] === 'environments') {
-        return { name: 'environments', projectId }
-      }
-      if (segments[2] === 'audit') {
-        return { name: 'audit', projectId }
-      }
-      if (segments[2] === 'team') {
-        return { name: 'team', projectId }
-      }
-      if (segments[2] === 'tokens') {
-        return { name: 'tokens', projectId }
-      }
-      return { name: 'project', projectId }
-    }
+  }
+  if (name === 'audit' && params.projectId) {
+    return { name: 'audit', projectId: params.projectId }
+  }
+  if (name === 'approvals' && params.projectId) {
+    return { name: 'approvals', projectId: params.projectId }
+  }
+  if (name === 'approval-rules' && params.projectId) {
+    return { name: 'approval-rules', projectId: params.projectId }
+  }
+  if (name === 'team' && params.projectId) {
+    return { name: 'team', projectId: params.projectId }
+  }
+  if (name === 'tokens' && params.projectId) {
+    return { name: 'tokens', projectId: params.projectId }
+  }
+  if (name === 'service-accounts' && params.projectId) {
+    return { name: 'service-accounts', projectId: params.projectId }
   }
 
   return { name: 'projects' }
 }
 
-export const useHashRouter = () => {
-  const [hash, setHash] = useState(() => window.location.hash || '#/')
+export const isProjectScopedRoute = (match: RouteMatch) =>
+  match.name === 'project' ||
+  match.name === 'environments' ||
+  match.name === 'environment' ||
+  match.name === 'audit' ||
+  match.name === 'approvals' ||
+  match.name === 'approval-rules' ||
+  match.name === 'team' ||
+  match.name === 'tokens' ||
+  match.name === 'service-accounts'
 
-  useEffect(() => {
-    const handler = () => setHash(window.location.hash || '#/')
-    window.addEventListener('hashchange', handler)
-    return () => window.removeEventListener('hashchange', handler)
-  }, [])
+export const getProjectId = (match: RouteMatch) =>
+  isProjectScopedRoute(match) ? match.projectId : null
 
-  const match = useMemo(() => parseRoute(hash), [hash])
-
-  const navigate = (path: string) => {
-    const normalized = path.startsWith('#') ? path : `#${path.startsWith('/') ? path : `/${path}`}`
-    if (window.location.hash !== normalized) {
-      window.location.hash = normalized
-    }
-  }
-
-  return { match, navigate }
-}
+export const getEnvironmentId = (match: RouteMatch) =>
+  match.name === 'environment' ? match.environmentId : null

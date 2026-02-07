@@ -1,21 +1,10 @@
-import type { Role } from '@prisma/client';
+import type { AuthContext, AuthUser } from './server/types/auth.js';
 
-export interface AuthUser {
-  id: string;
-  email: string;
-  name?: string | null;
-}
-
-export interface AuthContext {
-  user: AuthUser;
-  viaToken: boolean;
-  projectId?: string;
-  role?: Role | null;
-  readOnly?: boolean;
-}
+export type { AuthContext, AuthUser };
 
 declare module 'fastify' {
   interface FastifyRequest {
     auth?: AuthContext;
+    errorLogged?: boolean;
   }
 }

@@ -8,18 +8,18 @@ export const parseDotenv = (content: string) => {
   const lines = content.split(/\r?\n/)
 
   const normalizeValue = (value: string) => {
-    if (value.startsWith('\"') && value.endsWith('\"')) {
+    if (value.startsWith('"') && value.endsWith('"')) {
       const inner = value.slice(1, -1)
       return inner
         .replace(/\\n/g, '\n')
         .replace(/\\r/g, '\r')
         .replace(/\\t/g, '\t')
-        .replace(/\\"/g, '\"')
+        .replace(/"/g, '"')
     }
     if (value.startsWith("'") && value.endsWith("'")) {
       return value.slice(1, -1)
     }
-    const commentIndex = value.search(/\\s+#/)
+    const commentIndex = value.search(/\s+#/)
     if (commentIndex >= 0) {
       return value.slice(0, commentIndex).trimEnd()
     }

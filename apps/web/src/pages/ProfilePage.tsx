@@ -1,17 +1,20 @@
-import { useEffect, useState } from 'react'
-import { Button } from '../components/ui/button'
-import { Input } from '../components/ui/input'
 import { ArrowLeft } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
 import { useAuth } from '../lib/auth'
+import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ProfilePage = ({
   navigate,
 }: {
   navigate: (path: string) => void
 }) => {
-  const { user, loading, updateProfile } = useAuth()
+  const { updateProfile } = useAuth()
+  const { user } = useRequireAuth(navigate)
   const [profileForm, setProfileForm] = useState({ name: '' })
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -23,12 +26,6 @@ export const ProfilePage = ({
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [profileSuccess, setProfileSuccess] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/login')
-    }
-  }, [user, loading, navigate])
 
   useEffect(() => {
     if (user) {
@@ -47,7 +44,9 @@ export const ProfilePage = ({
       })
       setProfileSuccess('Profile updated.')
     } catch (error) {
-      setProfileError(error instanceof Error ? error.message : 'Something went wrong.')
+      setProfileError(
+        error instanceof Error ? error.message : 'Something went wrong.',
+      )
     } finally {
       setProfileSaving(false)
     }
@@ -66,7 +65,9 @@ export const ProfilePage = ({
       setPasswordSuccess('Password updated.')
       setPasswordForm({ currentPassword: '', newPassword: '' })
     } catch (error) {
-      setPasswordError(error instanceof Error ? error.message : 'Something went wrong.')
+      setPasswordError(
+        error instanceof Error ? error.message : 'Something went wrong.',
+      )
     } finally {
       setPasswordSaving(false)
     }
@@ -80,7 +81,6 @@ export const ProfilePage = ({
         actions={
           <Button
             variant="outline"
-            className="gap-2 rounded-full border-border px-4 py-2 text-sm font-semibold text-foreground hover:border-foreground/40"
             onClick={() => navigate('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />
@@ -96,46 +96,40 @@ export const ProfilePage = ({
           className="grid items-start gap-4 md:grid-cols-2"
         >
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-              Full name
-            </span>
+            <span className="muted-label">Full name</span>
             <Input
               value={profileForm.name}
               onChange={(event) =>
-                setProfileForm((prev) => ({ ...prev, name: event.target.value }))
+                setProfileForm((prev) => ({
+                  ...prev,
+                  name: event.target.value,
+                }))
               }
               placeholder="Your name"
-              className="h-11 rounded-2xl bg-background px-4"
             />
-            <span className="text-xs text-muted-foreground opacity-0 select-none">
+            <span className="text-muted-foreground text-xs opacity-0 select-none">
               Email updates are disabled for now.
             </span>
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-              Email
-            </span>
+            <span className="muted-label">Email</span>
             <Input
               type="email"
               value={user?.email ?? ''}
               disabled
               readOnly
-              className="h-11 rounded-2xl bg-muted/60 px-4 text-muted-foreground"
+              variant="muted"
             />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               Email updates are disabled for now.
             </span>
           </label>
-          <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-            <Button
-              type="submit"
-              disabled={profileSaving}
-              className="h-11 rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
-            >
+          <div className="flex flex-wrap items-center gap-3 md:col-span-2">
+            <Button type="submit" disabled={profileSaving}>
               {profileSaving ? 'Saving...' : 'Save changes'}
             </Button>
             {profileError ? (
-              <p className="text-sm text-rose-600">{profileError}</p>
+              <ErrorBanner message={profileError} className="mt-3" />
             ) : null}
             {profileSuccess ? (
               <p className="text-sm text-emerald-600">{profileSuccess}</p>
@@ -146,11 +140,12 @@ export const ProfilePage = ({
 
       <SectionCard className="space-y-6">
         <SectionHeader kicker="Security" title="Password" />
-        <form onSubmit={handlePasswordSubmit} className="grid gap-4 md:grid-cols-2">
+        <form
+          onSubmit={handlePasswordSubmit}
+          className="grid gap-4 md:grid-cols-2"
+        >
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-              Current password
-            </span>
+            <span className="muted-label">Current password</span>
             <Input
               type="password"
               value={passwordForm.currentPassword}
@@ -161,13 +156,10 @@ export const ProfilePage = ({
                 }))
               }
               placeholder="Current password"
-              className="h-11 rounded-2xl bg-background px-4"
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="text-xs font-semibold tracking-[0.2em] text-muted-foreground uppercase">
-              New password
-            </span>
+            <span className="muted-label">New password</span>
             <Input
               type="password"
               value={passwordForm.newPassword}
@@ -178,19 +170,14 @@ export const ProfilePage = ({
                 }))
               }
               placeholder="New password"
-              className="h-11 rounded-2xl bg-background px-4"
             />
           </label>
-          <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-            <Button
-              type="submit"
-              disabled={passwordSaving}
-              className="h-11 rounded-full bg-foreground px-6 text-sm font-semibold text-background hover:bg-foreground/90"
-            >
+          <div className="flex flex-wrap items-center gap-3 md:col-span-2">
+            <Button type="submit" disabled={passwordSaving}>
               {passwordSaving ? 'Updating...' : 'Update password'}
             </Button>
             {passwordError ? (
-              <p className="text-sm text-rose-600">{passwordError}</p>
+              <ErrorBanner message={passwordError} className="mt-3" />
             ) : null}
             {passwordSuccess ? (
               <p className="text-sm text-emerald-600">{passwordSuccess}</p>

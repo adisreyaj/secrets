@@ -72,7 +72,7 @@ Required in `apps/server/.env`:
 - `DATABASE_URL` MySQL connection string
 - `MASTER_KEY` 32-byte key (64 hex chars or 32-byte base64)
 - `MASTER_KEY_VERSION` optional key version (default `v1`)
-- `APP_ORIGIN` the Angular app origin (default `http://localhost:4200`)
+- `APP_ORIGIN` app origin (or comma-separated origins) allowed for browser writes, e.g. `https://app.example.com,https://www.app.example.com`
 - `SESSION_TTL_HOURS` session lifespan
 - `COOKIE_SECURE` set to `true` in production
 - `PORT` API port (default `3001`)
@@ -83,6 +83,14 @@ CLI/SDK environment variables:
 - `SECRETS_ENV` environment id or slug
 - `SECRETS_PROJECT` project id or slug (required when env is a slug)
 - `SECRETS_API_BASE_URL` API base URL (default `http://localhost:3001`)
+
+Web app environment variables (Vite):
+
+- `VITE_POSTHOG_KEY` PostHog project API key
+- `VITE_POSTHOG_HOST` PostHog host (default `https://app.posthog.com`)
+- `VITE_ERROR_TRACKING_PROVIDER` error tracking provider (default `posthog`)
+- `VITE_ERROR_TRACKING_DEBUG` set to `true` to enable PostHog debug logs
+- Error tracking is enabled only in production (`import.meta.env.PROD`)
 
 ## Project Structure
 
