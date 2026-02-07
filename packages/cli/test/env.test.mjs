@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseEnvFile, summarizeImportResults } from '../dist/env.js';
+import { parseEnvFile, summarizeImportResults } from '../dist/env.mjs';
 
 test('parseEnvFile parses keys and values', () => {
   const raw = `

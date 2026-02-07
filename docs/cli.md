@@ -79,3 +79,43 @@ Unlink when finished:
 pnpm unlink --global @secrets/cli
 pnpm -C packages/cli unlink:global
 ```
+
+## Local testing with yalc (recommended)
+
+From this repo, publish both SDK and CLI to your local yalc store:
+
+```bash
+pnpm yalc:publish:all
+```
+
+In the other (npm/pnpm) project, add both packages:
+
+```bash
+yalc add @secrets/sdk @secrets/cli
+npm install
+npx secrets --help
+```
+
+After local code changes in this repo, push updates:
+
+```bash
+pnpm yalc:push:all
+```
+
+Then in the other project:
+
+```bash
+yalc update @secrets/sdk @secrets/cli
+npm install
+```
+
+## Debugging Fetch Errors
+
+Enable verbose diagnostics:
+
+```bash
+secrets list --debug
+SECRETS_DEBUG=1 secrets export --format dotenv
+```
+
+Debug logs are written to stderr and redact auth/token-like values.

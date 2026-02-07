@@ -8,6 +8,7 @@ import {
   readConfigFile,
 } from '@secrets/sdk'
 import { parseEnvFile, summarizeImportResults } from './env.js'
+import { createDebugLogger, type DebugLogger } from './log.js'
 import { runLoginUI } from './ui/login.js'
 import { runInitUI } from './ui/init.js'
 
@@ -24,7 +25,11 @@ type FlagOptions = {
   force?: boolean
   projectName?: string
   envName?: string
+  debug?: boolean
 }
+
+let globalDebugEnabled = false
+let lastBaseUrlHint: string | undefined
 
 function printHelp() {
   const lines = [
@@ -59,6 +64,7 @@ function printHelp() {
     '  --force               Overwrite existing files (export/init)',
     '  --project-name <value>  Project name (init only)',
     '  --env-name <value>      Environment name (init only)',
+    '  --debug               Enable verbose diagnostic logs (stderr)',
     '',
   ]
 
@@ -86,6 +92,10 @@ function parseFlags(args: string[]): { flags: FlagOptions; rest: string[] } {
     }
     if (arg === '--force') {
       flags.force = true
+      continue
+    }
+    if (arg === '--debug') {
+      flags.debug = true
       continue
     }
 
@@ -128,7 +138,30 @@ function parseFlags(args: string[]): { flags: FlagOptions; rest: string[] } {
   return { flags, rest }
 }
 
-async function loadClient(flags: FlagOptions) {
+function isDebugEnabled(flags: FlagOptions) {
+  if (flags.debug) {
+    return true
+  }
+  const value = process.env.SECRETS_DEBUG?.trim().toLowerCase()
+  return value === '1' || value === 'true' || value === 'yes'
+}
+
+function normalizeGlobalArgs(args: string[]) {
+  const separatorIndex = args.indexOf('--')
+  const head = separatorIndex === -1 ? args : args.slice(0, separatorIndex)
+  const tail = separatorIndex === -1 ? [] : args.slice(separatorIndex)
+  const filteredHead = head.filter((arg) => arg !== '--debug')
+  return {
+    args: [...filteredHead, ...tail],
+    hasDebugFlag: filteredHead.length !== head.length,
+  }
+}
+
+function isDebugActive(flags: FlagOptions) {
+  return globalDebugEnabled || isDebugEnabled(flags)
+}
+
+async function loadClient(flags: FlagOptions, logger: DebugLogger) {
   const config = await readConfigFile()
   const token = process.env.SECRETS_TOKEN
   if (!token) {
@@ -137,6 +170,12 @@ async function loadClient(flags: FlagOptions) {
 
   const baseUrl =
     flags.baseUrl ?? process.env.SECRETS_API_BASE_URL ?? config?.apiBaseUrl ?? DEFAULT_BASE_URL
+  lastBaseUrlHint = baseUrl
+  logger('client.resolve', {
+    baseUrl,
+    hasToken: Boolean(token),
+    hasConfig: Boolean(config),
+  })
 
   const envInput = flags.env ?? process.env.SECRETS_ENV
   const projectInput = flags.project ?? process.env.SECRETS_PROJECT
@@ -170,9 +209,44 @@ async function loadClient(flags: FlagOptions) {
   }
 }
 
-async function apiFetch<T>(baseUrl: string, token: string, path: string): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, {
+async function apiFetch<T>(
+  baseUrl: string,
+  token: string,
+  path: string,
+  logger: DebugLogger,
+): Promise<T> {
+  const startedAt = Date.now()
+  logger('http.request', {
+    method: 'GET',
+    path,
+    baseUrl,
     headers: { Authorization: `Bearer ${token}` },
+  })
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  } catch (error) {
+    const err = error as Error & { cause?: unknown }
+    logger('http.network_error', {
+      method: 'GET',
+      path,
+      message: err.message,
+      name: err.name,
+      cause: err.cause,
+      durationMs: Date.now() - startedAt,
+    })
+    throw error
+  }
+
+  logger('http.response', {
+    method: 'GET',
+    path,
+    status: response.status,
+    statusText: response.statusText,
+    contentType: response.headers.get('content-type') ?? '',
+    durationMs: Date.now() - startedAt,
   })
 
   if (!response.ok) {
@@ -182,8 +256,16 @@ async function apiFetch<T>(baseUrl: string, token: string, path: string): Promis
       if (payload?.error) {
         message = payload.error
       }
+      logger('http.response_error_payload', {
+        method: 'GET',
+        path,
+        payload,
+      })
     } catch {
-      // ignore
+      logger('http.response_error_payload_unavailable', {
+        method: 'GET',
+        path,
+      })
     }
     throw new Error(message)
   }
@@ -200,15 +282,51 @@ async function apiRequest<T>(
   token: string,
   path: string,
   options: RequestInit,
+  logger: DebugLogger,
 ): Promise<T> {
   const headers = new Headers(options.headers)
   headers.set('Authorization', `Bearer ${token}`)
   if (options.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
-  const response = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers,
+  const method = options.method ?? 'GET'
+  const startedAt = Date.now()
+  const requestHeaders = Object.fromEntries(headers.entries())
+  logger('http.request', {
+    method,
+    path,
+    baseUrl,
+    headers: requestHeaders,
+    hasBody: Boolean(options.body),
+    bodyPreview: typeof options.body === 'string' ? options.body : undefined,
+  })
+
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers,
+    })
+  } catch (error) {
+    const err = error as Error & { cause?: unknown }
+    logger('http.network_error', {
+      method,
+      path,
+      message: err.message,
+      name: err.name,
+      cause: err.cause,
+      durationMs: Date.now() - startedAt,
+    })
+    throw error
+  }
+
+  logger('http.response', {
+    method,
+    path,
+    status: response.status,
+    statusText: response.statusText,
+    contentType: response.headers.get('content-type') ?? '',
+    durationMs: Date.now() - startedAt,
   })
 
   if (!response.ok) {
@@ -218,8 +336,13 @@ async function apiRequest<T>(
       if (payload?.error) {
         message = payload.error
       }
+      logger('http.response_error_payload', {
+        method,
+        path,
+        payload,
+      })
     } catch {
-      // ignore
+      logger('http.response_error_payload_unavailable', { method, path })
     }
     throw new Error(message)
   }
@@ -233,7 +356,10 @@ async function apiRequest<T>(
 
 async function resolveBaseUrl(flags: FlagOptions) {
   const config = await readConfigFile()
-  return flags.baseUrl ?? process.env.SECRETS_API_BASE_URL ?? config?.apiBaseUrl ?? DEFAULT_BASE_URL
+  const baseUrl =
+    flags.baseUrl ?? process.env.SECRETS_API_BASE_URL ?? config?.apiBaseUrl ?? DEFAULT_BASE_URL
+  lastBaseUrlHint = baseUrl
+  return baseUrl
 }
 
 async function loginCommand(args: string[]) {
@@ -243,7 +369,36 @@ async function loginCommand(args: string[]) {
   }
 
   const baseUrl = await resolveBaseUrl(flags)
-  const response = await fetch(`${baseUrl}/auth/cli-login`, { method: 'POST' })
+  const logger = createDebugLogger(isDebugActive(flags))
+  const startedAt = Date.now()
+  logger('http.request', {
+    method: 'POST',
+    path: '/auth/cli-login',
+    baseUrl,
+  })
+  let response: Response
+  try {
+    response = await fetch(`${baseUrl}/auth/cli-login`, { method: 'POST' })
+  } catch (error) {
+    const err = error as Error & { cause?: unknown }
+    logger('http.network_error', {
+      method: 'POST',
+      path: '/auth/cli-login',
+      message: err.message,
+      name: err.name,
+      cause: err.cause,
+      durationMs: Date.now() - startedAt,
+    })
+    throw error
+  }
+  logger('http.response', {
+    method: 'POST',
+    path: '/auth/cli-login',
+    status: response.status,
+    statusText: response.statusText,
+    contentType: response.headers.get('content-type') ?? '',
+    durationMs: Date.now() - startedAt,
+  })
   if (!response.ok) {
     throw new Error(`Unable to start CLI login (${response.status})`)
   }
@@ -272,6 +427,7 @@ async function initCommand(args: string[]) {
   }
 
   const baseUrl = await resolveBaseUrl(flags)
+  const logger = createDebugLogger(isDebugActive(flags))
   const fs = await import('node:fs/promises')
   const path = await import('node:path')
   const configPath = path.join(process.cwd(), CONFIG_FILENAME)
@@ -310,7 +466,7 @@ async function initCommand(args: string[]) {
   const project = await apiRequest<{ id: string; slug?: string | null }>(baseUrl, token, `/projects`, {
     method: 'POST',
     body: JSON.stringify({ name: projectName }),
-  })
+  }, logger)
   const environment = await apiRequest<{ id: string; slug?: string | null }>(
     baseUrl,
     token,
@@ -319,6 +475,7 @@ async function initCommand(args: string[]) {
       method: 'POST',
       body: JSON.stringify({ name: envName }),
     },
+    logger,
   )
 
   const config = {
@@ -372,6 +529,7 @@ async function initCommand(args: string[]) {
           method: 'POST',
           body: JSON.stringify(entry),
           },
+          logger,
         )
         results.push(result ?? {})
       }
@@ -394,12 +552,13 @@ async function runCommand(args: string[]) {
   }
 
   const { flags } = parseFlags(args.slice(0, separatorIndex))
+  const logger = createDebugLogger(isDebugActive(flags))
   const command = args.slice(separatorIndex + 1)
   if (command.length === 0) {
     throw new Error('No command provided')
   }
 
-  const { client } = await loadClient(flags)
+  const { client } = await loadClient(flags, logger)
   const secrets = await client.getSecrets()
 
   const env = { ...process.env }
@@ -427,6 +586,7 @@ async function runCommand(args: string[]) {
 
 async function exportEnv(args: string[]) {
   const { flags, rest } = parseFlags(args)
+  const logger = createDebugLogger(isDebugActive(flags))
   if (rest.length > 0) {
     throw new Error('Unexpected arguments for export command')
   }
@@ -434,9 +594,14 @@ async function exportEnv(args: string[]) {
     throw new Error('Only dotenv format is supported')
   }
 
-  const { client, baseUrl, token } = await loadClient(flags)
+  const { client, baseUrl, token } = await loadClient(flags, logger)
   const envId = await client.resolveEnvironmentId()
-  const output = await apiFetch<string>(baseUrl, token, `/environments/${envId}/export?format=dotenv`)
+  const output = await apiFetch<string>(
+    baseUrl,
+    token,
+    `/environments/${envId}/export?format=dotenv`,
+    logger,
+  )
 
   if (flags.out) {
     const fs = await import('node:fs/promises')
@@ -470,16 +635,18 @@ async function exportEnv(args: string[]) {
 
 async function listSecrets(args: string[]) {
   const { flags, rest } = parseFlags(args)
+  const logger = createDebugLogger(isDebugActive(flags))
   if (rest.length > 0) {
     throw new Error('Unexpected arguments for list command')
   }
 
-  const { client, baseUrl, token } = await loadClient(flags)
+  const { client, baseUrl, token } = await loadClient(flags, logger)
   const envId = await client.resolveEnvironmentId()
   const secrets = await apiFetch<{ key: string; value?: string }[]>(
     baseUrl,
     token,
     `/environments/${envId}/secrets?includeValues=true`,
+    logger,
   )
 
   for (const secret of secrets) {
@@ -489,12 +656,13 @@ async function listSecrets(args: string[]) {
 
 async function getSecret(args: string[]) {
   const { flags, rest } = parseFlags(args)
+  const logger = createDebugLogger(isDebugActive(flags))
   const key = rest[0]
   if (!key) {
     throw new Error('Secret key is required')
   }
 
-  const { client } = await loadClient(flags)
+  const { client } = await loadClient(flags, logger)
   const value = await client.getSecret(key)
   if (typeof value === 'undefined') {
     throw new Error(`Secret not found or value not available: ${key}`)
@@ -503,7 +671,9 @@ async function getSecret(args: string[]) {
 }
 
 async function main() {
-  const args = process.argv.slice(2)
+  const normalized = normalizeGlobalArgs(process.argv.slice(2))
+  const args = normalized.args
+  globalDebugEnabled = normalized.hasDebugFlag || isDebugEnabled({})
   const command = args[0]
 
   if (!command || command === '--help' || command === '-h') {
@@ -536,6 +706,16 @@ async function main() {
 }
 
 main().catch((error) => {
+  if (!globalDebugEnabled) {
+    console.error('Tip: rerun with --debug or set SECRETS_DEBUG=1 for diagnostics.')
+  } else {
+    if (lastBaseUrlHint) {
+      console.error(`Debug context: SECRETS_API_BASE_URL resolved to ${lastBaseUrlHint}`)
+    }
+    if (error instanceof Error && error.stack) {
+      console.error(error.stack)
+    }
+  }
   console.error(error.message)
   process.exit(1)
 })

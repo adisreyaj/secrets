@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "secrets": "dist/index.js"
+    "secrets": "dist/index.mjs"
   },
   "dependencies": {
     "@secrets/sdk": "workspace:*",
@@ -14,7 +14,7 @@
   "devDependencies": {
     "@types/node": "^25.0.10",
     "@types/react": "^18.3.5",
-    "tsdown": "^0.8.1",
+    "tsdown": "^0.20.3",
     "typescript": "^5.9.3"
   },
   "scripts": {
