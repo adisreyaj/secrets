@@ -39,7 +39,7 @@ type ProjectsSectionProps = {
   loading: boolean
   error: string | null
   onSelect: (projectId: string) => void
-  onCreate: (payload: CreateProjectPayload) => Promise<void>
+  onCreate: (payload: CreateProjectPayload) => Promise<boolean>
 }
 
 export const ProjectsSection = ({
@@ -76,8 +76,10 @@ export const ProjectsSection = ({
     if (!trimmedName || creating) return
     setCreating(true)
     try {
-      await onCreate({ name: trimmedName, template })
-      setDialogOpen(false)
+      const created = await onCreate({ name: trimmedName, template })
+      if (created) {
+        setDialogOpen(false)
+      }
     } finally {
       setCreating(false)
     }

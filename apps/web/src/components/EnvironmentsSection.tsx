@@ -47,7 +47,7 @@ export const EnvironmentsSection = ({
   onCreate: (payload: {
     name: string
     copyFromEnvironmentId?: string | null
-  }) => Promise<void>
+  }) => Promise<boolean>
 }) => {
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
@@ -110,11 +110,13 @@ export const EnvironmentsSection = ({
     if (!trimmedName || creating) return
     setCreating(true)
     try {
-      await onCreate({
+      const created = await onCreate({
         name: trimmedName,
         copyFromEnvironmentId: copyFromId !== 'none' ? copyFromId : undefined,
       })
-      setDialogOpen(false)
+      if (created) {
+        setDialogOpen(false)
+      }
     } finally {
       setCreating(false)
     }

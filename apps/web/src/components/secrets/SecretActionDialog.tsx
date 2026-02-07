@@ -38,8 +38,8 @@ export const SecretActionDialog = ({
       }
     | undefined
   >
-  onRollback: (secretId: string) => Promise<void>
-  onDelete: (secretId: string) => Promise<void>
+  onRollback: (secretId: string) => Promise<boolean>
+  onDelete: (secretId: string) => Promise<boolean>
   onClose: () => void
 }) => {
   const [selectedTargets, setSelectedTargets] = useState<string[]>([])
@@ -63,13 +63,17 @@ export const SecretActionDialog = ({
   const handleConfirm = async () => {
     if (!secret || !mode) return
     if (mode === 'rollback') {
-      await onRollback(secret.id)
-      onClose()
+      const rolledBack = await onRollback(secret.id)
+      if (rolledBack) {
+        onClose()
+      }
       return
     }
     if (mode === 'delete') {
-      await onDelete(secret.id)
-      onClose()
+      const deleted = await onDelete(secret.id)
+      if (deleted) {
+        onClose()
+      }
       return
     }
     if (mode === 'copy') {
