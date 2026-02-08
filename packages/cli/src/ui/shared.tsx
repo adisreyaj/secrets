@@ -88,61 +88,6 @@ export function promptConfirm(question: string, defaultYes: boolean) {
   })
 }
 
-export function promptSelect(
-  question: string,
-  options: string[],
-  defaultIndex = 0,
-) {
-  return new Promise<number>((resolve, reject) => {
-    const Prompt = () => {
-      const { exit } = useApp()
-      const [index, setIndex] = useState(
-        Math.max(0, Math.min(defaultIndex, options.length - 1)),
-      )
-
-      useInput((input, key) => {
-        if (key.ctrl && input === 'c') {
-          exit()
-          reject(new Error('Aborted'))
-          return
-        }
-        if (key.downArrow) {
-          setIndex((current) => (current + 1) % options.length)
-          return
-        }
-        if (key.upArrow) {
-          setIndex((current) => (current - 1 + options.length) % options.length)
-          return
-        }
-        if (key.return) {
-          exit()
-          resolve(index)
-          return
-        }
-
-        const numeric = Number(input.trim())
-        if (Number.isInteger(numeric) && numeric >= 1 && numeric <= options.length) {
-          setIndex(numeric - 1)
-        }
-      })
-
-      return (
-        <Box flexDirection="column">
-          <Text>{question}</Text>
-          {options.map((option, optionIndex) => (
-            <Text key={option}>
-              {optionIndex === index ? '>' : ' '} {optionIndex + 1}. {option}
-            </Text>
-          ))}
-          <Text color="gray">Use ↑/↓ and Enter (or type a number).</Text>
-        </Box>
-      )
-    }
-
-    render(<Prompt />)
-  })
-}
-
 export function Spinner({ label }: { label: string }) {
   const frames = ['-', '\\', '|', '/']
   const [index, setIndex] = useState(0)

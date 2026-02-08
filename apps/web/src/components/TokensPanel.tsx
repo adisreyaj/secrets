@@ -21,7 +21,7 @@ export const TokensPanel = ({
     name: string,
     readOnly: boolean,
   ) => Promise<CreateTokenResponse | undefined>
-  onDelete: (tokenId: string) => Promise<boolean>
+  onDelete: (tokenId: string) => Promise<void>
 }) => {
   const [activeToken, setActiveToken] = useState<ApiTokenDto | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -38,10 +38,8 @@ export const TokensPanel = ({
 
   const handleDelete = async () => {
     if (!activeToken) return
-    const deleted = await onDelete(activeToken.id)
-    if (deleted) {
-      closeDeleteDialog()
-    }
+    await onDelete(activeToken.id)
+    closeDeleteDialog()
   }
 
   return (

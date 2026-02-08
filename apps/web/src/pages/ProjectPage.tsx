@@ -156,8 +156,7 @@ export const ProjectPage = ({ projectId, navigate }: ProjectPageProps) => {
 
   const handleCreateProject = useCallback(
     async (payload: CreateProjectPayload) =>
-      Boolean(
-        await runMutationWithToast(
+      runMutationWithToast(
         async () => {
         const project = await api.createProject({ name: payload.name })
         const envNames = PROJECT_TEMPLATE_ENVIRONMENTS[payload.template] ?? []
@@ -171,14 +170,13 @@ export const ProjectPage = ({ projectId, navigate }: ProjectPageProps) => {
         await queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
       },
       { successMessage: 'Project created.' },
-    )),
+    ),
     [queryClient],
   )
 
   const handleCreateEnvironment = useCallback(
     async (payload: { name: string; copyFromEnvironmentId?: string | null }) =>
-      Boolean(
-        await runMutationWithToast(
+      runMutationWithToast(
         async () => {
         await api.createEnvironment(projectId, {
           name: payload.name,
@@ -189,7 +187,7 @@ export const ProjectPage = ({ projectId, navigate }: ProjectPageProps) => {
         })
       },
       { successMessage: 'Environment created.' },
-    )),
+    ),
     [projectId, queryClient],
   )
 
@@ -210,8 +208,7 @@ export const ProjectPage = ({ projectId, navigate }: ProjectPageProps) => {
 
   const handleDeleteToken = useCallback(
     async (tokenId: string) =>
-      Boolean(
-        await runMutationWithToast(
+      runMutationWithToast(
         async () => {
         await api.deleteToken(projectId, tokenId)
         await queryClient.invalidateQueries({
@@ -219,7 +216,7 @@ export const ProjectPage = ({ projectId, navigate }: ProjectPageProps) => {
         })
       },
       { successMessage: 'Token deleted.' },
-    )),
+    ),
     [projectId, queryClient],
   )
 

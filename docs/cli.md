@@ -15,9 +15,8 @@ secrets login
 ```
 
 `secrets login` now issues a global bootstrap token by default. This allows login with zero existing projects.
-It also stores auth locally and immediately continues into `secrets init`, so no manual `export SECRETS_TOKEN` step is required after login.
 
-Initialize by selecting an existing project/environment or creating new ones, then optionally import `.env`:
+Initialize a project + environment and optionally import `.env`:
 
 ```bash
 secrets init
@@ -42,8 +41,7 @@ SECRETS_TOKEN=... SECRETS_ENV=dev secrets export --format dotenv --out .env.loca
 - `secrets export --format dotenv [--out <file>]` writes dotenv output
 - `secrets export --dry-run` previews export output size
 - `secrets login` opens a browser-based login for CLI tokens (interactive TUI)
-- `secrets logout` clears local cached CLI auth
-- `secrets init` lets you select existing project/environment or create new ones, then writes `.secretsrc.json` (interactive TUI)
+- `secrets init` creates a project/environment and writes `.secretsrc.json` (interactive TUI)
 - `secrets list` prints secret keys
 - `secrets get <key>` prints a single secret value
 
@@ -61,13 +59,6 @@ Create `.secretsrc.json` to avoid flags or env vars (never include tokens):
 
 If the file exists, CLI will use it. Env vars/flags always override.
 
-## Local Auth Cache
-
-- CLI stores login token at `~/.config/secrets/auth.json` after successful `secrets login`.
-- `secrets init`, `secrets run`, `secrets list`, and `secrets get` can use this cached token if `SECRETS_TOKEN` is not set.
-- `SECRETS_TOKEN` still takes precedence when explicitly provided.
-- `secrets logout` removes this cached auth file.
-
 ## Global Bootstrap Token Scope
 
 - Default token from `secrets login` is `global_bootstrap` scope with 30-day TTL.
@@ -81,39 +72,6 @@ If the file exists, CLI will use it. Env vars/flags always override.
 - Project-scoped CLI token flow remains supported for existing project-based workflows.
 
 ## Local CLI testing
-
-### Fast in-workspace loop (no yalc, no global link)
-
-From this repo root, build SDK + CLI and run the CLI directly:
-
-```bash
-pnpm cli:dev:build
-pnpm cli:dev --help
-```
-
-For repeated runs, either use the script:
-
-```bash
-pnpm cli:dev list --debug
-```
-
-or a temporary shell alias:
-
-```bash
-alias secrets-dev='node /Users/adisreyaj/Desktop/code/secrets/packages/cli/dist/index.mjs'
-secrets-dev list --debug
-```
-
-For active development in one terminal:
-
-```bash
-pnpm cli:dev:watch
-```
-
-This watches both `@secrets/sdk` and `@secrets/cli`.
-Then run commands in another terminal with `pnpm cli:dev <args>`.
-
-### Global link flow
 
 Build and link the CLI globally:
 

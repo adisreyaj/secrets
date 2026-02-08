@@ -69,7 +69,7 @@ const parsePasteLine = (raw: string): ParseResult => {
 export const AddSecretDialog = ({
   onCreate,
 }: {
-  onCreate: (payload: { key: string; value: string }) => Promise<boolean>
+  onCreate: (payload: { key: string; value: string }) => Promise<void>
 }) => {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ key: '', value: '' })
@@ -94,14 +94,9 @@ export const AddSecretDialog = ({
     if (!form.key.trim() || !form.value.trim() || creating) return
     setCreating(true)
     try {
-      const created = await onCreate({
-        key: form.key.trim(),
-        value: form.value.trim(),
-      })
-      if (created) {
-        reset()
-        setOpen(false)
-      }
+      await onCreate({ key: form.key.trim(), value: form.value.trim() })
+      reset()
+      setOpen(false)
     } finally {
       setCreating(false)
     }

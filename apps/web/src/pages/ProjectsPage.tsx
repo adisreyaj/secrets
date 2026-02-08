@@ -54,11 +54,10 @@ export const ProjectsPage = ({ navigate }: ProjectsPageProps) => {
 
   const handleCreate = useCallback(
     async (payload: CreateProjectPayload) => {
-      const created = await runMutationWithToast(
+      await runMutationWithToast(
         () => createProjectMutation.mutateAsync(payload),
         { successMessage: 'Project created.' },
       )
-      return Boolean(created)
     },
     [createProjectMutation],
   )
