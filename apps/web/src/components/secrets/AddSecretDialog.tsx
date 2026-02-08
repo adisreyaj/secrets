@@ -1,5 +1,5 @@
 import { Plus, X } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRegisterShortcut } from '../../lib/shortcuts'
 import { ShortcutHint } from '../ShortcutHint'
 import { Button } from '../ui/button'
@@ -71,6 +71,7 @@ export const AddSecretDialog = ({
 }: {
   onCreate: (payload: { key: string; value: string }) => Promise<boolean>
 }) => {
+  const keyInputRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ key: '', value: '' })
   const [pasteLine, setPasteLine] = useState('')
@@ -128,7 +129,12 @@ export const AddSecretDialog = ({
           <ShortcutHint keys="n" />
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          keyInputRef.current?.focus()
+        }}
+      >
         <DialogHeader className="text-left">
           <DialogTitle>Add secret</DialogTitle>
           <DialogDescription>
@@ -201,6 +207,7 @@ export const AddSecretDialog = ({
           <label className="grid gap-2 text-sm">
             <span className="muted-label">Secret key</span>
             <Input
+              ref={keyInputRef}
               value={form.key}
               onChange={(event) =>
                 setForm((prev) => ({

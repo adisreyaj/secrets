@@ -7,7 +7,7 @@ import './index.css'
 import { AuthProvider } from './lib/auth'
 import { ErrorBoundary, ErrorTrackingProvider } from './lib/error-tracking'
 import { FeatureFlagProvider } from './lib/feature-flags'
-import { ThemeProvider } from './lib/theme'
+import { ThemeProvider, useTheme } from './lib/theme'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,10 +28,31 @@ if (!rootElement) {
   throw new Error('Root element not found')
 }
 
+const AppToaster = () => {
+  const { resolvedTheme } = useTheme()
+
+  return (
+    <Toaster
+      position="top-right"
+      richColors
+      theme={resolvedTheme}
+      toastOptions={{
+        classNames: {
+          toast: 'bg-card text-card-foreground border-border',
+          description: 'text-muted-foreground',
+          actionButton: 'bg-primary text-primary-foreground',
+          cancelButton: 'bg-muted text-muted-foreground',
+        },
+      }}
+    />
+  )
+}
+
 createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
+        <AppToaster />
         <AuthProvider>
           <ErrorTrackingProvider>
             <FeatureFlagProvider>
@@ -42,7 +63,6 @@ createRoot(rootElement).render(
           </ErrorTrackingProvider>
         </AuthProvider>
       </ThemeProvider>
-      <Toaster position="top-right" richColors />
     </QueryClientProvider>
   </StrictMode>,
 )
