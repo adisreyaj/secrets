@@ -31,14 +31,6 @@ import './types.js';
 const SESSION_COOKIE_NAME = 'sm_session';
 const CSRF_COOKIE_NAME = 'sm_csrf';
 
-function isPrismaUniqueError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
-}
-
-function normalizeIdentifier(value: string): string {
-  return value.trim().toLowerCase();
-}
-
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
@@ -743,8 +735,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     const body = request.body as { name?: string } | undefined;
-    const name = body?.name?.trim();
-    if (!name) {
+    if (!body?.name) {
       reply.code(400).send({ error: 'Name is required' });
       return;
     }
@@ -753,40 +744,19 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
-    const memberships = await prisma.projectMember.findMany({
-      where: { userId: auth.user.id },
-      select: { project: { select: { name: true } } },
-    });
-    const conflict = memberships.some(
-      (membership) => normalizeIdentifier(membership.project.name) === normalizeIdentifier(name),
-    );
-    if (conflict) {
-      reply.code(409).send({ error: 'Project name already exists' });
-      return;
-    }
-
-    const slug = await ensureUniqueProjectSlug(name);
-    let project;
-    try {
-      project = await prisma.project.create({
-        data: {
-          name,
-          slug,
-          members: {
-            create: {
-              userId: auth.user!.id,
-              role: Role.ADMIN,
-            },
+    const slug = await ensureUniqueProjectSlug(body.name);
+    const project = await prisma.project.create({
+      data: {
+        name: body.name,
+        slug,
+        members: {
+          create: {
+            userId: auth.user!.id,
+            role: Role.ADMIN,
           },
         },
-      });
-    } catch (error) {
-      if (isPrismaUniqueError(error)) {
-        reply.code(409).send({ error: 'Project name already exists' });
-        return;
-      }
-      throw error;
-    }
+      },
+    });
 
     await logAudit({
       projectId: project.id,
@@ -1505,17 +1475,12 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
 
       if (approval.action === ApprovalAction.CREATE) {
-        const existing = await tx.secret.findMany({
+        const existing = await tx.secret.findUnique({
           where: {
-            environmentId: approval.environmentId,
-            deletedAt: null,
+            environmentId_key: { environmentId: approval.environmentId, key: approval.key },
           },
-          select: { key: true },
         });
-        const hasConflict = existing.some(
-          (secret) => normalizeIdentifier(secret.key) === normalizeIdentifier(approval.key),
-        );
-        if (hasConflict) {
+        if (existing) {
           throw new Error('Secret already exists');
         }
         if (!approval.payloadCiphertext || !approval.payloadIv || !approval.payloadTag) {
@@ -1563,20 +1528,16 @@ export async function buildApp(): Promise<FastifyInstance> {
         if (approval.expectedVersionId && approval.expectedVersionId !== version.id) {
           throw new Error('Secret version conflict');
         }
-        if (normalizeIdentifier(approval.key) !== normalizeIdentifier(secret.key)) {
-          const siblings = await tx.secret.findMany({
+        if (approval.key !== secret.key) {
+          const existing = await tx.secret.findUnique({
             where: {
-              environmentId: secret.environmentId,
-              deletedAt: null,
+              environmentId_key: {
+                environmentId: secret.environmentId,
+                key: approval.key,
+              },
             },
-            select: { id: true, key: true },
           });
-          const existing = siblings.find(
-            (candidate) =>
-              candidate.id !== secret.id &&
-              normalizeIdentifier(candidate.key) === normalizeIdentifier(approval.key),
-          );
-          if (existing) {
+          if (existing && existing.id !== secret.id) {
             throw new Error('Key already exists in this environment');
           }
         }
@@ -1865,8 +1826,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!auth) {
       return;
     }
-    if (request.auth?.tokenScopeType === 'service_account') {
-      reply.code(403).send({ error: 'Service account tokens cannot create environments' });
+    if (request.auth?.viaToken) {
+      reply.code(403).send({ error: 'Tokens cannot create environments' });
       return;
     }
 
@@ -1896,22 +1857,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     const slug = await ensureUniqueEnvironmentSlug(projectId, body.name);
-    let env;
-    try {
-      env = await prisma.environment.create({
-        data: {
-          projectId,
-          name: body.name,
-          slug,
-        },
-      });
-    } catch (error) {
-      if (isPrismaUniqueError(error)) {
-        reply.code(409).send({ error: 'Environment name already exists in this project' });
-        return;
-      }
-      throw error;
-    }
+    const env = await prisma.environment.create({
+      data: {
+        projectId,
+        name: body.name,
+        slug,
+      },
+    });
 
     let copiedCount = 0;
     if (sourceEnv) {
@@ -2227,9 +2179,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     const { id: envId } = request.params as { id: string };
     const body = request.body as { key?: string; value?: string } | undefined;
-    const key = body?.key?.trim();
-    const value = body?.value;
-    if (!key || value === undefined) {
+    if (!body?.key || body.value === undefined) {
       reply.code(400).send({ error: 'Key and value are required' });
       return;
     }
@@ -2249,7 +2199,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       projectId: env.projectId,
       environmentId: envId,
       action: ApprovalAction.CREATE,
-      key,
+      key: body.key,
     });
     if (matchingRules.length > 0) {
       if (!requireUserForApproval(request, reply)) {
@@ -2259,20 +2209,20 @@ export async function buildApp(): Promise<FastifyInstance> {
         projectId: env.projectId,
         environmentId: envId,
         action: ApprovalAction.CREATE,
-        key,
+        key: body.key,
         secretId: null,
       });
       if (existing) {
         reply.code(202).send({ status: 'pending', approvalRequestId: existing.id });
         return;
       }
-      const payload = encryptSecret(value, masterKey);
+      const payload = encryptSecret(body.value, masterKey);
       const keyVersion = masterKeyVersion();
       const approval = await createApprovalRequest({
         projectId: env.projectId,
         environmentId: envId,
         action: ApprovalAction.CREATE,
-        key,
+        key: body.key,
         requestedBy: auth.user!.id,
         payload: { ...payload, keyVersion },
       });
@@ -2283,48 +2233,28 @@ export async function buildApp(): Promise<FastifyInstance> {
         action: 'approval.requested',
         resourceType: 'approval_request',
         resourceId: approval.id,
-        metadataJson: { action: 'CREATE', key, environmentId: envId },
+        metadataJson: { action: 'CREATE', key: body.key, environmentId: envId },
       });
       reply.code(202).send({ status: 'pending', approvalRequestId: approval.id });
       return;
     }
 
-    const payload = encryptSecret(value, masterKey);
+    const payload = encryptSecret(body.value, masterKey);
     const keyVersion = masterKeyVersion();
 
-    const siblingSecrets = await prisma.secret.findMany({
-      where: { environmentId: envId, deletedAt: null },
-      select: { id: true, key: true },
-    });
-    const hasConflict = siblingSecrets.some(
-      (sibling) => normalizeIdentifier(sibling.key) === normalizeIdentifier(key),
-    );
-    if (hasConflict) {
-      reply.code(409).send({ error: 'Key already exists in this environment' });
-      return;
-    }
-
     const existing = await prisma.secret.findUnique({
-      where: { environmentId_key: { environmentId: envId, key } },
+      where: { environmentId_key: { environmentId: envId, key: body.key } },
     });
 
     let secretId = existing?.id;
     if (!secretId) {
-      try {
-        const secret = await prisma.secret.create({
-          data: {
-            environmentId: envId,
-            key,
-          },
-        });
-        secretId = secret.id;
-      } catch (error) {
-        if (isPrismaUniqueError(error)) {
-          reply.code(409).send({ error: 'Key already exists in this environment' });
-          return;
-        }
-        throw error;
-      }
+      const secret = await prisma.secret.create({
+        data: {
+          environmentId: envId,
+          key: body.key,
+        },
+      });
+      secretId = secret.id;
     }
 
     await prisma.$transaction([
@@ -2356,7 +2286,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       action: 'secret.create',
       resourceType: 'secret',
       resourceId: secretId,
-      metadataJson: { key, environmentId: envId },
+      metadataJson: { key: body.key, environmentId: envId },
     });
 
     reply.code(201).send({ id: secretId });
@@ -2666,19 +2596,13 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     const keyChanged = nextKey && nextKey !== secret.key;
-    const normalizedKeyChanged =
-      nextKey && normalizeIdentifier(nextKey) !== normalizeIdentifier(secret.key);
-    if (normalizedKeyChanged && nextKey) {
-      const siblings = await prisma.secret.findMany({
-        where: { environmentId: secret.environmentId, deletedAt: null },
-        select: { id: true, key: true },
+    if (keyChanged) {
+      const existing = await prisma.secret.findUnique({
+        where: {
+          environmentId_key: { environmentId: secret.environmentId, key: nextKey },
+        },
       });
-      const existing = siblings.find(
-        (candidate) =>
-          candidate.id !== secretId &&
-          normalizeIdentifier(candidate.key) === normalizeIdentifier(nextKey),
-      );
-      if (existing) {
+      if (existing && existing.id !== secretId) {
         reply.code(409).send({ error: 'Key already exists in this environment' });
         return;
       }
