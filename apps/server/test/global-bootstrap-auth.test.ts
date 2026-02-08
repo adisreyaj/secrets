@@ -10,11 +10,9 @@ const state = {
   cliSession: null as any,
 };
 
-const { createSpy, updateSpy, auditCreateSpy } = vi.hoisted(() => ({
-  createSpy: vi.fn(),
-  updateSpy: vi.fn(),
-  auditCreateSpy: vi.fn(),
-}));
+const createSpy = vi.fn();
+const updateSpy = vi.fn();
+const auditCreateSpy = vi.fn();
 
 vi.mock('../src/db.js', () => {
   const prisma = {
