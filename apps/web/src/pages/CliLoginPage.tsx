@@ -44,6 +44,9 @@ export const CliLoginPage = ({
         setProjects(data)
         if (data.length > 0) {
           setSelectedProject(data[0].id)
+          setMode('project')
+        } else {
+          setMode('global')
         }
       })
       .catch((err) => setProjectsError(getErrorMessage(err)))
