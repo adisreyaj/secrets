@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { ApprovalAction, ApprovalStatus, Prisma, Role } from '@prisma/client';
-import Fastify, { FastifyInstance, FastifyRequest } from 'fastify';
+import Fastify, { FastifyInstance } from 'fastify';
 import { generateToken, hashPassword, hashToken, verifyPassword } from './auth.js';
 import { config } from './config.js';
 import { decryptSecret, encryptSecret, loadMasterKey, masterKeyVersion } from './crypto.js';
@@ -25,6 +25,9 @@ import { logAudit } from './server/services/audit.js';
 import { deleteEnvironmentWithGuards, deleteProjectWithGuards } from './server/services/deletions.js';
 import { buildCliLoginUrl, formatDotenvValue } from './server/services/format.js';
 import { ensureUniqueEnvironmentSlug, ensureUniqueProjectSlug } from './server/services/slugs.js';
+import { createLogDispatcher } from './server/logging/dispatcher.js';
+import { shouldLogStatus } from './server/logging/policy.js';
+import { sendLoggedError, buildRequestLogContext, logHandledError } from './server/http/logging.js';
 import { getRequestOrigin, isRole, parseDateInput, parseHeaderValue } from './server/http/validators.js';
 import './types.js';
 
@@ -41,37 +44,22 @@ function normalizeIdentifier(value: string): string {
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: {
-      transport: {
-        target: 'pino-pretty',
-        options: { singleLine: true },
-      },
-    },
+    logger:
+      config.logFormat === 'pretty'
+        ? {
+            transport: {
+              target: 'pino-pretty',
+              options: { singleLine: true },
+            },
+          }
+        : true,
     disableRequestLogging: true,
   });
+  const logDispatcher = await createLogDispatcher(app.log, {
+    service: 'server',
+    env: config.env,
+  });
   const masterKey = loadMasterKey();
-
-  const buildErrorContext = (request: FastifyRequest, statusCode: number) => {
-    const route =
-      request.routeOptions?.url ?? (request as { routerPath?: string }).routerPath ?? 'unknown';
-    return {
-      requestId: request.id,
-      method: request.method,
-      url: request.url,
-      route,
-      statusCode,
-      ip: request.ip,
-      auth: request.auth
-        ? {
-            userId: request.auth.user?.id ?? null,
-            serviceAccountId: request.auth.serviceAccountId ?? null,
-            projectId: request.auth.projectId ?? null,
-            viaToken: request.auth.viaToken,
-            tokenScopeType: request.auth.tokenScopeType ?? null,
-          }
-        : null,
-    };
-  };
 
   await app.register(cookie);
   await app.register(helmet, {
@@ -97,6 +85,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(rateLimit, { global: false });
 
   app.addHook('onRequest', async (request, reply) => {
+    request.logDispatcher = logDispatcher;
     reply.header('x-request-id', request.id);
   });
 
@@ -216,21 +205,31 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   });
 
-  app.setErrorHandler((error: { statusCode?: number }, request, reply) => {
+  app.setErrorHandler(async (error: { statusCode?: number }, request, reply) => {
     const statusCode = error.statusCode ?? reply.statusCode ?? 500;
-    if (statusCode >= 500) {
-      app.log.error(
-        { err: error, ...buildErrorContext(request, statusCode) },
-        'request failed',
-      );
+    if (shouldLogStatus(statusCode) && !request.errorLogged) {
+      await logDispatcher.emit({
+        event: statusCode >= 500 ? 'request.failed' : 'request.denied',
+        level: statusCode >= 500 ? 'error' : 'warn',
+        category: request.errorCategory ?? (statusCode >= 500 ? 'internal' : 'domain'),
+        message: statusCode >= 500 ? 'request failed' : 'request denied',
+        context: buildRequestLogContext(request, statusCode),
+        err: statusCode >= 500 ? error : undefined,
+      });
       request.errorLogged = true;
     }
     reply.send(error);
   });
 
   app.addHook('onResponse', async (request, reply) => {
-    if (reply.statusCode >= 500 && !request.errorLogged) {
-      app.log.error(buildErrorContext(request, reply.statusCode), 'request failed');
+    if (shouldLogStatus(reply.statusCode) && !request.errorLogged) {
+      await logHandledError({
+        request,
+        reply,
+        statusCode: reply.statusCode,
+        category: request.errorCategory ?? (reply.statusCode >= 500 ? 'internal' : 'domain'),
+        message: reply.statusCode >= 500 ? 'request failed' : 'request denied',
+      });
       request.errorLogged = true;
     }
   });
@@ -252,10 +251,6 @@ export async function buildApp(): Promise<FastifyInstance> {
       setCsrfCookie();
     }
 
-    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
-      return;
-    }
-
     const routePath =
       (request.routeOptions && request.routeOptions.url) ||
       (request as { routerPath?: string }).routerPath ||
@@ -265,21 +260,35 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     if (!enforceGlobalBootstrapScope(request, reply)) {
-      app.log.warn(
-        {
-          requestId: request.id,
-          method: request.method,
+      request.errorCategory = 'auth';
+      await logHandledError({
+        request,
+        reply,
+        statusCode: 403,
+        category: 'auth',
+        message: 'global bootstrap token denied route access',
+        data: {
           routePath,
           tokenScopeType: request.auth?.tokenScopeType ?? null,
           userId: request.auth?.user?.id ?? null,
         },
-        'global bootstrap token denied route access',
-      );
+      });
+      return;
+    }
+
+    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
       return;
     }
 
     if (request.auth?.viaToken && request.auth.readOnly) {
-      return reply.code(403).send({ error: 'Read-only token cannot perform write actions' });
+      request.errorCategory = 'auth';
+      return sendLoggedError(
+        reply,
+        request,
+        403,
+        'Read-only token cannot perform write actions',
+        'auth',
+      );
     }
 
     if (request.auth?.viaToken) {
@@ -288,7 +297,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     const origin = getRequestOrigin(request);
     if (!origin || !config.appOrigins.includes(origin)) {
-      return reply.code(403).send({ error: 'Invalid origin' });
+      request.errorCategory = 'security';
+      return sendLoggedError(reply, request, 403, 'Invalid origin', 'security');
     }
 
     if (sessionToken) {
@@ -302,7 +312,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       }
 
       if (!csrfCookie || !csrfHeader || csrfHeader !== csrfCookie) {
-        return reply.code(403).send({ error: 'Invalid CSRF token' });
+        request.errorCategory = 'security';
+        return sendLoggedError(reply, request, 403, 'Invalid CSRF token', 'security');
       }
     }
   });
@@ -4250,7 +4261,13 @@ export async function buildApp(): Promise<FastifyInstance> {
         }
       }
     } catch (error) {
-      app.log.error({ err: error }, 'audit retention cleanup failed');
+      await logDispatcher.emit({
+        event: 'audit.cleanup.failed',
+        level: 'error',
+        category: 'internal',
+        message: 'audit retention cleanup failed',
+        err: error,
+      });
     } finally {
       auditCleanupRunning = false;
     }

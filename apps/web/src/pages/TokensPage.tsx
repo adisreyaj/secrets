@@ -69,14 +69,16 @@ export const TokensPage = ({ projectId, navigate }: TokensPageProps) => {
     async (tokenId: string) =>
       Boolean(
         await runMutationWithToast(
-        async () => {
-          await api.deleteToken(projectId, tokenId)
-          await queryClient.invalidateQueries({
-            queryKey: queryKeys.tokens(projectId),
-          })
-        },
-        { successMessage: 'Token deleted.' },
-      )),
+          async () => {
+            await api.deleteToken(projectId, tokenId)
+            await queryClient.invalidateQueries({
+              queryKey: queryKeys.tokens(projectId),
+            })
+            return true
+          },
+          { successMessage: 'Token deleted.' },
+        ),
+      ),
     [projectId, queryClient],
   )
 
