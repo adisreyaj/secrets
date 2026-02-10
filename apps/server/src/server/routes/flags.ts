@@ -2,6 +2,7 @@ import { Prisma, Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../db.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
+import { logAudit } from '../services/audit.js';
 import {
   isFeatureFlagValueType,
   toFeatureFlagDto,
@@ -94,6 +95,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           enabled: typeof body?.enabled === 'boolean' ? body.enabled : true,
         },
       });
+      await logAudit({
+        projectId,
+        actorUserId: auth.user?.id,
+        actorServiceAccountId: auth.serviceAccountId ?? null,
+        action: 'flag.create',
+        resourceType: 'feature_flag',
+        resourceId: flag.id,
+        metadataJson: { module: 'flags', key: flag.key },
+      });
       reply.code(201).send(toFeatureFlagDto(flag));
       return;
     } catch (error) {
@@ -185,6 +195,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           enabled: typeof body?.enabled === 'boolean' ? body.enabled : undefined,
         },
       });
+      await logAudit({
+        projectId: current.projectId,
+        actorUserId: auth.user?.id,
+        actorServiceAccountId: auth.serviceAccountId ?? null,
+        action: 'flag.update',
+        resourceType: 'feature_flag',
+        resourceId: updated.id,
+        metadataJson: { module: 'flags', key: updated.key },
+      });
       reply.send(toFeatureFlagDto(updated));
       return;
     } catch (error) {
@@ -214,6 +233,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
     await prisma.featureFlag.delete({ where: { id: flag.id } });
+    await logAudit({
+      projectId: flag.projectId,
+      actorUserId: auth.user?.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'flag.delete',
+      resourceType: 'feature_flag',
+      resourceId: flag.id,
+      metadataJson: { module: 'flags', key: flag.key },
+    });
     reply.send({ ok: true });
   });
 
@@ -255,6 +283,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           value,
           weight: Math.floor(weight),
         },
+      });
+      await logAudit({
+        projectId: flag.projectId,
+        actorUserId: auth.user?.id,
+        actorServiceAccountId: auth.serviceAccountId ?? null,
+        action: 'flag.variant.create',
+        resourceType: 'feature_flag_variant',
+        resourceId: variant.id,
+        metadataJson: { module: 'flags', flagId: flag.id, key: variant.key },
       });
       reply.code(201).send(toFeatureFlagVariantDto(variant));
       return;
@@ -306,6 +343,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             typeof nextWeight === 'number' ? Math.floor(nextWeight) : undefined,
         },
       });
+      await logAudit({
+        projectId: variant.flag.projectId,
+        actorUserId: auth.user?.id,
+        actorServiceAccountId: auth.serviceAccountId ?? null,
+        action: 'flag.variant.update',
+        resourceType: 'feature_flag_variant',
+        resourceId: updated.id,
+        metadataJson: { module: 'flags', flagId: updated.flagId, key: updated.key },
+      });
       reply.send(toFeatureFlagVariantDto(updated));
       return;
     } catch (error) {
@@ -336,6 +382,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
     await prisma.featureFlagVariant.delete({ where: { id: variant.id } });
+    await logAudit({
+      projectId: variant.flag.projectId,
+      actorUserId: auth.user?.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'flag.variant.delete',
+      resourceType: 'feature_flag_variant',
+      resourceId: variant.id,
+      metadataJson: { module: 'flags', flagId: variant.flagId, key: variant.key },
+    });
     reply.send({ ok: true });
   });
 
@@ -394,6 +449,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         rolloutPercentage: Math.floor(rolloutPercentage),
         variantId,
       },
+    });
+    await logAudit({
+      projectId: flag.projectId,
+      actorUserId: auth.user?.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'flag.rule.create',
+      resourceType: 'feature_flag_rule',
+      resourceId: rule.id,
+      metadataJson: { module: 'flags', flagId: rule.flagId },
     });
     reply.code(201).send(toFeatureFlagRuleDto(rule));
   });
@@ -462,6 +526,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         variantId,
       },
     });
+    await logAudit({
+      projectId: rule.flag.projectId,
+      actorUserId: auth.user?.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'flag.rule.update',
+      resourceType: 'feature_flag_rule',
+      resourceId: updated.id,
+      metadataJson: { module: 'flags', flagId: updated.flagId },
+    });
     reply.send(toFeatureFlagRuleDto(updated));
   });
 
@@ -484,6 +557,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
     await prisma.featureFlagRule.delete({ where: { id: rule.id } });
+    await logAudit({
+      projectId: rule.flag.projectId,
+      actorUserId: auth.user?.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'flag.rule.delete',
+      resourceType: 'feature_flag_rule',
+      resourceId: rule.id,
+      metadataJson: { module: 'flags', flagId: rule.flagId },
+    });
     reply.send({ ok: true });
   });
 }
