@@ -10,6 +10,7 @@ export interface UserDto {
 
 export interface ProjectDto {
   id: string;
+  organizationId?: string | null;
   name: string;
   slug?: string | null;
   auditRetentionDays?: number | null;
@@ -165,6 +166,7 @@ export interface LoginRequest {
 
 export interface CreateProjectRequest {
   name: string;
+  organizationId?: string;
 }
 
 export interface CreateEnvironmentRequest {

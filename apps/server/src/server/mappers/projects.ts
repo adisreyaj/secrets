@@ -3,6 +3,7 @@ import type { Role } from '@prisma/client';
 export function toProjectDto(
   project: {
     id: string;
+    organizationId: string | null;
     name: string;
     slug: string | null;
     auditRetentionDays: number | null;
@@ -13,6 +14,7 @@ export function toProjectDto(
 ) {
   return {
     id: project.id,
+    organizationId: project.organizationId,
     name: project.name,
     slug: project.slug,
     auditRetentionDays: project.auditRetentionDays,

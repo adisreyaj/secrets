@@ -93,8 +93,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
 
-    const body = request.body as { name?: string } | undefined;
+    const body = request.body as { name?: string; organizationId?: string } | undefined;
     const name = body?.name?.trim();
+    const organizationId = body?.organizationId?.trim();
     if (!name) {
       reply.code(400).send({ error: 'Name is required' });
       return;
@@ -102,6 +103,24 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!auth.user) {
       reply.code(403).send({ error: 'API token creation requires a user session' });
       return;
+    }
+    if (organizationId) {
+      const organizationMembership = await prisma.organizationMember.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId,
+            userId: auth.user.id,
+          },
+        },
+      });
+      if (!organizationMembership) {
+        reply.code(403).send({ error: 'Organization access denied' });
+        return;
+      }
+      if (ROLE_RANK[organizationMembership.role] < ROLE_RANK[Role.EDITOR]) {
+        reply.code(403).send({ error: 'Insufficient organization role' });
+        return;
+      }
     }
 
     const memberships = await prisma.projectMember.findMany({
@@ -123,6 +142,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         data: {
           name,
           slug,
+          organizationId: organizationId ?? null,
           members: {
             create: {
               userId: auth.user!.id,
@@ -163,6 +183,52 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.send(memberships.map((membership) => toProjectDto(membership.project, membership.role)));
+  });
+
+  app.put('/projects/:id/organization', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth?.user) {
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const projectRole = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!projectRole) {
+      return;
+    }
+
+    const body = request.body as { organizationId?: string | null } | undefined;
+    if (!body || !('organizationId' in body)) {
+      reply.code(400).send({ error: 'organizationId is required' });
+      return;
+    }
+
+    const nextOrganizationId = body.organizationId?.trim() || null;
+    if (nextOrganizationId) {
+      const organizationMembership = await prisma.organizationMember.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId: nextOrganizationId,
+            userId: auth.user.id,
+          },
+        },
+      });
+      if (!organizationMembership) {
+        reply.code(403).send({ error: 'Organization access denied' });
+        return;
+      }
+      if (ROLE_RANK[organizationMembership.role] < ROLE_RANK[Role.ADMIN]) {
+        reply.code(403).send({ error: 'Insufficient organization role' });
+        return;
+      }
+    }
+
+    const project = await prisma.project.update({
+      where: { id: projectId },
+      data: { organizationId: nextOrganizationId },
+    });
+
+    reply.send(toProjectDto(project, projectRole));
   });
 
   app.delete('/projects/:id', async (request, reply) => {

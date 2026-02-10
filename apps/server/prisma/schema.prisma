@@ -94,6 +94,7 @@ model CliLoginSession {
 
 model Project {
   id          String          @id @default(cuid())
+  organizationId String?      @map("organization_id")
   name        String
   slug        String?         @unique
   auditRetentionDays Int?     @default(90) @map("audit_retention_days")
@@ -107,7 +108,9 @@ model Project {
   invites     ProjectInvite[]
   approvalRules ApprovalRule[]
   approvalRequests ApprovalRequest[]
+  organization Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
+  @@index([organizationId])
   @@map("projects")
 }
 
@@ -119,6 +122,7 @@ model Organization {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   members OrganizationMember[]
+  projects Project[]
 
   @@map("organizations")
 }
