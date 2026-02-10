@@ -1,7 +1,9 @@
+import { performance } from 'node:perf_hooks';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { hashToken } from '../../auth.js';
 import { prisma } from '../../db.js';
 import { evaluateFlag } from '../services/flags/evaluation.js';
+import { createRuntimeCatalogCache } from '../services/flags/runtimeCache.js';
 
 type RuntimeAuth = {
   projectId: string;
@@ -53,7 +55,14 @@ async function requireRuntimeSdkKey(
 }
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/runtime/flags/evaluate', async (request, reply) => {
+  const runtimeCatalogCache = createRuntimeCatalogCache<
+    Awaited<ReturnType<typeof prisma.featureFlag.findMany>>
+  >(5000);
+
+  app.post(
+    '/runtime/flags/evaluate',
+    { config: { rateLimit: { max: 240, timeWindow: '1 minute' } } },
+    async (request, reply) => {
     const runtimeAuth = await requireRuntimeSdkKey(app, request, reply);
     if (!runtimeAuth) {
       return;
@@ -76,21 +85,31 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const flag = await prisma.featureFlag.findFirst({
-      where: {
+    const startedAt = performance.now();
+    const flags = await runtimeCatalogCache.getOrLoad(
+      {
         projectId: runtimeAuth.projectId,
-        key: flagKey,
-        deletedAt: null,
+        environmentId,
+        flagKeys: [flagKey],
       },
-      include: {
-        variants: true,
-        rules: true,
-        envOverrides: {
-          where: { environmentId },
-          take: 1,
-        },
-      },
-    });
+      () =>
+        prisma.featureFlag.findMany({
+          where: {
+            projectId: runtimeAuth.projectId,
+            key: { in: [flagKey] },
+            deletedAt: null,
+          },
+          include: {
+            variants: true,
+            rules: true,
+            envOverrides: {
+              where: { environmentId },
+              take: 1,
+            },
+          },
+        }),
+    );
+    const flag = flags[0];
 
     if (!flag) {
       reply.code(404).send({ error: 'Flag not found' });
@@ -111,9 +130,19 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       environmentId,
       ...result,
     });
+    const durationMs = performance.now() - startedAt;
+    if (durationMs > 120) {
+      app.log.warn(
+        { event: 'flag.runtime.slow', durationMs, sdkKeyId: runtimeAuth.sdkKeyId, flagKey },
+        'runtime flag evaluation exceeded p95 target',
+      );
+    }
   });
 
-  app.post('/runtime/flags/evaluate/batch', async (request, reply) => {
+  app.post(
+    '/runtime/flags/evaluate/batch',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (request, reply) => {
     const runtimeAuth = await requireRuntimeSdkKey(app, request, reply);
     if (!runtimeAuth) {
       return;
@@ -137,20 +166,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       .map((key) => key?.trim())
       .filter((key): key is string => Boolean(key));
 
-    const flags = await prisma.featureFlag.findMany({
-      where: {
+    const startedAt = performance.now();
+    const flags = await runtimeCatalogCache.getOrLoad(
+      {
         projectId: runtimeAuth.projectId,
-        deletedAt: null,
-        ...(flagKeys.length > 0 ? { key: { in: flagKeys } } : {}),
+        environmentId,
+        flagKeys: flagKeys.length > 0 ? flagKeys : undefined,
       },
-      include: {
-        variants: true,
-        rules: true,
-        envOverrides: {
-          where: { environmentId },
-        },
-      },
-    });
+      () =>
+        prisma.featureFlag.findMany({
+          where: {
+            projectId: runtimeAuth.projectId,
+            deletedAt: null,
+            ...(flagKeys.length > 0 ? { key: { in: flagKeys } } : {}),
+          },
+          include: {
+            variants: true,
+            rules: true,
+            envOverrides: {
+              where: { environmentId },
+            },
+          },
+        }),
+    );
 
     const results = flags.map((flag) => {
       const evaluation = evaluateFlag({
@@ -175,5 +213,17 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       subjectKey,
       results,
     });
+    const durationMs = performance.now() - startedAt;
+    if (durationMs > 120) {
+      app.log.warn(
+        {
+          event: 'flag.runtime.batch.slow',
+          durationMs,
+          sdkKeyId: runtimeAuth.sdkKeyId,
+          flagCount: results.length,
+        },
+        'runtime batch flag evaluation exceeded p95 target',
+      );
+    }
   });
 }
