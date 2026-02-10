@@ -30,4 +30,8 @@ export const config = {
   logFormat,
   logSinks,
   logRemoteEnabled: process.env.LOG_REMOTE_ENABLED === 'true',
+  authEmailProvider: (process.env.AUTH_EMAIL_PROVIDER ?? 'noop').toLowerCase(),
+  authEmailFrom: process.env.AUTH_EMAIL_FROM ?? 'auth@localhost.local',
+  authEmailFromName: process.env.AUTH_EMAIL_FROM_NAME ?? 'Secrets Auth',
+  resendApiKey: process.env.RESEND_API_KEY ?? '',
 };

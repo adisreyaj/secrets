@@ -17,6 +17,11 @@ import { buildProjectJwks, signProjectAccessToken } from '../services/auth/jwt.j
 import { hashToken } from '../../auth.js';
 import { prisma } from '../../db.js';
 import {
+  buildEmailVerificationEmail,
+  buildPasswordResetEmail,
+  createAuthEmailProvider,
+} from '../services/auth/email.js';
+import {
   requireProjectAuthSession,
   requireProjectModuleEnabled,
 } from '../auth/guards.js';
@@ -30,6 +35,8 @@ function isPrismaUniqueError(
 }
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
+  const authEmailProvider = createAuthEmailProvider();
+
   app.post('/runtime/auth/signup', async (request, reply) => {
     const body = request.body as
       | {
@@ -288,6 +295,26 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       projectId,
       endUserId: endUser.id,
     });
+    const emailMessage = buildPasswordResetEmail({ resetToken: issued.token });
+    try {
+      await authEmailProvider.send({
+        to: email,
+        subject: emailMessage.subject,
+        text: emailMessage.text,
+      });
+    } catch (error) {
+      app.log.error(
+        {
+          event: 'auth.email.send_failed',
+          provider: authEmailProvider.name,
+          flow: 'password_reset',
+          projectId,
+          email,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'failed to send password reset email',
+      );
+    }
 
     reply.send({ ok: true, resetToken: issued.token });
   });
@@ -373,6 +400,28 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       projectId,
       endUserId: endUser.id,
     });
+    const emailMessage = buildEmailVerificationEmail({
+      verificationToken: issued.token,
+    });
+    try {
+      await authEmailProvider.send({
+        to: email,
+        subject: emailMessage.subject,
+        text: emailMessage.text,
+      });
+    } catch (error) {
+      app.log.error(
+        {
+          event: 'auth.email.send_failed',
+          provider: authEmailProvider.name,
+          flow: 'email_verification',
+          projectId,
+          email,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'failed to send email verification email',
+      );
+    }
     reply.send({ ok: true, verificationToken: issued.token });
   });
 
