@@ -3,14 +3,19 @@ import type { FastifyInstance } from 'fastify';
 import {
   ensureAuthProjectConfig,
   issueAuthSessionWithRefresh,
+  issueEmailVerificationToken,
+  issuePasswordResetToken,
   revokeAuthSession,
   rotateAuthRefreshToken,
 } from '../services/auth/core.js';
 import {
+  rotateLocalPassword,
   registerLocalIdentity,
   verifyLocalCredentials,
 } from '../services/auth/localIdentity.js';
 import { buildProjectJwks, signProjectAccessToken } from '../services/auth/jwt.js';
+import { hashToken } from '../../auth.js';
+import { prisma } from '../../db.js';
 import {
   requireProjectAuthSession,
   requireProjectModuleEnabled,
@@ -249,6 +254,171 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       sessionExpiresAt: rotated.sessionExpiresAt.toISOString(),
       refreshExpiresAt: rotated.refresh.expiresAt.toISOString(),
     });
+  });
+
+  app.post('/runtime/auth/password/forgot', async (request, reply) => {
+    const body = request.body as { projectId?: string; email?: string } | undefined;
+    const projectId = body?.projectId?.trim();
+    const email = body?.email?.trim().toLowerCase();
+    if (!projectId || !email) {
+      reply.code(400).send({ error: 'projectId and email are required' });
+      return;
+    }
+
+    const authModuleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!authModuleEnabled) {
+      return;
+    }
+
+    const endUser = await prisma.authEndUser.findFirst({
+      where: { projectId, email },
+      select: { id: true },
+    });
+    if (!endUser) {
+      reply.send({ ok: true });
+      return;
+    }
+
+    const issued = await issuePasswordResetToken({
+      projectId,
+      endUserId: endUser.id,
+    });
+
+    reply.send({ ok: true, resetToken: issued.token });
+  });
+
+  app.post('/runtime/auth/password/reset', async (request, reply) => {
+    const body = request.body as
+      | { projectId?: string; token?: string; password?: string }
+      | undefined;
+    const projectId = body?.projectId?.trim();
+    const token = body?.token?.trim();
+    const password = body?.password;
+    if (!projectId || !token || !password) {
+      reply.code(400).send({ error: 'projectId, token, and password are required' });
+      return;
+    }
+
+    const authModuleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!authModuleEnabled) {
+      return;
+    }
+
+    const record = await prisma.authPasswordResetToken.findFirst({
+      where: {
+        projectId,
+        tokenHash: hashToken(token),
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true, endUserId: true },
+    });
+    if (!record) {
+      reply.code(401).send({ error: 'Invalid or expired token' });
+      return;
+    }
+
+    await rotateLocalPassword({
+      projectId,
+      endUserId: record.endUserId,
+      nextPassword: password,
+    });
+    await prisma.authPasswordResetToken.update({
+      where: { id: record.id },
+      data: { consumedAt: new Date() },
+    });
+
+    reply.send({ ok: true });
+  });
+
+  app.post('/runtime/auth/email/verify/request', async (request, reply) => {
+    const body = request.body as { projectId?: string; email?: string } | undefined;
+    const projectId = body?.projectId?.trim();
+    const email = body?.email?.trim().toLowerCase();
+    if (!projectId || !email) {
+      reply.code(400).send({ error: 'projectId and email are required' });
+      return;
+    }
+
+    const authModuleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!authModuleEnabled) {
+      return;
+    }
+
+    const endUser = await prisma.authEndUser.findFirst({
+      where: { projectId, email },
+      select: { id: true },
+    });
+    if (!endUser) {
+      reply.send({ ok: true });
+      return;
+    }
+
+    const issued = await issueEmailVerificationToken({
+      projectId,
+      endUserId: endUser.id,
+    });
+    reply.send({ ok: true, verificationToken: issued.token });
+  });
+
+  app.post('/runtime/auth/email/verify/confirm', async (request, reply) => {
+    const body = request.body as { projectId?: string; token?: string } | undefined;
+    const projectId = body?.projectId?.trim();
+    const token = body?.token?.trim();
+    if (!projectId || !token) {
+      reply.code(400).send({ error: 'projectId and token are required' });
+      return;
+    }
+
+    const authModuleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!authModuleEnabled) {
+      return;
+    }
+
+    const record = await prisma.authEmailVerificationToken.findFirst({
+      where: {
+        projectId,
+        tokenHash: hashToken(token),
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true, endUserId: true },
+    });
+    if (!record) {
+      reply.code(401).send({ error: 'Invalid or expired token' });
+      return;
+    }
+
+    await prisma.authEmailVerificationToken.update({
+      where: { id: record.id },
+      data: { consumedAt: new Date() },
+    });
+    await prisma.authEndUser.update({
+      where: { id: record.endUserId },
+      data: { emailVerifiedAt: new Date() },
+    });
+
+    reply.send({ ok: true });
   });
 
   app.get('/runtime/auth/jwks', async (request, reply) => {

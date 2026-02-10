@@ -5,6 +5,7 @@ type EndUser = {
   projectId: string;
   email: string;
   displayName: string | null;
+  emailVerifiedAt: Date | null;
   disabledAt: Date | null;
 };
 
@@ -53,6 +54,24 @@ type SigningKey = {
   retiredAt: Date | null;
 };
 
+type PasswordResetToken = {
+  id: string;
+  projectId: string;
+  endUserId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  consumedAt: Date | null;
+};
+
+type EmailVerificationToken = {
+  id: string;
+  projectId: string;
+  endUserId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  consumedAt: Date | null;
+};
+
 const state = {
   modules: [{ projectId: 'project_1', module: 'AUTH', enabled: true }],
   config: {
@@ -67,6 +86,8 @@ const state = {
   sessions: [] as Session[],
   refreshTokens: [] as RefreshToken[],
   signingKeys: [] as SigningKey[],
+  passwordResetTokens: [] as PasswordResetToken[],
+  emailVerificationTokens: [] as EmailVerificationToken[],
 };
 
 function nextId(prefix: string, size: number): string {
@@ -117,6 +138,7 @@ vi.mock('../src/db.js', () => ({
               projectId: data.projectId,
               email: data.email,
               displayName: data.displayName ?? null,
+              emailVerifiedAt: null,
               disabledAt: null,
             };
             state.endUsers.push(created);
@@ -145,10 +167,31 @@ vi.mock('../src/db.js', () => ({
           projectId: data.projectId,
           email: data.email,
           displayName: data.displayName ?? null,
+          emailVerifiedAt: null,
           disabledAt: null,
         };
         state.endUsers.push(created);
         return created;
+      },
+      findFirst: async ({ where, select }: any) => {
+        const found =
+          state.endUsers.find(
+            (candidate) =>
+              candidate.projectId === where.projectId && candidate.email === where.email,
+          ) ?? null;
+        if (!found) return null;
+        if (select?.id) {
+          return { id: found.id };
+        }
+        return found;
+      },
+      update: async ({ where, data }: any) => {
+        const found = state.endUsers.find((candidate) => candidate.id === where.id);
+        if (!found) throw new Error('End user not found');
+        if (Object.prototype.hasOwnProperty.call(data, 'emailVerifiedAt')) {
+          found.emailVerifiedAt = data.emailVerifiedAt;
+        }
+        return found;
       },
     },
     authIdentity: {
@@ -302,6 +345,62 @@ vi.mock('../src/db.js', () => ({
         return { count };
       },
     },
+    authPasswordResetToken: {
+      create: async ({ data }: any) => {
+        const created: PasswordResetToken = {
+          id: nextId('password_reset', state.passwordResetTokens.length),
+          projectId: data.projectId,
+          endUserId: data.endUserId,
+          tokenHash: data.tokenHash,
+          expiresAt: data.expiresAt,
+          consumedAt: null,
+        };
+        state.passwordResetTokens.push(created);
+        return created;
+      },
+      findFirst: async ({ where }: any) =>
+        state.passwordResetTokens.find((candidate) => {
+          if (where.projectId && candidate.projectId !== where.projectId) return false;
+          if (where.tokenHash && candidate.tokenHash !== where.tokenHash) return false;
+          if (where.consumedAt === null && candidate.consumedAt !== null) return false;
+          if (where.expiresAt?.gt && !(candidate.expiresAt > where.expiresAt.gt)) return false;
+          return true;
+        }) ?? null,
+      update: async ({ where, data }: any) => {
+        const found = state.passwordResetTokens.find((candidate) => candidate.id === where.id);
+        if (!found) throw new Error('Password reset token not found');
+        found.consumedAt = data.consumedAt;
+        return found;
+      },
+    },
+    authEmailVerificationToken: {
+      create: async ({ data }: any) => {
+        const created: EmailVerificationToken = {
+          id: nextId('email_verify', state.emailVerificationTokens.length),
+          projectId: data.projectId,
+          endUserId: data.endUserId,
+          tokenHash: data.tokenHash,
+          expiresAt: data.expiresAt,
+          consumedAt: null,
+        };
+        state.emailVerificationTokens.push(created);
+        return created;
+      },
+      findFirst: async ({ where }: any) =>
+        state.emailVerificationTokens.find((candidate) => {
+          if (where.projectId && candidate.projectId !== where.projectId) return false;
+          if (where.tokenHash && candidate.tokenHash !== where.tokenHash) return false;
+          if (where.consumedAt === null && candidate.consumedAt !== null) return false;
+          if (where.expiresAt?.gt && !(candidate.expiresAt > where.expiresAt.gt)) return false;
+          return true;
+        }) ?? null,
+      update: async ({ where, data }: any) => {
+        const found = state.emailVerificationTokens.find((candidate) => candidate.id === where.id);
+        if (!found) throw new Error('Email verification token not found');
+        found.consumedAt = data.consumedAt;
+        return found;
+      },
+    },
     authSigningKey: {
       findFirst: async ({ where }: any) =>
         state.signingKeys.find(
@@ -351,6 +450,8 @@ describe('runtime auth routes', () => {
     state.sessions = [];
     state.refreshTokens = [];
     state.signingKeys = [];
+    state.passwordResetTokens = [];
+    state.emailVerificationTokens = [];
     state.config = {
       projectId: 'project_1',
       nativeAuthEnabled: true,
@@ -455,6 +556,90 @@ describe('runtime auth routes', () => {
       payload: { projectId: 'project_1' },
     });
     expect(logoutAgain.statusCode).toBe(401);
+
+    await app.close();
+  });
+
+  it('supports password reset and email verification token flows', async () => {
+    const app = await buildApp();
+    const headers = { origin: 'http://localhost:5173' };
+
+    const signup = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/signup',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        email: 'verify@example.com',
+        password: 'StrongPass123!',
+      },
+    });
+    expect(signup.statusCode).toBe(201);
+
+    const forgot = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/password/forgot',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        email: 'verify@example.com',
+      },
+    });
+    expect(forgot.statusCode).toBe(200);
+    const forgotBody = forgot.json() as any;
+    expect(forgotBody.resetToken).toBeTruthy();
+
+    const reset = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/password/reset',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        token: forgotBody.resetToken,
+        password: 'NewStrongPass123!',
+      },
+    });
+    expect(reset.statusCode).toBe(200);
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/login',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        email: 'verify@example.com',
+        password: 'NewStrongPass123!',
+      },
+    });
+    expect(login.statusCode).toBe(200);
+
+    const verifyRequest = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/email/verify/request',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        email: 'verify@example.com',
+      },
+    });
+    expect(verifyRequest.statusCode).toBe(200);
+    const verifyBody = verifyRequest.json() as any;
+    expect(verifyBody.verificationToken).toBeTruthy();
+
+    const confirm = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/email/verify/confirm',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        token: verifyBody.verificationToken,
+      },
+    });
+    expect(confirm.statusCode).toBe(200);
+    expect(
+      state.endUsers.find((candidate) => candidate.email === 'verify@example.com')
+        ?.emailVerifiedAt,
+    ).toBeTruthy();
 
     await app.close();
   });
