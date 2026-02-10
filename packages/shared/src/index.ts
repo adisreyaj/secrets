@@ -398,11 +398,23 @@ export interface OrganizationDto {
   updatedAt: string;
 }
 
+export interface CreateOrganizationRequest {
+  name: string;
+}
+
 export interface OrganizationMemberDto {
+  id: string;
   organizationId: string;
   userId: string;
+  email: string;
+  name?: string | null;
   role: Role;
   createdAt: string;
+}
+
+export interface AddOrganizationMemberRequest {
+  email: string;
+  role: Role;
 }
 
 export interface ProjectModuleDto {
