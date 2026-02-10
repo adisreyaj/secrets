@@ -42,6 +42,11 @@ enum ProjectModuleKey {
   AUTH
 }
 
+enum FeatureFlagValueType {
+  BOOLEAN
+  MULTIVARIATE
+}
+
 model User {
   id            String           @id @default(cuid())
   email         String           @unique
@@ -116,6 +121,7 @@ model Project {
   approvalRequests ApprovalRequest[]
   organization Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   modules ProjectModule[]
+  featureFlags FeatureFlag[]
 
   @@index([organizationId])
   @@map("projects")
@@ -216,10 +222,87 @@ model Environment {
   approvalRequests ApprovalRequest[]
   serviceAccountEnvironments ServiceAccountEnvironment[]
   serviceAccountTokenEnvironments ServiceAccountTokenEnvironment[]
+  featureFlagOverrides FeatureFlagEnvironmentOverride[]
 
   @@unique([projectId, name])
   @@unique([projectId, slug])
   @@map("environments")
+}
+
+model FeatureFlag {
+  id          String               @id @default(cuid())
+  projectId   String               @map("project_id")
+  key         String
+  name        String
+  description String?
+  valueType   FeatureFlagValueType @map("value_type")
+  enabled     Boolean              @default(true)
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  deletedAt   DateTime?            @map("deleted_at")
+
+  project      Project                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  variants     FeatureFlagVariant[]
+  rules        FeatureFlagRule[]
+  envOverrides FeatureFlagEnvironmentOverride[]
+
+  @@unique([projectId, key])
+  @@index([projectId, enabled])
+  @@map("feature_flags")
+}
+
+model FeatureFlagVariant {
+  id        String   @id @default(cuid())
+  flagId    String   @map("flag_id")
+  key       String
+  value     String
+  weight    Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  flag      FeatureFlag        @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  rules     FeatureFlagRule[]
+  overrides FeatureFlagEnvironmentOverride[]
+
+  @@unique([flagId, key])
+  @@index([flagId])
+  @@map("feature_flag_variants")
+}
+
+model FeatureFlagRule {
+  id                String   @id @default(cuid())
+  flagId            String   @map("flag_id")
+  priority          Int
+  rolloutPercentage Int      @default(100) @map("rollout_percentage")
+  variantId         String?  @map("variant_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  flag    FeatureFlag         @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  variant FeatureFlagVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([flagId, priority])
+  @@index([variantId])
+  @@map("feature_flag_rules")
+}
+
+model FeatureFlagEnvironmentOverride {
+  id            String   @id @default(cuid())
+  flagId        String   @map("flag_id")
+  environmentId String   @map("environment_id")
+  enabled       Boolean? 
+  variantId     String?  @map("variant_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  flag        FeatureFlag         @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  environment Environment         @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  variant     FeatureFlagVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@unique([flagId, environmentId])
+  @@index([environmentId])
+  @@index([variantId])
+  @@map("feature_flag_env_overrides")
 }
 
 model Secret {
