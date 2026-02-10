@@ -132,3 +132,4 @@ const batch = await flags.evaluateBatch({
 - `.env` export is available for editors/admins.
 - Role enforcement: Admin, Editor, Viewer.
 - Roadmap and parity plan: see `docs/roadmap.md`.
+- Phase 1 feature flags readiness: see `docs/releases/phase1-feature-flags-readiness.md`.
