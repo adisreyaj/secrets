@@ -55,6 +55,9 @@ const EnvironmentsPage = lazy(() =>
     default: m.EnvironmentsPage,
   })),
 )
+const FlagsPage = lazy(() =>
+  import('./pages/FlagsPage').then((m) => ({ default: m.FlagsPage })),
+)
 const InvitePage = lazy(() =>
   import('./pages/InvitePage').then((m) => ({ default: m.InvitePage })),
 )
@@ -159,6 +162,13 @@ const ApprovalRulesRoute = () => {
   const params = useParams()
   if (!params.projectId) return <Navigate to="/projects" replace />
   return <ApprovalRulesPage projectId={params.projectId} navigate={navigate} />
+}
+
+const FlagsRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId) return <Navigate to="/projects" replace />
+  return <FlagsPage projectId={params.projectId} navigate={navigate} />
 }
 
 const TokensRoute = () => {
@@ -313,6 +323,17 @@ const AppShell = () => {
   )
 
   useRegisterShortcut(
+    'g f',
+    () => {
+      const projectId = resolveProjectId()
+      navigate(
+        projectId ? projectPath(projectId, undefined, 'flags') : '/projects',
+      )
+    },
+    { enabled: shortcutsEnabled },
+  )
+
+  useRegisterShortcut(
     'g t',
     () => {
       const projectId = resolveProjectId()
@@ -419,6 +440,10 @@ const AppShell = () => {
                 <Route
                   path="/projects/:projectId/approval-rules"
                   element={<ApprovalRulesRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/flags"
+                  element={<FlagsRoute />}
                 />
                 <Route
                   path="/projects/:projectId/team"

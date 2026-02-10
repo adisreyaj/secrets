@@ -27,6 +27,8 @@ export const queryKeys = {
   members: (projectId: string) => ['projects', projectId, 'members'] as const,
   invites: (projectId: string) => ['projects', projectId, 'invites'] as const,
   tokens: (projectId: string) => ['projects', projectId, 'tokens'] as const,
+  flags: (projectId: string) => ['projects', projectId, 'flags'] as const,
+  flag: (flagId: string) => ['flags', flagId] as const,
   serviceAccounts: (projectId: string) =>
     ['projects', projectId, 'service-accounts'] as const,
   serviceAccountTokens: (accountId: string) =>

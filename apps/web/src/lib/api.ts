@@ -49,6 +49,7 @@ import type {
   CreateServiceAccountTokenResponse,
   ProjectModuleDto,
   UpdateProjectModuleRequest,
+  FeatureFlagDto,
 } from '@secrets/shared'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
@@ -208,6 +209,39 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
+  listFlags: (projectId: string) =>
+    apiFetch<FeatureFlagDto[]>(`/projects/${projectId}/flags`),
+  createFlag: (
+    projectId: string,
+    payload: {
+      key: string
+      name: string
+      description?: string | null
+      valueType?: 'BOOLEAN' | 'MULTIVARIATE'
+      enabled?: boolean
+    },
+  ) =>
+    apiFetch<FeatureFlagDto>(`/projects/${projectId}/flags`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getFlag: (flagId: string) => apiFetch<FeatureFlagDto>(`/flags/${flagId}`),
+  updateFlag: (
+    flagId: string,
+    payload: {
+      key?: string
+      name?: string
+      description?: string | null
+      valueType?: 'BOOLEAN' | 'MULTIVARIATE'
+      enabled?: boolean
+    },
+  ) =>
+    apiFetch<FeatureFlagDto>(`/flags/${flagId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteFlag: (flagId: string) =>
+    apiFetch<{ ok: true }>(`/flags/${flagId}`, { method: 'DELETE' }),
 
   listEnvironments: (projectId: string) =>
     apiFetch<EnvironmentDto[]>(`/projects/${projectId}/environments`),

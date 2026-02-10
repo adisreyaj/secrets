@@ -12,6 +12,7 @@ export type RouteMatch =
   | { name: 'audit'; projectId: string }
   | { name: 'approvals'; projectId: string }
   | { name: 'approval-rules'; projectId: string }
+  | { name: 'flags'; projectId: string }
   | { name: 'team'; projectId: string }
   | { name: 'tokens'; projectId: string }
   | { name: 'service-accounts'; projectId: string }
@@ -37,6 +38,7 @@ export const appRoutes: RouteObject[] = [
     path: '/projects/:projectId/approval-rules',
     handle: { name: 'approval-rules' },
   },
+  { path: '/projects/:projectId/flags', handle: { name: 'flags' } },
   { path: '/projects/:projectId/team', handle: { name: 'team' } },
   { path: '/projects/:projectId/tokens', handle: { name: 'tokens' } },
   {
@@ -83,6 +85,9 @@ export const getRouteMatch = (pathname: string, search: string): RouteMatch => {
   if (name === 'approval-rules' && params.projectId) {
     return { name: 'approval-rules', projectId: params.projectId }
   }
+  if (name === 'flags' && params.projectId) {
+    return { name: 'flags', projectId: params.projectId }
+  }
   if (name === 'team' && params.projectId) {
     return { name: 'team', projectId: params.projectId }
   }
@@ -103,6 +108,7 @@ export const isProjectScopedRoute = (match: RouteMatch) =>
   match.name === 'audit' ||
   match.name === 'approvals' ||
   match.name === 'approval-rules' ||
+  match.name === 'flags' ||
   match.name === 'team' ||
   match.name === 'tokens' ||
   match.name === 'service-accounts'

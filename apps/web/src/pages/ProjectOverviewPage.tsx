@@ -104,6 +104,11 @@ export const ProjectOverviewPage = ({
     { enabled: approvalRulesEnabled },
   )
   useRegisterShortcut(
+    'f',
+    () => navigate(projectPath(projectId, selectedProject?.slug, 'flags')),
+    { enabled: modules.flags },
+  )
+  useRegisterShortcut(
     'm',
     () => navigate(projectPath(projectId, selectedProject?.slug, 'team')),
     { enabled: teamEnabled },
@@ -369,6 +374,11 @@ export const ProjectOverviewPage = ({
           <Button
             variant="outline"
             disabled={!modules.flags}
+            onClick={() => {
+              if (modules.flags) {
+                navigate(projectPath(projectId, selectedProject?.slug, 'flags'))
+              }
+            }}
             className="border-border bg-card shadow-soft h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal disabled:cursor-not-allowed disabled:opacity-70"
           >
             <div className="flex w-full items-start justify-between gap-3">
@@ -378,9 +388,10 @@ export const ProjectOverviewPage = ({
                   Feature Flags
                 </div>
                 <p className="text-muted-foreground mt-1 text-xs">
-                  {modules.flags ? 'Module enabled (UI coming soon)' : 'Module disabled'}
+                  {modules.flags ? 'Flag list and editor' : 'Module disabled'}
                 </p>
               </div>
+              {modules.flags ? <ShortcutHint keys="f" /> : null}
             </div>
           </Button>
         </li>
