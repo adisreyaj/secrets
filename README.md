@@ -83,6 +83,7 @@ CLI/SDK environment variables:
 - `SECRETS_ENV` environment id or slug
 - `SECRETS_PROJECT` project id or slug (required when env is a slug)
 - `SECRETS_API_BASE_URL` API base URL (default `http://localhost:3001`)
+- `SECRETS_FLAG_SDK_KEY` feature flags runtime SDK key (for `@secrets/sdk` flag evaluation client)
 
 Web app environment variables (Vite):
 
@@ -99,6 +100,31 @@ Web app environment variables (Vite):
 - `packages/shared` Shared DTO types
 - `packages/cli` Secrets CLI
 - `packages/sdk` Node SDK
+
+## Feature Flags Runtime SDK
+
+The shared SDK now includes a typed feature flags runtime client for JS/TS apps.
+
+```ts
+import { createFeatureFlagRuntimeClient } from '@secrets/sdk'
+
+const flags = createFeatureFlagRuntimeClient({
+  baseUrl: 'http://localhost:3001',
+  sdkKey: process.env.SECRETS_FLAG_SDK_KEY!,
+})
+
+const checkoutEnabled = await flags.isEnabled({
+  environmentId: 'env_123',
+  flagKey: 'checkout-redesign',
+  subjectKey: 'user_42',
+})
+
+const batch = await flags.evaluateBatch({
+  environmentId: 'env_123',
+  subjectKey: 'user_42',
+  flagKeys: ['checkout-redesign', 'search-v2'],
+})
+```
 
 ## Notes
 

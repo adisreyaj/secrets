@@ -29,6 +29,63 @@ export interface SecretsClient {
   resolveEnvironmentId: () => Promise<string>
 }
 
+export type FlagEvaluationReason =
+  | 'override_disabled'
+  | 'override_variant'
+  | 'override_enabled'
+  | 'flag_disabled'
+  | 'rule_disabled'
+  | 'rule_enabled'
+  | 'weighted_variant'
+  | 'default_boolean'
+  | 'default_multivariate_disabled'
+
+export interface FeatureFlagRuntimeEvaluation {
+  flagKey: string
+  projectId: string
+  environmentId: string
+  enabled: boolean
+  variantKey?: string
+  variantValue?: string
+  reason: FlagEvaluationReason
+}
+
+export interface FeatureFlagRuntimeBatchEvaluation {
+  projectId: string
+  environmentId: string
+  subjectKey: string
+  results: FeatureFlagRuntimeEvaluation[]
+}
+
+export interface FeatureFlagRuntimeClientOptions {
+  baseUrl?: string
+  sdkKey: string
+  fetch?: typeof fetch
+}
+
+export interface FeatureFlagRuntimeClient {
+  evaluate: (input: {
+    environmentId: string
+    flagKey: string
+    subjectKey: string
+  }) => Promise<FeatureFlagRuntimeEvaluation>
+  evaluateBatch: (input: {
+    environmentId: string
+    subjectKey: string
+    flagKeys?: string[]
+  }) => Promise<FeatureFlagRuntimeBatchEvaluation>
+  isEnabled: (input: {
+    environmentId: string
+    flagKey: string
+    subjectKey: string
+  }) => Promise<boolean>
+  getVariant: (input: {
+    environmentId: string
+    flagKey: string
+    subjectKey: string
+  }) => Promise<{ key?: string; value?: string; enabled: boolean }>
+}
+
 async function apiFetch<T>(
   baseUrl: string,
   token: string,
@@ -64,6 +121,38 @@ async function apiFetch<T>(
     return (await response.json()) as T
   }
   return (await response.text()) as T
+}
+
+async function runtimeFetch<T>(
+  baseUrl: string,
+  sdkKey: string,
+  path: string,
+  body: unknown,
+  fetcher: typeof fetch,
+): Promise<T> {
+  const response = await fetcher(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${sdkKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    let message = response.statusText
+    try {
+      const payload = await response.json()
+      if (payload?.error) {
+        message = payload.error
+      }
+    } catch {
+      // ignore
+    }
+    throw new Error(`Feature flags runtime API error: ${message}`)
+  }
+
+  return (await response.json()) as T
 }
 
 function isProbablyId(value: string): boolean {
@@ -214,6 +303,57 @@ export function createClient(options: SecretsClientOptions): SecretsClient {
     getSecrets,
     injectProcessEnv,
     resolveEnvironmentId: resolveEnvId,
+  }
+}
+
+export function createFeatureFlagRuntimeClient(
+  options: FeatureFlagRuntimeClientOptions,
+): FeatureFlagRuntimeClient {
+  const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL
+  const fetcher = options.fetch ?? globalThis.fetch
+  if (!fetcher) {
+    throw new Error('A fetch implementation is required')
+  }
+
+  const evaluate: FeatureFlagRuntimeClient['evaluate'] = async (input) =>
+    runtimeFetch<FeatureFlagRuntimeEvaluation>(
+      baseUrl,
+      options.sdkKey,
+      '/runtime/flags/evaluate',
+      input,
+      fetcher,
+    )
+
+  const evaluateBatch: FeatureFlagRuntimeClient['evaluateBatch'] = async (
+    input,
+  ) =>
+    runtimeFetch<FeatureFlagRuntimeBatchEvaluation>(
+      baseUrl,
+      options.sdkKey,
+      '/runtime/flags/evaluate/batch',
+      input,
+      fetcher,
+    )
+
+  const isEnabled: FeatureFlagRuntimeClient['isEnabled'] = async (input) => {
+    const evaluation = await evaluate(input)
+    return evaluation.enabled
+  }
+
+  const getVariant: FeatureFlagRuntimeClient['getVariant'] = async (input) => {
+    const evaluation = await evaluate(input)
+    return {
+      enabled: evaluation.enabled,
+      key: evaluation.variantKey,
+      value: evaluation.variantValue,
+    }
+  }
+
+  return {
+    evaluate,
+    evaluateBatch,
+    isEnabled,
+    getVariant,
   }
 }
 
