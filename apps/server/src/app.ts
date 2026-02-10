@@ -25,6 +25,7 @@ import { deleteEnvironmentWithGuards, deleteProjectWithGuards } from './server/s
 import { formatDotenvValue } from './server/services/format.js';
 import { registerCoreHttpMiddleware } from './server/http/middleware.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
+import { registerRoutes as registerFlagRoutes } from './server/routes/flags.js';
 import { registerRoutes as registerOrganizationRoutes } from './server/routes/organizations.js';
 import { ensureUniqueEnvironmentSlug, ensureUniqueProjectSlug } from './server/services/slugs.js';
 import { createLogDispatcher } from './server/logging/dispatcher.js';
@@ -101,6 +102,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.get('/health', async () => ({ ok: true }));
 
   await registerAuthRoutes(app);
+  await registerFlagRoutes(app);
   await registerOrganizationRoutes(app);
 
   app.post('/projects', async (request, reply) => {
