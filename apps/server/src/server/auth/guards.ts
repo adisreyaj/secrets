@@ -1,5 +1,7 @@
-import { Role } from '@prisma/client';
+import { ProjectModuleKey, Role } from '@prisma/client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { hashToken } from '../../auth.js';
+import { prisma } from '../../db.js';
 import type { AuthContext } from '../types/auth.js';
 import {
   approvalsRequireUser,
@@ -65,6 +67,86 @@ export function requireUserForApproval(
     return false;
   }
   return true;
+}
+
+export async function requireProjectModuleEnabled(
+  _request: FastifyRequest,
+  reply: FastifyReply,
+  projectId: string,
+  module: ProjectModuleKey,
+): Promise<boolean> {
+  const moduleConfig = await prisma.projectModule.findUnique({
+    where: {
+      projectId_module: {
+        projectId,
+        module,
+      },
+    },
+  });
+
+  if (!moduleConfig?.enabled) {
+    reply.code(403).send({ error: `${module.toLowerCase()} module is disabled for this project` });
+    return false;
+  }
+
+  return true;
+}
+
+export async function requireProjectAuthSession(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  projectId: string,
+): Promise<{ sessionId: string; endUserId: string; email: string } | null> {
+  const authHeader = request.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    unauthorized(reply);
+    return null;
+  }
+
+  const rawToken = authHeader.slice('Bearer '.length).trim();
+  if (!rawToken) {
+    unauthorized(reply);
+    return null;
+  }
+
+  const session = await prisma.authSession.findFirst({
+    where: {
+      projectId,
+      sessionTokenHash: hashToken(rawToken),
+      revokedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    include: {
+      endUser: {
+        select: {
+          id: true,
+          email: true,
+          disabledAt: true,
+        },
+      },
+    },
+  });
+
+  if (!session || !session.endUser) {
+    unauthorized(reply);
+    return null;
+  }
+
+  if (session.endUser.disabledAt) {
+    forbidden(reply);
+    return null;
+  }
+
+  await prisma.authSession.update({
+    where: { id: session.id },
+    data: { lastSeenAt: new Date() },
+  });
+
+  return {
+    sessionId: session.id,
+    endUserId: session.endUser.id,
+    email: session.endUser.email,
+  };
 }
 
 const GLOBAL_BOOTSTRAP_ALLOWLIST = new Set([
