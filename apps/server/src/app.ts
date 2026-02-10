@@ -1008,6 +1008,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     const applied = await prisma.$transaction(async (tx) => {
       let resourceId: string | null = approval.secretId ?? null;
       let auditAction: string | null = null;
+      let auditResourceType: string = 'secret';
       await tx.approvalRequest.update({
         where: { id },
         data: {
@@ -1016,6 +1017,81 @@ export async function buildApp(): Promise<FastifyInstance> {
           approvedAt: new Date(),
         },
       });
+
+      const metadata = (approval.metadataJson as Record<string, unknown> | null) ?? null;
+      if (
+        metadata?.module === 'flags' &&
+        metadata?.resourceType === 'feature_flag_env_override'
+      ) {
+        const flagId = typeof metadata.flagId === 'string' ? metadata.flagId : null;
+        if (!flagId) {
+          throw new Error('Missing flag metadata');
+        }
+
+        const flag = await tx.featureFlag.findFirst({
+          where: { id: flagId, projectId: approval.projectId, deletedAt: null },
+        });
+        if (!flag) {
+          throw new Error('Flag not found');
+        }
+
+        const environment = await tx.environment.findUnique({
+          where: { id: approval.environmentId },
+        });
+        if (!environment || environment.projectId !== approval.projectId) {
+          throw new Error('Environment not found');
+        }
+
+        const overrideEnabled =
+          typeof metadata.overrideEnabled === 'boolean'
+            ? metadata.overrideEnabled
+            : metadata.overrideEnabled === null
+              ? null
+              : null;
+        const variantId = typeof metadata.variantId === 'string' ? metadata.variantId : null;
+        if (variantId) {
+          const variant = await tx.featureFlagVariant.findFirst({
+            where: { id: variantId, flagId: flag.id },
+            select: { id: true },
+          });
+          if (!variant) {
+            throw new Error('Invalid variant for flag override');
+          }
+        }
+
+        if (approval.action === ApprovalAction.DELETE) {
+          await tx.featureFlagEnvironmentOverride.deleteMany({
+            where: { flagId: flag.id, environmentId: environment.id },
+          });
+          resourceId = `${flag.id}:${environment.id}`;
+          auditAction = 'flag.override.delete';
+          auditResourceType = 'feature_flag_env_override';
+          return { resourceId, auditAction, auditResourceType };
+        }
+
+        const updated = await tx.featureFlagEnvironmentOverride.upsert({
+          where: {
+            flagId_environmentId: {
+              flagId: flag.id,
+              environmentId: environment.id,
+            },
+          },
+          create: {
+            flagId: flag.id,
+            environmentId: environment.id,
+            enabled: overrideEnabled,
+            variantId,
+          },
+          update: {
+            enabled: overrideEnabled,
+            variantId,
+          },
+        });
+        resourceId = updated.id;
+        auditAction = 'flag.override.update';
+        auditResourceType = 'feature_flag_env_override';
+        return { resourceId, auditAction, auditResourceType };
+      }
 
       if (approval.action === ApprovalAction.CREATE) {
         const existing = await tx.secret.findMany({
@@ -1264,7 +1340,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         auditAction = 'secret.copy';
       }
 
-      return { resourceId, auditAction };
+      return { resourceId, auditAction, auditResourceType };
     });
 
     await logAudit({
@@ -1282,7 +1358,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         actorUserId: auth.user?.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
         action: applied.auditAction,
-        resourceType: 'secret',
+        resourceType: applied.auditResourceType,
         resourceId: applied.resourceId,
         metadataJson: {
           requestedBy: approval.requestedBy,

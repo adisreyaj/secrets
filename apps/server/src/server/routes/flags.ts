@@ -1,8 +1,13 @@
 import { Prisma, Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../db.js';
-import { requireAuth, requireProjectRole } from '../auth/guards.js';
+import { requireAuth, requireProjectRole, requireUserForApproval } from '../auth/guards.js';
 import { logAudit } from '../services/audit.js';
+import {
+  createApprovalRequest,
+  findMatchingApprovalRules,
+  findPendingApprovalRequest,
+} from '../services/approvals.js';
 import {
   isFeatureFlagValueType,
   toFeatureFlagEnvironmentOverrideDto,
@@ -638,6 +643,83 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         reply.code(400).send({ error: 'variantId must belong to the same flag' });
         return;
       }
+    }
+
+    const existingOverride = await prisma.featureFlagEnvironmentOverride.findUnique({
+      where: {
+        flagId_environmentId: {
+          flagId: flag.id,
+          environmentId: environment.id,
+        },
+      },
+    });
+    const approvalAction =
+      enabled === null && variantId === null
+        ? 'DELETE'
+        : existingOverride
+          ? 'UPDATE'
+          : 'CREATE';
+
+    const matchingRules = await findMatchingApprovalRules({
+      projectId: flag.projectId,
+      environmentId: environment.id,
+      action: approvalAction,
+      key: flag.key,
+    });
+    if (matchingRules.length > 0) {
+      if (!requireUserForApproval(request, reply)) {
+        return;
+      }
+      if (!auth.user) {
+        reply.code(403).send({ error: 'Approval requests require a user session' });
+        return;
+      }
+
+      const pending = await findPendingApprovalRequest({
+        projectId: flag.projectId,
+        environmentId: environment.id,
+        action: approvalAction,
+        key: flag.key,
+      });
+      if (pending) {
+        reply.code(202).send({ status: 'pending', approvalRequestId: pending.id });
+        return;
+      }
+
+      const approval = await createApprovalRequest({
+        projectId: flag.projectId,
+        environmentId: environment.id,
+        action: approvalAction,
+        key: flag.key,
+        requestedBy: auth.user.id,
+        metadataJson: {
+          module: 'flags',
+          resourceType: 'feature_flag_env_override',
+          flagId: flag.id,
+          environmentId: environment.id,
+          overrideEnabled: enabled,
+          variantId,
+        },
+      });
+
+      await logAudit({
+        projectId: flag.projectId,
+        actorUserId: auth.user.id,
+        actorServiceAccountId: auth.serviceAccountId ?? null,
+        action: 'approval.requested',
+        resourceType: 'approval_request',
+        resourceId: approval.id,
+        metadataJson: {
+          module: 'flags',
+          action: approvalAction,
+          key: flag.key,
+          flagId: flag.id,
+          environmentId: environment.id,
+        },
+      });
+
+      reply.code(202).send({ status: 'pending', approvalRequestId: approval.id });
+      return;
     }
 
     if (enabled === null && variantId === null) {
