@@ -125,6 +125,7 @@ export const TeamPage = ({ projectId, navigate }: TeamPageProps) => {
             await queryClient.invalidateQueries({
               queryKey: queryKeys.invites(projectId),
             })
+            setInviteDialogOpen(false)
           },
         },
       )

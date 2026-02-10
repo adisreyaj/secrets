@@ -46,6 +46,7 @@ export const ProjectsPage = ({ navigate }: ProjectsPageProps) => {
           ),
         )
       }
+      return true
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.projects() })

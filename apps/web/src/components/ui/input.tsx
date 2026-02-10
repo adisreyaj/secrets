@@ -9,8 +9,10 @@ import {
   type ControlVariant,
 } from './control-classes'
 
-export interface InputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
+export interface InputProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'size'
+> {
   size?: ControlSize
   variant?: ControlVariant
 }
@@ -24,7 +26,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           controlBaseClasses,
           controlSizeClasses[size],
           controlVariantClasses[variant],
-          'file:text-foreground file:border-0 file:bg-transparent file:text-sm file:font-medium',
+          'file:text-foreground file:border-0 file:bg-transparent file:text-sm',
           className,
         )}
         ref={ref}

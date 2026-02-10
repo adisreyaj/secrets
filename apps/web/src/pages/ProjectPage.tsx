@@ -158,20 +158,22 @@ export const ProjectPage = ({ projectId, navigate }: ProjectPageProps) => {
     async (payload: CreateProjectPayload) =>
       Boolean(
         await runMutationWithToast(
-        async () => {
-        const project = await api.createProject({ name: payload.name })
-        const envNames = PROJECT_TEMPLATE_ENVIRONMENTS[payload.template] ?? []
-        if (envNames.length > 0) {
-          await Promise.all(
-            envNames.map((envName) =>
-              api.createEnvironment(project.id, { name: envName }),
-            ),
-          )
-        }
-        await queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
-      },
-      { successMessage: 'Project created.' },
-    )),
+          async () => {
+            const project = await api.createProject({ name: payload.name })
+            const envNames = PROJECT_TEMPLATE_ENVIRONMENTS[payload.template] ?? []
+            if (envNames.length > 0) {
+              await Promise.all(
+                envNames.map((envName) =>
+                  api.createEnvironment(project.id, { name: envName }),
+                ),
+              )
+            }
+            await queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+            return true
+          },
+          { successMessage: 'Project created.' },
+        ),
+      ),
     [queryClient],
   )
 
@@ -179,17 +181,19 @@ export const ProjectPage = ({ projectId, navigate }: ProjectPageProps) => {
     async (payload: { name: string; copyFromEnvironmentId?: string | null }) =>
       Boolean(
         await runMutationWithToast(
-        async () => {
-        await api.createEnvironment(projectId, {
-          name: payload.name,
-          copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
-        })
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.environments(projectId),
-        })
-      },
-      { successMessage: 'Environment created.' },
-    )),
+          async () => {
+            await api.createEnvironment(projectId, {
+              name: payload.name,
+              copyFromEnvironmentId: payload.copyFromEnvironmentId || undefined,
+            })
+            await queryClient.invalidateQueries({
+              queryKey: queryKeys.environments(projectId),
+            })
+            return true
+          },
+          { successMessage: 'Environment created.' },
+        ),
+      ),
     [projectId, queryClient],
   )
 

@@ -374,9 +374,7 @@ const AppShell = () => {
         <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 pb-16">
           {shouldWaitForAuth || shouldBlockProtectedRoute ? (
             <section className="flex flex-1 flex-col items-center justify-center gap-2">
-              <p className="text-foreground text-base font-medium">
-                Checking your session
-              </p>
+              <p className="text-foreground text-base">Checking your session</p>
               <p className="text-muted-foreground text-sm">
                 Redirecting to login...
               </p>
@@ -410,7 +408,10 @@ const AppShell = () => {
                   path="/projects/:projectId/environments/:environmentId"
                   element={<EnvironmentRoute />}
                 />
-                <Route path="/projects/:projectId/audit" element={<AuditRoute />} />
+                <Route
+                  path="/projects/:projectId/audit"
+                  element={<AuditRoute />}
+                />
                 <Route
                   path="/projects/:projectId/approvals"
                   element={<ApprovalsRoute />}
@@ -419,7 +420,10 @@ const AppShell = () => {
                   path="/projects/:projectId/approval-rules"
                   element={<ApprovalRulesRoute />}
                 />
-                <Route path="/projects/:projectId/team" element={<TeamRoute />} />
+                <Route
+                  path="/projects/:projectId/team"
+                  element={<TeamRoute />}
+                />
                 <Route
                   path="/projects/:projectId/tokens"
                   element={<TokensRoute />}

@@ -52,7 +52,7 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
     { keys: 'b', label: 'Back to overview' },
   ],
   'service-accounts': [{ keys: 'b', label: 'Back to overview' }],
-  profile: [],
+  profile: [{ keys: 'b', label: 'Back to projects' }],
 }
 
 const ShortcutList = ({ items }: { items: ShortcutItem[] }) => (

@@ -3,9 +3,11 @@ import { useEffect, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
+import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { useAuth } from '../lib/auth'
+import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
 export const ProfilePage = ({
@@ -32,6 +34,8 @@ export const ProfilePage = ({
       setProfileForm({ name: user.name ?? '' })
     }
   }, [user])
+
+  useRegisterShortcut('b', () => navigate('/projects'))
 
   const handleProfileSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -85,6 +89,7 @@ export const ProfilePage = ({
           >
             <ArrowLeft className="h-4 w-4" />
             Back to projects
+            <ShortcutHint keys="b" />
           </Button>
         }
       />

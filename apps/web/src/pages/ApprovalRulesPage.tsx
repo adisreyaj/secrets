@@ -102,6 +102,7 @@ export const ApprovalRulesPage = ({ projectId, navigate }: ApprovalRulesPageProp
   }
 
   const handleCreateRule = async () => {
+    setRulesError(null)
     if (!ruleName.trim() || !rulePattern.trim() || ruleActions.length === 0) {
       setRulesError('Rule name, pattern, and at least one action are required.')
       return
@@ -122,6 +123,7 @@ export const ApprovalRulesPage = ({ projectId, navigate }: ApprovalRulesPageProp
         await queryClient.invalidateQueries({
           queryKey: queryKeys.approvalRules(projectId),
         })
+        setCreateDialogOpen(false)
       },
       { successMessage: 'Approval rule created.' },
     )
