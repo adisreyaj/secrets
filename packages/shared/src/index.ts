@@ -387,3 +387,177 @@ export interface ProjectMemberDto {
   role: Role;
   createdAt?: string;
 }
+
+export type ModuleKey = 'secrets' | 'flags' | 'auth';
+
+export interface OrganizationDto {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrganizationMemberDto {
+  organizationId: string;
+  userId: string;
+  role: Role;
+  createdAt: string;
+}
+
+export interface ProjectModuleDto {
+  projectId: string;
+  module: ModuleKey;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type FlagValueType = 'BOOLEAN' | 'MULTIVARIATE';
+
+export interface FeatureFlagVariantDto {
+  id: string;
+  flagId: string;
+  key: string;
+  value: string;
+  weight: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FeatureFlagRuleDto {
+  id: string;
+  flagId: string;
+  priority: number;
+  environmentId?: string | null;
+  rolloutPercentage: number;
+  variantId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FeatureFlagDto {
+  id: string;
+  projectId: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  valueType: FlagValueType;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FeatureFlagSdkKeyDto {
+  id: string;
+  projectId: string;
+  name: string;
+  keyPrefix: string;
+  lastUsedAt?: string | null;
+  expiresAt?: string | null;
+  createdAt: string;
+}
+
+export type AuthProviderType = 'google' | 'github';
+
+export interface AuthProjectConfigDto {
+  projectId: string;
+  nativeAuthEnabled: boolean;
+  emailPasswordEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuthProviderDto {
+  id: string;
+  projectId: string;
+  provider: AuthProviderType;
+  enabled: boolean;
+  clientId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuthClientDto {
+  id: string;
+  projectId: string;
+  name: string;
+  type: 'public' | 'confidential';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const managementQueryKeys = {
+  projects: () => ['projects'] as const,
+  project: (projectId: string) => ['projects', projectId] as const,
+  organizations: () => ['organizations'] as const,
+  organization: (organizationId: string) =>
+    ['organizations', organizationId] as const,
+  organizationMembers: (organizationId: string) =>
+    ['organizations', organizationId, 'members'] as const,
+  projectModules: (projectId: string) =>
+    ['projects', projectId, 'modules'] as const,
+  environments: (projectId: string) =>
+    ['projects', projectId, 'environments'] as const,
+  environment: (environmentId: string) =>
+    ['environments', environmentId] as const,
+  secrets: (environmentId: string, includeValues: boolean) =>
+    ['environments', environmentId, 'secrets', includeValues] as const,
+  approvals: (
+    projectId: string,
+    status?: string,
+    environmentId?: string | null,
+  ) =>
+    [
+      'projects',
+      projectId,
+      'approvals',
+      status ?? 'all',
+      environmentId ?? 'all',
+    ] as const,
+  approvalRules: (projectId: string) =>
+    ['projects', projectId, 'approval-rules'] as const,
+  approval: (approvalId: string) => ['approvals', approvalId] as const,
+  members: (projectId: string) => ['projects', projectId, 'members'] as const,
+  invites: (projectId: string) => ['projects', projectId, 'invites'] as const,
+  tokens: (projectId: string) => ['projects', projectId, 'tokens'] as const,
+  serviceAccounts: (projectId: string) =>
+    ['projects', projectId, 'service-accounts'] as const,
+  serviceAccountTokens: (accountId: string) =>
+    ['service-accounts', accountId, 'tokens'] as const,
+  audit: (projectId: string, filtersKey?: string) =>
+    ['projects', projectId, 'audit', filtersKey ?? 'all'] as const,
+  secretVersions: (secretId: string) =>
+    ['secrets', secretId, 'versions'] as const,
+  secretDiff: (secretId: string, from?: string, to?: string) =>
+    ['secrets', secretId, 'diff', from ?? 'current', to ?? 'current'] as const,
+  searchSecrets: (
+    projectId: string,
+    query: string,
+    environmentId?: string | null,
+    includeValues?: boolean,
+  ) =>
+    [
+      'projects',
+      projectId,
+      'secrets',
+      'search',
+      query,
+      environmentId ?? 'all',
+      includeValues ? 'values' : 'keys',
+    ] as const,
+  secretCoverage: (projectId: string) =>
+    ['projects', projectId, 'secrets', 'coverage'] as const,
+  flags: (projectId: string) => ['projects', projectId, 'flags'] as const,
+  flag: (flagId: string) => ['flags', flagId] as const,
+  flagVariants: (flagId: string) => ['flags', flagId, 'variants'] as const,
+  flagRules: (flagId: string) => ['flags', flagId, 'rules'] as const,
+  flagSdkKeys: (projectId: string) =>
+    ['projects', projectId, 'flag-sdk-keys'] as const,
+  authConfig: (projectId: string) =>
+    ['projects', projectId, 'auth', 'config'] as const,
+  authProviders: (projectId: string) =>
+    ['projects', projectId, 'auth', 'providers'] as const,
+  authClients: (projectId: string) =>
+    ['projects', projectId, 'auth', 'clients'] as const,
+};
