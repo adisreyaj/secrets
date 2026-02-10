@@ -5,11 +5,9 @@ import { config } from '../../config.js';
 import { prisma } from '../../db.js';
 import { toUserDto } from '../mappers/users.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
+import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME } from '../auth/session.js';
 import { logAudit } from '../services/audit.js';
 import { buildCliLoginUrl } from '../services/format.js';
-
-const SESSION_COOKIE_NAME = 'sm_session';
-const CSRF_COOKIE_NAME = 'sm_csrf';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post(
