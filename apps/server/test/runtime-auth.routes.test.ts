@@ -38,6 +38,21 @@ type RefreshToken = {
   rotatedFromId: string | null;
 };
 
+type SigningKey = {
+  id: string;
+  projectId: string;
+  kid: string;
+  algorithm: string;
+  publicKeyPem: string;
+  privateKeyCiphertext: Buffer;
+  privateKeyIv: Buffer;
+  privateKeyTag: Buffer;
+  keyVersion: string;
+  active: boolean;
+  createdAt: Date;
+  retiredAt: Date | null;
+};
+
 const state = {
   modules: [{ projectId: 'project_1', module: 'AUTH', enabled: true }],
   config: {
@@ -51,6 +66,7 @@ const state = {
   identities: [] as Identity[],
   sessions: [] as Session[],
   refreshTokens: [] as RefreshToken[],
+  signingKeys: [] as SigningKey[],
 };
 
 function nextId(prefix: string, size: number): string {
@@ -286,6 +302,39 @@ vi.mock('../src/db.js', () => ({
         return { count };
       },
     },
+    authSigningKey: {
+      findFirst: async ({ where }: any) =>
+        state.signingKeys.find(
+          (candidate) =>
+            candidate.projectId === where.projectId &&
+            candidate.active === where.active &&
+            candidate.retiredAt === where.retiredAt,
+        ) ?? null,
+      findMany: async ({ where }: any) =>
+        state.signingKeys.filter(
+          (candidate) =>
+            candidate.projectId === where.projectId &&
+            candidate.retiredAt === where.retiredAt,
+        ),
+      create: async ({ data }: any) => {
+        const created: SigningKey = {
+          id: nextId('signing_key', state.signingKeys.length),
+          projectId: data.projectId,
+          kid: data.kid,
+          algorithm: data.algorithm,
+          publicKeyPem: data.publicKeyPem,
+          privateKeyCiphertext: Buffer.from(data.privateKeyCiphertext),
+          privateKeyIv: Buffer.from(data.privateKeyIv),
+          privateKeyTag: Buffer.from(data.privateKeyTag),
+          keyVersion: data.keyVersion,
+          active: data.active,
+          createdAt: new Date(),
+          retiredAt: null,
+        };
+        state.signingKeys.push(created);
+        return created;
+      },
+    },
   },
 }));
 
@@ -301,6 +350,7 @@ describe('runtime auth routes', () => {
     state.identities = [];
     state.sessions = [];
     state.refreshTokens = [];
+    state.signingKeys = [];
     state.config = {
       projectId: 'project_1',
       nativeAuthEnabled: true,
@@ -326,6 +376,7 @@ describe('runtime auth routes', () => {
     });
     expect(signup.statusCode).toBe(201);
     const signupBody = signup.json() as any;
+    expect(signupBody.accessToken).toBeTruthy();
     expect(signupBody.sessionToken).toBeTruthy();
     expect(signupBody.refreshToken).toBeTruthy();
 
@@ -353,6 +404,7 @@ describe('runtime auth routes', () => {
     });
     expect(login.statusCode).toBe(200);
     const loginBody = login.json() as any;
+    expect(loginBody.accessToken).toBeTruthy();
     expect(loginBody.sessionToken).toBeTruthy();
     expect(loginBody.refreshToken).toBeTruthy();
 
@@ -367,8 +419,20 @@ describe('runtime auth routes', () => {
     });
     expect(refresh.statusCode).toBe(200);
     const refreshBody = refresh.json() as any;
+    expect(refreshBody.accessToken).toBeTruthy();
     expect(refreshBody.sessionToken).toBeTruthy();
     expect(refreshBody.refreshToken).toBeTruthy();
+
+    const jwks = await app.inject({
+      method: 'GET',
+      url: '/runtime/auth/jwks?projectId=project_1',
+      headers,
+    });
+    expect(jwks.statusCode).toBe(200);
+    const jwksBody = jwks.json() as { keys: Array<{ kid: string; kty: string }> };
+    expect(jwksBody.keys.length).toBeGreaterThan(0);
+    expect(jwksBody.keys[0]?.kty).toBe('RSA');
+    expect(jwksBody.keys[0]?.kid).toBeTruthy();
 
     const logout = await app.inject({
       method: 'POST',

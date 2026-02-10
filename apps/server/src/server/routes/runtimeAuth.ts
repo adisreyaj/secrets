@@ -10,6 +10,7 @@ import {
   registerLocalIdentity,
   verifyLocalCredentials,
 } from '../services/auth/localIdentity.js';
+import { buildProjectJwks, signProjectAccessToken } from '../services/auth/jwt.js';
 import {
   requireProjectAuthSession,
   requireProjectModuleEnabled,
@@ -72,6 +73,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         accessTokenTtlMinutes: config.accessTokenTtlMinutes,
         refreshTokenTtlDays: config.refreshTokenTtlDays,
       });
+      const access = await signProjectAccessToken({
+        projectId,
+        endUserId: endUser.id,
+        sessionId: issued.session.id,
+        expiresInMinutes: config.accessTokenTtlMinutes,
+      });
 
       reply.code(201).send({
         endUser: {
@@ -80,6 +87,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           email: endUser.email,
           displayName: endUser.displayName,
         },
+        accessToken: access.token,
+        accessTokenExpiresAt: access.expiresAt.toISOString(),
         sessionToken: issued.sessionToken,
         refreshToken: issued.refreshToken,
         sessionExpiresAt: issued.sessionExpiresAt.toISOString(),
@@ -145,9 +154,17 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       accessTokenTtlMinutes: config.accessTokenTtlMinutes,
       refreshTokenTtlDays: config.refreshTokenTtlDays,
     });
+    const access = await signProjectAccessToken({
+      projectId,
+      endUserId: verified.endUser.id,
+      sessionId: issued.session.id,
+      expiresInMinutes: config.accessTokenTtlMinutes,
+    });
 
     reply.send({
       endUser: verified.endUser,
+      accessToken: access.token,
+      accessTokenExpiresAt: access.expiresAt.toISOString(),
       sessionToken: issued.sessionToken,
       refreshToken: issued.refreshToken,
       sessionExpiresAt: issued.sessionExpiresAt.toISOString(),
@@ -217,12 +234,42 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       reply.code(401).send({ error: 'Invalid refresh token' });
       return;
     }
+    const access = await signProjectAccessToken({
+      projectId,
+      endUserId: rotated.refresh.endUserId,
+      sessionId: rotated.refresh.sessionId,
+      expiresInMinutes: config.accessTokenTtlMinutes,
+    });
 
     reply.send({
+      accessToken: access.token,
+      accessTokenExpiresAt: access.expiresAt.toISOString(),
       sessionToken: rotated.sessionToken,
       refreshToken: rotated.refreshToken,
       sessionExpiresAt: rotated.sessionExpiresAt.toISOString(),
       refreshExpiresAt: rotated.refresh.expiresAt.toISOString(),
     });
+  });
+
+  app.get('/runtime/auth/jwks', async (request, reply) => {
+    const query = request.query as { projectId?: string } | undefined;
+    const projectId = query?.projectId?.trim();
+    if (!projectId) {
+      reply.code(400).send({ error: 'projectId is required' });
+      return;
+    }
+
+    const authModuleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!authModuleEnabled) {
+      return;
+    }
+
+    const jwks = await buildProjectJwks(projectId);
+    reply.send(jwks);
   });
 }
