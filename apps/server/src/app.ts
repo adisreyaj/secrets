@@ -27,6 +27,7 @@ import { registerCoreHttpMiddleware } from './server/http/middleware.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
 import { registerRoutes as registerFlagRoutes } from './server/routes/flags.js';
 import { registerRoutes as registerFlagRuntimeRoutes } from './server/routes/flagsRuntime.js';
+import { registerRoutes as registerRuntimeAuthRoutes } from './server/routes/runtimeAuth.js';
 import { registerRoutes as registerOrganizationRoutes } from './server/routes/organizations.js';
 import { ensureUniqueEnvironmentSlug, ensureUniqueProjectSlug } from './server/services/slugs.js';
 import { createLogDispatcher } from './server/logging/dispatcher.js';
@@ -105,6 +106,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerAuthRoutes(app);
   await registerFlagRoutes(app);
   await registerFlagRuntimeRoutes(app);
+  await registerRuntimeAuthRoutes(app);
   await registerOrganizationRoutes(app);
 
   app.post('/projects', async (request, reply) => {

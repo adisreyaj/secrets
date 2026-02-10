@@ -129,12 +129,15 @@ export async function issueAuthSessionWithRefresh(
 }
 
 export async function rotateAuthRefreshToken(params: {
-  previousToken: string;
+  refreshToken: string;
+  projectId?: string;
+  accessTokenTtlMinutes?: number;
   refreshTokenTtlDays?: number;
 }) {
   const existing = await prisma.authRefreshToken.findFirst({
     where: {
-      tokenHash: hashToken(params.previousToken),
+      tokenHash: hashToken(params.refreshToken),
+      ...(params.projectId ? { projectId: params.projectId } : {}),
       revokedAt: null,
       expiresAt: { gt: new Date() },
     },
@@ -146,6 +149,20 @@ export async function rotateAuthRefreshToken(params: {
   await prisma.authRefreshToken.update({
     where: { id: existing.id },
     data: { revokedAt: new Date() },
+  });
+
+  const nextSessionToken = generateToken();
+  const nextSessionExpiry = new Date(
+    Date.now() + (params.accessTokenTtlMinutes ?? 15) * MINUTES,
+  );
+  await prisma.authSession.update({
+    where: { id: existing.sessionId },
+    data: {
+      sessionTokenHash: hashToken(nextSessionToken),
+      expiresAt: nextSessionExpiry,
+      revokedAt: null,
+      lastSeenAt: new Date(),
+    },
   });
 
   const nextRaw = generateToken();
@@ -160,7 +177,12 @@ export async function rotateAuthRefreshToken(params: {
     },
   });
 
-  return { refreshToken: nextRaw, refresh: replacement };
+  return {
+    sessionToken: nextSessionToken,
+    sessionExpiresAt: nextSessionExpiry,
+    refreshToken: nextRaw,
+    refresh: replacement,
+  };
 }
 
 export async function revokeAuthSession(sessionId: string) {

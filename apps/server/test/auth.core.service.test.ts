@@ -4,6 +4,7 @@ import { hashToken } from '../src/auth.js';
 const {
   authProjectConfigUpsert,
   authSessionCreate,
+  authSessionUpdate,
   authRefreshCreate,
   authRefreshFindFirst,
   authRefreshUpdate,
@@ -11,6 +12,7 @@ const {
 } = vi.hoisted(() => ({
   authProjectConfigUpsert: vi.fn(),
   authSessionCreate: vi.fn(),
+  authSessionUpdate: vi.fn(),
   authRefreshCreate: vi.fn(),
   authRefreshFindFirst: vi.fn(),
   authRefreshUpdate: vi.fn(),
@@ -24,7 +26,7 @@ vi.mock('../src/db.js', () => ({
     },
     authSession: {
       create: authSessionCreate,
-      update: vi.fn(),
+      update: authSessionUpdate,
     },
     authRefreshToken: {
       create: authRefreshCreate,
@@ -68,6 +70,7 @@ describe('auth core service', () => {
     authRefreshCreate.mockReset();
     authRefreshFindFirst.mockReset();
     authRefreshUpdate.mockReset();
+    authSessionUpdate.mockReset();
     authPasswordResetCreate.mockReset();
   });
 
@@ -141,11 +144,15 @@ describe('auth core service', () => {
     authRefreshCreate.mockResolvedValue({ id: 'refresh_new' });
 
     const rotated = await rotateAuthRefreshToken({
-      previousToken: 'old_token',
+      refreshToken: 'old_token',
+      projectId: 'project_1',
       refreshTokenTtlDays: 10,
     });
 
     expect(rotated).not.toBeNull();
+    expect(authSessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'session_1' } }),
+    );
     expect(authRefreshUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'refresh_old' } }),
     );

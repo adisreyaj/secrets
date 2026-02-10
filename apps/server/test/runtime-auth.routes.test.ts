@@ -1,0 +1,397 @@
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+type EndUser = {
+  id: string;
+  projectId: string;
+  email: string;
+  displayName: string | null;
+  disabledAt: Date | null;
+};
+
+type Identity = {
+  id: string;
+  projectId: string;
+  endUserId: string;
+  provider: 'LOCAL' | 'GOOGLE' | 'GITHUB';
+  providerSubject: string;
+  passwordHash: string | null;
+};
+
+type Session = {
+  id: string;
+  projectId: string;
+  endUserId: string;
+  sessionTokenHash: string;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  lastSeenAt: Date | null;
+};
+
+type RefreshToken = {
+  id: string;
+  projectId: string;
+  endUserId: string;
+  sessionId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  rotatedFromId: string | null;
+};
+
+const state = {
+  modules: [{ projectId: 'project_1', module: 'AUTH', enabled: true }],
+  config: {
+    projectId: 'project_1',
+    nativeAuthEnabled: true,
+    emailPasswordEnabled: true,
+    accessTokenTtlMinutes: 15,
+    refreshTokenTtlDays: 30,
+  },
+  endUsers: [] as EndUser[],
+  identities: [] as Identity[],
+  sessions: [] as Session[],
+  refreshTokens: [] as RefreshToken[],
+};
+
+function nextId(prefix: string, size: number): string {
+  return `${prefix}_${size + 1}`;
+}
+
+vi.mock('../src/db.js', () => ({
+  prisma: {
+    userSession: { findFirst: async () => null },
+    apiToken: { findFirst: async () => null, update: async () => ({ id: 'token_1' }) },
+    serviceAccountToken: { findFirst: async () => null },
+    globalCliToken: { findFirst: async () => null },
+    projectModule: {
+      findUnique: async ({ where }: any) =>
+        state.modules.find(
+          (item) =>
+            item.projectId === where.projectId_module.projectId &&
+            item.module === where.projectId_module.module,
+        ) ?? null,
+    },
+    authProjectConfig: {
+      upsert: async ({ where, create, update }: any) => {
+        if (state.config.projectId !== where.projectId) {
+          state.config = {
+            projectId: create.projectId,
+            nativeAuthEnabled: create.nativeAuthEnabled ?? true,
+            emailPasswordEnabled: create.emailPasswordEnabled ?? true,
+            accessTokenTtlMinutes: create.accessTokenTtlMinutes ?? 15,
+            refreshTokenTtlDays: create.refreshTokenTtlDays ?? 30,
+          };
+        } else {
+          state.config = {
+            ...state.config,
+            ...Object.fromEntries(
+              Object.entries(update).filter(([, value]) => typeof value !== 'undefined'),
+            ),
+          };
+        }
+        return state.config;
+      },
+    },
+    $transaction: async (callback: (tx: any) => Promise<unknown>) =>
+      callback({
+        authEndUser: {
+          create: async ({ data }: any) => {
+            const created: EndUser = {
+              id: nextId('end_user', state.endUsers.length),
+              projectId: data.projectId,
+              email: data.email,
+              displayName: data.displayName ?? null,
+              disabledAt: null,
+            };
+            state.endUsers.push(created);
+            return created;
+          },
+        },
+        authIdentity: {
+          create: async ({ data }: any) => {
+            const created: Identity = {
+              id: nextId('identity', state.identities.length),
+              projectId: data.projectId,
+              endUserId: data.endUserId,
+              provider: data.provider,
+              providerSubject: data.providerSubject,
+              passwordHash: data.passwordHash ?? null,
+            };
+            state.identities.push(created);
+            return created;
+          },
+        },
+      }),
+    authEndUser: {
+      create: async ({ data }: any) => {
+        const created: EndUser = {
+          id: nextId('end_user', state.endUsers.length),
+          projectId: data.projectId,
+          email: data.email,
+          displayName: data.displayName ?? null,
+          disabledAt: null,
+        };
+        state.endUsers.push(created);
+        return created;
+      },
+    },
+    authIdentity: {
+      create: async ({ data }: any) => {
+        const created: Identity = {
+          id: nextId('identity', state.identities.length),
+          projectId: data.projectId,
+          endUserId: data.endUserId,
+          provider: data.provider,
+          providerSubject: data.providerSubject,
+          passwordHash: data.passwordHash ?? null,
+        };
+        state.identities.push(created);
+        return created;
+      },
+      findFirst: async ({ where }: any) => {
+        const identity = state.identities.find(
+          (candidate) =>
+            candidate.projectId === where.projectId &&
+            candidate.provider === where.provider &&
+            candidate.providerSubject === where.providerSubject,
+        );
+        if (!identity) {
+          return null;
+        }
+        const endUser = state.endUsers.find((candidate) => candidate.id === identity.endUserId);
+        return {
+          ...identity,
+          endUser: endUser
+            ? {
+                id: endUser.id,
+                projectId: endUser.projectId,
+                email: endUser.email,
+                disabledAt: endUser.disabledAt,
+              }
+            : null,
+        };
+      },
+      updateMany: async ({ where, data }: any) => {
+        let count = 0;
+        for (const identity of state.identities) {
+          if (
+            identity.projectId === where.projectId &&
+            identity.endUserId === where.endUserId &&
+            identity.provider === where.provider
+          ) {
+            identity.passwordHash = data.passwordHash;
+            count += 1;
+          }
+        }
+        return { count };
+      },
+    },
+    authSession: {
+      create: async ({ data }: any) => {
+        const created: Session = {
+          id: nextId('session', state.sessions.length),
+          projectId: data.projectId,
+          endUserId: data.endUserId,
+          sessionTokenHash: data.sessionTokenHash,
+          expiresAt: data.expiresAt,
+          revokedAt: null,
+          lastSeenAt: null,
+        };
+        state.sessions.push(created);
+        return created;
+      },
+      findFirst: async ({ where, include }: any) => {
+        const session = state.sessions.find((candidate) => {
+          if (where.projectId && candidate.projectId !== where.projectId) return false;
+          if (where.sessionTokenHash && candidate.sessionTokenHash !== where.sessionTokenHash) {
+            return false;
+          }
+          if (where.revokedAt === null && candidate.revokedAt !== null) return false;
+          if (where.expiresAt?.gt && !(candidate.expiresAt > where.expiresAt.gt)) return false;
+          return true;
+        });
+        if (!session) return null;
+        if (!include?.endUser) return session;
+        const endUser = state.endUsers.find((candidate) => candidate.id === session.endUserId);
+        return {
+          ...session,
+          endUser: endUser
+            ? {
+                id: endUser.id,
+                email: endUser.email,
+                disabledAt: endUser.disabledAt,
+              }
+            : null,
+        };
+      },
+      update: async ({ where, data }: any) => {
+        const session = state.sessions.find((candidate) => candidate.id === where.id);
+        if (!session) {
+          throw new Error('Session not found');
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'sessionTokenHash')) {
+          session.sessionTokenHash = data.sessionTokenHash;
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'expiresAt')) {
+          session.expiresAt = data.expiresAt;
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'revokedAt')) {
+          session.revokedAt = data.revokedAt;
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'lastSeenAt')) {
+          session.lastSeenAt = data.lastSeenAt;
+        }
+        return session;
+      },
+    },
+    authRefreshToken: {
+      create: async ({ data }: any) => {
+        const created: RefreshToken = {
+          id: nextId('refresh', state.refreshTokens.length),
+          projectId: data.projectId,
+          endUserId: data.endUserId,
+          sessionId: data.sessionId,
+          tokenHash: data.tokenHash,
+          expiresAt: data.expiresAt,
+          revokedAt: null,
+          rotatedFromId: data.rotatedFromId ?? null,
+        };
+        state.refreshTokens.push(created);
+        return created;
+      },
+      findFirst: async ({ where }: any) =>
+        state.refreshTokens.find((candidate) => {
+          if (where.projectId && candidate.projectId !== where.projectId) return false;
+          if (where.tokenHash && candidate.tokenHash !== where.tokenHash) return false;
+          if (where.revokedAt === null && candidate.revokedAt !== null) return false;
+          if (where.expiresAt?.gt && !(candidate.expiresAt > where.expiresAt.gt)) return false;
+          return true;
+        }) ?? null,
+      update: async ({ where, data }: any) => {
+        const token = state.refreshTokens.find((candidate) => candidate.id === where.id);
+        if (!token) throw new Error('Refresh token not found');
+        if (Object.prototype.hasOwnProperty.call(data, 'revokedAt')) {
+          token.revokedAt = data.revokedAt;
+        }
+        return token;
+      },
+      updateMany: async ({ where, data }: any) => {
+        let count = 0;
+        for (const token of state.refreshTokens) {
+          if (token.sessionId === where.sessionId && token.revokedAt === where.revokedAt) {
+            token.revokedAt = data.revokedAt;
+            count += 1;
+          }
+        }
+        return { count };
+      },
+    },
+  },
+}));
+
+import { buildApp } from '../src/app.js';
+
+describe('runtime auth routes', () => {
+  beforeAll(() => {
+    process.env.MASTER_KEY = Buffer.alloc(32).toString('hex');
+  });
+
+  beforeEach(() => {
+    state.endUsers = [];
+    state.identities = [];
+    state.sessions = [];
+    state.refreshTokens = [];
+    state.config = {
+      projectId: 'project_1',
+      nativeAuthEnabled: true,
+      emailPasswordEnabled: true,
+      accessTokenTtlMinutes: 15,
+      refreshTokenTtlDays: 30,
+    };
+  });
+
+  it('supports signup, login, refresh, and logout flows', async () => {
+    const app = await buildApp();
+    const headers = { origin: 'http://localhost:5173' };
+
+    const signup = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/signup',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        email: 'user@example.com',
+        password: 'StrongPass123!',
+      },
+    });
+    expect(signup.statusCode).toBe(201);
+    const signupBody = signup.json() as any;
+    expect(signupBody.sessionToken).toBeTruthy();
+    expect(signupBody.refreshToken).toBeTruthy();
+
+    const badLogin = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/login',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        email: 'user@example.com',
+        password: 'wrong-password',
+      },
+    });
+    expect(badLogin.statusCode).toBe(401);
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/login',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        email: 'user@example.com',
+        password: 'StrongPass123!',
+      },
+    });
+    expect(login.statusCode).toBe(200);
+    const loginBody = login.json() as any;
+    expect(loginBody.sessionToken).toBeTruthy();
+    expect(loginBody.refreshToken).toBeTruthy();
+
+    const refresh = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/token/refresh',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        refreshToken: loginBody.refreshToken,
+      },
+    });
+    expect(refresh.statusCode).toBe(200);
+    const refreshBody = refresh.json() as any;
+    expect(refreshBody.sessionToken).toBeTruthy();
+    expect(refreshBody.refreshToken).toBeTruthy();
+
+    const logout = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/logout',
+      headers: {
+        ...headers,
+        authorization: `Bearer ${refreshBody.sessionToken}`,
+      },
+      payload: { projectId: 'project_1' },
+    });
+    expect(logout.statusCode).toBe(200);
+
+    const logoutAgain = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/logout',
+      headers: {
+        ...headers,
+        authorization: `Bearer ${refreshBody.sessionToken}`,
+      },
+      payload: { projectId: 'project_1' },
+    });
+    expect(logoutAgain.statusCode).toBe(401);
+
+    await app.close();
+  });
+});
