@@ -1,5 +1,6 @@
 import type {
   FeatureFlag,
+  FeatureFlagEnvironmentOverride,
   FeatureFlagRule,
   FeatureFlagValueType,
   FeatureFlagVariant,
@@ -40,6 +41,20 @@ export function toFeatureFlagRuleDto(rule: FeatureFlagRule) {
     variantId: rule.variantId,
     createdAt: rule.createdAt.toISOString(),
     updatedAt: rule.updatedAt.toISOString(),
+  };
+}
+
+export function toFeatureFlagEnvironmentOverrideDto(
+  override: FeatureFlagEnvironmentOverride,
+) {
+  return {
+    id: override.id,
+    flagId: override.flagId,
+    environmentId: override.environmentId,
+    enabled: override.enabled,
+    variantId: override.variantId,
+    createdAt: override.createdAt.toISOString(),
+    updatedAt: override.updatedAt.toISOString(),
   };
 }
 

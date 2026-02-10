@@ -5,6 +5,7 @@ import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { logAudit } from '../services/audit.js';
 import {
   isFeatureFlagValueType,
+  toFeatureFlagEnvironmentOverrideDto,
   toFeatureFlagDto,
   toFeatureFlagRuleDto,
   toFeatureFlagVariantDto,
@@ -567,5 +568,133 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       metadataJson: { module: 'flags', flagId: rule.flagId },
     });
     reply.send({ ok: true });
+  });
+
+  app.put('/flags/:flagId/environments/:environmentId/override', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { flagId, environmentId } = request.params as {
+      flagId: string;
+      environmentId: string;
+    };
+
+    const flag = await prisma.featureFlag.findFirst({
+      where: { id: flagId, deletedAt: null },
+    });
+    if (!flag) {
+      reply.code(404).send({ error: 'Flag not found' });
+      return;
+    }
+    const role = await requireProjectRole(request, reply, flag.projectId, Role.EDITOR);
+    if (!role) {
+      return;
+    }
+
+    const environment = await prisma.environment.findUnique({
+      where: { id: environmentId },
+      select: { id: true, projectId: true },
+    });
+    if (!environment || environment.projectId !== flag.projectId) {
+      reply.code(404).send({ error: 'Environment not found' });
+      return;
+    }
+
+    const body = request.body as
+      | {
+          enabled?: boolean | null;
+          variantId?: string | null;
+        }
+      | undefined;
+
+    if (!body) {
+      reply.code(400).send({ error: 'Request body is required' });
+      return;
+    }
+
+    const hasEnabled = Object.prototype.hasOwnProperty.call(body, 'enabled');
+    const hasVariantId = Object.prototype.hasOwnProperty.call(body, 'variantId');
+    if (!hasEnabled && !hasVariantId) {
+      reply.code(400).send({ error: 'enabled or variantId is required' });
+      return;
+    }
+
+    const enabled = hasEnabled ? (body.enabled ?? null) : null;
+    const variantId = hasVariantId ? body.variantId?.trim() ?? null : null;
+
+    if (typeof enabled !== 'boolean' && enabled !== null) {
+      reply.code(400).send({ error: 'enabled must be boolean or null' });
+      return;
+    }
+
+    if (variantId) {
+      const variant = await prisma.featureFlagVariant.findFirst({
+        where: { id: variantId, flagId: flag.id },
+        select: { id: true },
+      });
+      if (!variant) {
+        reply.code(400).send({ error: 'variantId must belong to the same flag' });
+        return;
+      }
+    }
+
+    if (enabled === null && variantId === null) {
+      await prisma.featureFlagEnvironmentOverride.deleteMany({
+        where: {
+          flagId: flag.id,
+          environmentId: environment.id,
+        },
+      });
+      await logAudit({
+        projectId: flag.projectId,
+        actorUserId: auth.user?.id,
+        actorServiceAccountId: auth.serviceAccountId ?? null,
+        action: 'flag.override.delete',
+        resourceType: 'feature_flag_env_override',
+        resourceId: `${flag.id}:${environment.id}`,
+        metadataJson: { module: 'flags', flagId: flag.id, environmentId: environment.id },
+      });
+      reply.send({ ok: true });
+      return;
+    }
+
+    const upserted = await prisma.featureFlagEnvironmentOverride.upsert({
+      where: {
+        flagId_environmentId: {
+          flagId: flag.id,
+          environmentId: environment.id,
+        },
+      },
+      create: {
+        flagId: flag.id,
+        environmentId: environment.id,
+        enabled,
+        variantId,
+      },
+      update: {
+        enabled,
+        variantId,
+      },
+    });
+
+    await logAudit({
+      projectId: flag.projectId,
+      actorUserId: auth.user?.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'flag.override.update',
+      resourceType: 'feature_flag_env_override',
+      resourceId: upserted.id,
+      metadataJson: {
+        module: 'flags',
+        flagId: upserted.flagId,
+        environmentId: upserted.environmentId,
+        enabled: upserted.enabled,
+        variantId: upserted.variantId,
+      },
+    });
+
+    reply.send(toFeatureFlagEnvironmentOverrideDto(upserted));
   });
 }
