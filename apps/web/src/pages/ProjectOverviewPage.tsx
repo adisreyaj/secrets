@@ -1,8 +1,9 @@
-import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
+import type { EnvironmentDto, ProjectDto, ProjectModuleDto } from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
   CheckCircle,
+  Flag,
   Key,
   KeyRound,
   Layers,
@@ -22,6 +23,7 @@ import { getErrorMessage } from '../lib/errors'
 import { useFlagEnabled } from '../lib/feature-flags'
 import { FEATURE_FLAGS } from '../lib/feature-flags/keys'
 import { environmentsPath, projectPath } from '../lib/paths'
+import { getProjectModuleState } from '../lib/modules'
 import { queryKeys } from '../lib/queryKeys'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
@@ -51,8 +53,14 @@ export const ProjectOverviewPage = ({
       queryFn: () => api.listEnvironments(projectId),
       enabled: Boolean(user) && Boolean(projectId) && !projectDeleted,
     })
+  const { data: moduleData } = useQuery<ProjectModuleDto[]>({
+    queryKey: queryKeys.projectModules(projectId),
+    queryFn: () => api.listProjectModules(projectId),
+    enabled: Boolean(user) && Boolean(projectId) && !projectDeleted,
+  })
   const projects = useMemo(() => projectsData ?? [], [projectsData])
   const environments = environmentsData ?? []
+  const modules = useMemo(() => getProjectModuleState(moduleData), [moduleData])
   const environmentsEnabled = useFlagEnabled(
     FEATURE_FLAGS.ENVIRONMENTS_ALLOW,
     true,
@@ -357,6 +365,44 @@ export const ProjectOverviewPage = ({
             </Button>
           </li>
         ) : null}
+        <li>
+          <Button
+            variant="outline"
+            disabled={!modules.flags}
+            className="border-border bg-card shadow-soft h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <div className="flex w-full items-start justify-between gap-3">
+              <div>
+                <div className="text-foreground flex items-center gap-2 text-sm font-semibold">
+                  <Flag className="text-muted-foreground h-4 w-4" />
+                  Feature Flags
+                </div>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {modules.flags ? 'Module enabled (UI coming soon)' : 'Module disabled'}
+                </p>
+              </div>
+            </div>
+          </Button>
+        </li>
+        <li>
+          <Button
+            variant="outline"
+            disabled={!modules.auth}
+            className="border-border bg-card shadow-soft h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <div className="flex w-full items-start justify-between gap-3">
+              <div>
+                <div className="text-foreground flex items-center gap-2 text-sm font-semibold">
+                  <Shield className="text-muted-foreground h-4 w-4" />
+                  Auth Management
+                </div>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {modules.auth ? 'Module enabled (UI coming soon)' : 'Module disabled'}
+                </p>
+              </div>
+            </div>
+          </Button>
+        </li>
       </ul>
 
       <SectionCard className="border-destructive/30">

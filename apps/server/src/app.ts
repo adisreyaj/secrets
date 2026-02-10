@@ -39,6 +39,22 @@ function normalizeIdentifier(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function toProjectModuleDto(module: {
+  projectId: string;
+  module: 'SECRETS' | 'FLAGS' | 'AUTH';
+  enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    projectId: module.projectId,
+    module: module.module.toLowerCase() as 'secrets' | 'flags' | 'auth',
+    enabled: module.enabled,
+    createdAt: module.createdAt.toISOString(),
+    updatedAt: module.updatedAt.toISOString(),
+  };
+}
+
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger:
@@ -149,6 +165,13 @@ export async function buildApp(): Promise<FastifyInstance> {
               role: Role.ADMIN,
             },
           },
+          modules: {
+            create: [
+              { module: 'SECRETS', enabled: true },
+              { module: 'FLAGS', enabled: true },
+              { module: 'AUTH', enabled: true },
+            ],
+          },
         },
       });
     } catch (error) {
@@ -229,6 +252,77 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.send(toProjectDto(project, projectRole));
+  });
+
+  app.get('/projects/:id/modules', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const modules = await prisma.projectModule.findMany({
+      where: { projectId },
+      orderBy: { module: 'asc' },
+    });
+
+    reply.send(modules.map(toProjectModuleDto));
+  });
+
+  app.put('/projects/:id/modules/:module', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+
+    const { id: projectId, module } = request.params as {
+      id: string;
+      module: string;
+    };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const normalizedModule = module.trim().toUpperCase();
+    if (
+      normalizedModule !== 'SECRETS' &&
+      normalizedModule !== 'FLAGS' &&
+      normalizedModule !== 'AUTH'
+    ) {
+      reply.code(400).send({ error: 'Invalid module' });
+      return;
+    }
+
+    const body = request.body as { enabled?: boolean } | undefined;
+    if (!body || typeof body.enabled !== 'boolean') {
+      reply.code(400).send({ error: 'enabled must be a boolean' });
+      return;
+    }
+
+    const updated = await prisma.projectModule.upsert({
+      where: {
+        projectId_module: {
+          projectId,
+          module: normalizedModule,
+        },
+      },
+      create: {
+        projectId,
+        module: normalizedModule,
+        enabled: body.enabled,
+      },
+      update: {
+        enabled: body.enabled,
+      },
+    });
+
+    reply.send(toProjectModuleDto(updated));
   });
 
   app.delete('/projects/:id', async (request, reply) => {

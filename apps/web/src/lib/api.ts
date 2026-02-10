@@ -47,6 +47,8 @@ import type {
   CreateServiceAccountRequest,
   CreateServiceAccountTokenRequest,
   CreateServiceAccountTokenResponse,
+  ProjectModuleDto,
+  UpdateProjectModuleRequest,
 } from '@secrets/shared'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
@@ -195,6 +197,17 @@ export const api = {
     }),
   getProjectBySlug: (slug: string) =>
     apiFetch<ProjectDto>(`/projects/slug/${slug}`),
+  listProjectModules: (projectId: string) =>
+    apiFetch<ProjectModuleDto[]>(`/projects/${projectId}/modules`),
+  updateProjectModule: (
+    projectId: string,
+    module: 'secrets' | 'flags' | 'auth',
+    payload: UpdateProjectModuleRequest,
+  ) =>
+    apiFetch<ProjectModuleDto>(`/projects/${projectId}/modules/${module}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
 
   listEnvironments: (projectId: string) =>
     apiFetch<EnvironmentDto[]>(`/projects/${projectId}/environments`),

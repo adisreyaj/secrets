@@ -427,6 +427,10 @@ export interface ProjectModuleDto {
   updatedAt: string;
 }
 
+export interface UpdateProjectModuleRequest {
+  enabled: boolean;
+}
+
 export type FlagValueType = 'BOOLEAN' | 'MULTIVARIATE';
 
 export interface FeatureFlagVariantDto {
