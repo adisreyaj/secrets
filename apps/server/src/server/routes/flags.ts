@@ -1,5 +1,7 @@
 import { Prisma, Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
+import { generateToken, hashToken } from '../../auth.js';
+import { config } from '../../config.js';
 import { prisma } from '../../db.js';
 import { requireAuth, requireProjectRole, requireUserForApproval } from '../auth/guards.js';
 import { logAudit } from '../services/audit.js';
@@ -29,6 +31,50 @@ function normalizeIdentifier(value: string): string {
 }
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
+  const recordFlagChange = async (params: {
+    projectId: string;
+    flagId?: string | null;
+    actorUserId?: string | null;
+    action: string;
+    resourceType: string;
+    resourceId?: string | null;
+    metadataJson?: Record<string, unknown> | null;
+  }) => {
+    await prisma.featureFlagChangeHistory.create({
+      data: {
+        projectId: params.projectId,
+        flagId: params.flagId ?? null,
+        actorUserId: params.actorUserId ?? null,
+        action: params.action,
+        resourceType: params.resourceType,
+        resourceId: params.resourceId ?? null,
+        metadataJson:
+          (params.metadataJson as Prisma.InputJsonValue | null | undefined) ??
+          undefined,
+      },
+    });
+  };
+
+  const toFlagSdkKeyDto = (key: {
+    id: string;
+    projectId: string;
+    name: string;
+    keyPrefix: string;
+    createdAt: Date;
+    lastUsedAt: Date | null;
+    expiresAt: Date | null;
+    revokedAt: Date | null;
+  }) => ({
+    id: key.id,
+    projectId: key.projectId,
+    name: key.name,
+    keyPrefix: key.keyPrefix,
+    createdAt: key.createdAt.toISOString(),
+    lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
+    expiresAt: key.expiresAt?.toISOString() ?? null,
+    revokedAt: key.revokedAt?.toISOString() ?? null,
+  });
+
   app.get('/projects/:projectId/flags', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
@@ -572,6 +618,156 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       resourceId: rule.id,
       metadataJson: { module: 'flags', flagId: rule.flagId },
     });
+    reply.send({ ok: true });
+  });
+
+  app.get('/projects/:projectId/flag-sdk-keys', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { projectId } = request.params as { projectId: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const keys = await prisma.featureFlagSdkKey.findMany({
+      where: { projectId, revokedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    reply.send(keys.map(toFlagSdkKeyDto));
+  });
+
+  app.post('/projects/:projectId/flag-sdk-keys', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth?.user) {
+      reply.code(403).send({ error: 'User session required' });
+      return;
+    }
+    const { projectId } = request.params as { projectId: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const body = request.body as { name?: string; expiresAt?: string | null } | undefined;
+    const name = body?.name?.trim();
+    if (!name) {
+      reply.code(400).send({ error: 'name is required' });
+      return;
+    }
+    const expiresAt = body?.expiresAt ? new Date(body.expiresAt) : null;
+    if (body?.expiresAt && Number.isNaN(expiresAt?.getTime())) {
+      reply.code(400).send({ error: 'expiresAt must be a valid ISO date' });
+      return;
+    }
+
+    const raw = `ffsk_${generateToken()}`;
+    const prefix = raw.slice(0, 12);
+    const key = await prisma.featureFlagSdkKey.create({
+      data: {
+        projectId,
+        name,
+        keyPrefix: prefix,
+        tokenHash: hashToken(raw),
+        createdBy: auth.user.id,
+        expiresAt:
+          expiresAt ??
+          new Date(Date.now() + config.apiTokenTtlDays * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    await recordFlagChange({
+      projectId,
+      actorUserId: auth.user.id,
+      action: 'flag.sdk_key.create',
+      resourceType: 'feature_flag_sdk_key',
+      resourceId: key.id,
+      metadataJson: { name: key.name, keyPrefix: key.keyPrefix },
+    });
+
+    reply.code(201).send({
+      key: raw,
+      keyMeta: toFlagSdkKeyDto(key),
+    });
+  });
+
+  app.post('/flag-sdk-keys/:keyId/rotate', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth?.user) {
+      reply.code(403).send({ error: 'User session required' });
+      return;
+    }
+    const { keyId } = request.params as { keyId: string };
+    const existing = await prisma.featureFlagSdkKey.findUnique({
+      where: { id: keyId },
+    });
+    if (!existing || existing.revokedAt) {
+      reply.code(404).send({ error: 'SDK key not found' });
+      return;
+    }
+    const role = await requireProjectRole(request, reply, existing.projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const raw = `ffsk_${generateToken()}`;
+    const prefix = raw.slice(0, 12);
+    const rotated = await prisma.featureFlagSdkKey.update({
+      where: { id: existing.id },
+      data: {
+        tokenHash: hashToken(raw),
+        keyPrefix: prefix,
+      },
+    });
+
+    await recordFlagChange({
+      projectId: existing.projectId,
+      actorUserId: auth.user.id,
+      action: 'flag.sdk_key.rotate',
+      resourceType: 'feature_flag_sdk_key',
+      resourceId: existing.id,
+      metadataJson: { keyPrefix: prefix },
+    });
+
+    reply.send({
+      key: raw,
+      keyMeta: toFlagSdkKeyDto(rotated),
+    });
+  });
+
+  app.delete('/flag-sdk-keys/:keyId', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth?.user) {
+      reply.code(403).send({ error: 'User session required' });
+      return;
+    }
+    const { keyId } = request.params as { keyId: string };
+    const key = await prisma.featureFlagSdkKey.findUnique({ where: { id: keyId } });
+    if (!key || key.revokedAt) {
+      reply.code(404).send({ error: 'SDK key not found' });
+      return;
+    }
+    const role = await requireProjectRole(request, reply, key.projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    await prisma.featureFlagSdkKey.update({
+      where: { id: key.id },
+      data: { revokedAt: new Date() },
+    });
+
+    await recordFlagChange({
+      projectId: key.projectId,
+      actorUserId: auth.user.id,
+      action: 'flag.sdk_key.revoke',
+      resourceType: 'feature_flag_sdk_key',
+      resourceId: key.id,
+      metadataJson: { name: key.name, keyPrefix: key.keyPrefix },
+    });
+
     reply.send({ ok: true });
   });
 
