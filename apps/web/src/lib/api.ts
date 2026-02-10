@@ -50,6 +50,8 @@ import type {
   ProjectModuleDto,
   UpdateProjectModuleRequest,
   FeatureFlagDto,
+  FeatureFlagVariantDto,
+  FeatureFlagRuleDto,
 } from '@secrets/shared'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
@@ -242,6 +244,46 @@ export const api = {
     }),
   deleteFlag: (flagId: string) =>
     apiFetch<{ ok: true }>(`/flags/${flagId}`, { method: 'DELETE' }),
+  listFlagVariants: (flagId: string) =>
+    apiFetch<FeatureFlagVariantDto[]>(`/flags/${flagId}/variants`),
+  createFlagVariant: (
+    flagId: string,
+    payload: { key: string; value: string; weight?: number },
+  ) =>
+    apiFetch<FeatureFlagVariantDto>(`/flags/${flagId}/variants`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateFlagVariant: (
+    variantId: string,
+    payload: { key?: string; value?: string; weight?: number },
+  ) =>
+    apiFetch<FeatureFlagVariantDto>(`/flag-variants/${variantId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteFlagVariant: (variantId: string) =>
+    apiFetch<{ ok: true }>(`/flag-variants/${variantId}`, { method: 'DELETE' }),
+  listFlagRules: (flagId: string) =>
+    apiFetch<FeatureFlagRuleDto[]>(`/flags/${flagId}/rules`),
+  createFlagRule: (
+    flagId: string,
+    payload: { priority: number; rolloutPercentage: number; variantId?: string | null },
+  ) =>
+    apiFetch<FeatureFlagRuleDto>(`/flags/${flagId}/rules`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateFlagRule: (
+    ruleId: string,
+    payload: { priority?: number; rolloutPercentage?: number; variantId?: string | null },
+  ) =>
+    apiFetch<FeatureFlagRuleDto>(`/flag-rules/${ruleId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteFlagRule: (ruleId: string) =>
+    apiFetch<{ ok: true }>(`/flag-rules/${ruleId}`, { method: 'DELETE' }),
 
   listEnvironments: (projectId: string) =>
     apiFetch<EnvironmentDto[]>(`/projects/${projectId}/environments`),

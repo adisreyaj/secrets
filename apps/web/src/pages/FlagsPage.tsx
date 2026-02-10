@@ -1,4 +1,9 @@
-import type { FeatureFlagDto, ProjectDto } from '@secrets/shared'
+import type {
+  FeatureFlagDto,
+  FeatureFlagRuleDto,
+  FeatureFlagVariantDto,
+  ProjectDto,
+} from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -55,6 +60,14 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
   const [selectedFlagId, setSelectedFlagId] = useState<string | null>(null)
   const [form, setForm] = useState<FlagFormState>(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
+  const [variantKey, setVariantKey] = useState('')
+  const [variantValue, setVariantValue] = useState('')
+  const [variantWeight, setVariantWeight] = useState('50')
+  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null)
+  const [rulePriority, setRulePriority] = useState('0')
+  const [ruleRollout, setRuleRollout] = useState('100')
+  const [ruleVariantId, setRuleVariantId] = useState<string>('none')
 
   const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
     queryKey: queryKeys.projects(),
@@ -75,6 +88,24 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
     queryFn: () => api.listFlags(projectId),
     enabled: Boolean(user) && Boolean(projectId),
   })
+  const { data: variantsData, isLoading: variantsLoading } = useQuery<
+    FeatureFlagVariantDto[]
+  >({
+    queryKey: selectedFlagId
+      ? queryKeys.flagVariants(selectedFlagId)
+      : ['flags', 'none', 'variants'],
+    queryFn: () => api.listFlagVariants(selectedFlagId!),
+    enabled: Boolean(user) && Boolean(selectedFlagId),
+  })
+  const { data: rulesData, isLoading: rulesLoading } = useQuery<
+    FeatureFlagRuleDto[]
+  >({
+    queryKey: selectedFlagId
+      ? queryKeys.flagRules(selectedFlagId)
+      : ['flags', 'none', 'rules'],
+    queryFn: () => api.listFlagRules(selectedFlagId!),
+    enabled: Boolean(user) && Boolean(selectedFlagId),
+  })
 
   const projects = asArray(projectsData)
   const flags = asArray(flagsData)
@@ -90,6 +121,8 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
     () => flags.find((flag) => flag.id === selectedFlagId) ?? null,
     [flags, selectedFlagId],
   )
+  const variants = asArray(variantsData)
+  const rules = asArray(rulesData)
 
   useRegisterShortcut('b', () =>
     navigate(projectPath(projectId, selectedProject?.slug)),
@@ -98,6 +131,14 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
   const resetForm = () => {
     setSelectedFlagId(null)
     setForm(emptyForm)
+    setSelectedVariantId(null)
+    setVariantKey('')
+    setVariantValue('')
+    setVariantWeight('50')
+    setSelectedRuleId(null)
+    setRulePriority('0')
+    setRuleRollout('100')
+    setRuleVariantId('none')
   }
 
   const populateForm = (flag: FeatureFlagDto) => {
@@ -143,6 +184,78 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
     setSaving(false)
   }
 
+  const saveVariant = async () => {
+    if (!selectedFlagId || !variantKey.trim() || !variantValue.trim()) return
+    const weight = Number(variantWeight)
+    if (!Number.isFinite(weight) || weight < 0) return
+    await runMutationWithToast(
+      async () => {
+        if (selectedVariantId) {
+          await api.updateFlagVariant(selectedVariantId, {
+            key: variantKey.trim(),
+            value: variantValue.trim(),
+            weight,
+          })
+        } else {
+          await api.createFlagVariant(selectedFlagId, {
+            key: variantKey.trim(),
+            value: variantValue.trim(),
+            weight,
+          })
+        }
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.flagVariants(selectedFlagId),
+        })
+      },
+      {
+        successMessage: selectedVariantId
+          ? 'Variant updated.'
+          : 'Variant created.',
+      },
+    )
+    setSelectedVariantId(null)
+    setVariantKey('')
+    setVariantValue('')
+    setVariantWeight('50')
+  }
+
+  const saveRule = async () => {
+    if (!selectedFlagId) return
+    const priority = Number(rulePriority)
+    const rolloutPercentage = Number(ruleRollout)
+    if (
+      !Number.isFinite(priority) ||
+      priority < 0 ||
+      !Number.isFinite(rolloutPercentage) ||
+      rolloutPercentage < 0 ||
+      rolloutPercentage > 100
+    ) {
+      return
+    }
+    await runMutationWithToast(
+      async () => {
+        const payload = {
+          priority,
+          rolloutPercentage,
+          variantId: ruleVariantId === 'none' ? null : ruleVariantId,
+        }
+        if (selectedRuleId) {
+          await api.updateFlagRule(selectedRuleId, payload)
+        } else {
+          await api.createFlagRule(selectedFlagId, payload)
+        }
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.flagRules(selectedFlagId),
+        })
+      },
+      { successMessage: selectedRuleId ? 'Rule updated.' : 'Rule created.' },
+    )
+    setSelectedRuleId(null)
+    setRulePriority('0')
+    setRuleRollout('100')
+    setRuleVariantId('none')
+  }
+
   const deleteFlag = async (flagId: string) => {
     await runMutationWithToast(
       async () => {
@@ -153,6 +266,44 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
     )
     if (selectedFlagId === flagId) {
       resetForm()
+    }
+  }
+
+  const deleteVariant = async (variantId: string) => {
+    if (!selectedFlagId) return
+    await runMutationWithToast(
+      async () => {
+        await api.deleteFlagVariant(variantId)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.flagVariants(selectedFlagId),
+        })
+      },
+      { successMessage: 'Variant deleted.' },
+    )
+    if (selectedVariantId === variantId) {
+      setSelectedVariantId(null)
+      setVariantKey('')
+      setVariantValue('')
+      setVariantWeight('50')
+    }
+  }
+
+  const deleteRule = async (ruleId: string) => {
+    if (!selectedFlagId) return
+    await runMutationWithToast(
+      async () => {
+        await api.deleteFlagRule(ruleId)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.flagRules(selectedFlagId),
+        })
+      },
+      { successMessage: 'Rule deleted.' },
+    )
+    if (selectedRuleId === ruleId) {
+      setSelectedRuleId(null)
+      setRulePriority('0')
+      setRuleRollout('100')
+      setRuleVariantId('none')
     }
   }
 
@@ -323,6 +474,160 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
           </div>
         </SectionCard>
       </div>
+
+      {selectedFlag ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <SectionCard>
+            <SectionHeader kicker="Variants" title="Variant management" />
+            <div className="mt-4 space-y-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <Input
+                  value={variantKey}
+                  onChange={(event) => setVariantKey(event.target.value)}
+                  placeholder="variant key"
+                />
+                <Input
+                  value={variantValue}
+                  onChange={(event) => setVariantValue(event.target.value)}
+                  placeholder="variant value"
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  value={variantWeight}
+                  onChange={(event) => setVariantWeight(event.target.value)}
+                  placeholder="weight"
+                />
+              </div>
+              <Button onClick={saveVariant}>
+                {selectedVariantId ? 'Save variant' : 'Add variant'}
+              </Button>
+              <div className="space-y-2">
+                {variantsLoading ? (
+                  <p className="text-muted-foreground text-sm">
+                    Loading variants...
+                  </p>
+                ) : variants.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No variants yet.</p>
+                ) : (
+                  variants.map((variant) => (
+                    <div
+                      key={variant.id}
+                      className="border-border/70 bg-card/70 rounded-xl border p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedVariantId(variant.id)
+                            setVariantKey(variant.key)
+                            setVariantValue(variant.value)
+                            setVariantWeight(String(variant.weight))
+                          }}
+                          className="flex-1 text-left"
+                        >
+                          <p className="text-sm font-semibold">{variant.key}</p>
+                          <p className="text-muted-foreground text-xs">
+                            value: {variant.value} · weight: {variant.weight}
+                          </p>
+                        </button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteVariant(variant.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard>
+            <SectionHeader kicker="Rules" title="Rollout rules" />
+            <div className="mt-4 space-y-3">
+              <div className="grid gap-3 md:grid-cols-3">
+                <Input
+                  type="number"
+                  min={0}
+                  value={rulePriority}
+                  onChange={(event) => setRulePriority(event.target.value)}
+                  placeholder="priority"
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={ruleRollout}
+                  onChange={(event) => setRuleRollout(event.target.value)}
+                  placeholder="rollout %"
+                />
+                <Select value={ruleVariantId} onValueChange={setRuleVariantId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Variant (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No variant</SelectItem>
+                    {variants.map((variant) => (
+                      <SelectItem key={variant.id} value={variant.id}>
+                        {variant.key}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={saveRule}>
+                {selectedRuleId ? 'Save rule' : 'Add rule'}
+              </Button>
+              <div className="space-y-2">
+                {rulesLoading ? (
+                  <p className="text-muted-foreground text-sm">Loading rules...</p>
+                ) : rules.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">No rules yet.</p>
+                ) : (
+                  rules.map((rule) => (
+                    <div
+                      key={rule.id}
+                      className="border-border/70 bg-card/70 rounded-xl border p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedRuleId(rule.id)
+                            setRulePriority(String(rule.priority))
+                            setRuleRollout(String(rule.rolloutPercentage))
+                            setRuleVariantId(rule.variantId ?? 'none')
+                          }}
+                          className="flex-1 text-left"
+                        >
+                          <p className="text-sm font-semibold">
+                            Priority {rule.priority}
+                          </p>
+                          <p className="text-muted-foreground text-xs">
+                            rollout: {rule.rolloutPercentage}% · variant:{' '}
+                            {rule.variantId ?? 'none'}
+                          </p>
+                        </button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteRule(rule.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </SectionCard>
+        </div>
+      ) : null}
     </section>
   )
 }

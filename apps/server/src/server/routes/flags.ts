@@ -356,6 +356,31 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  app.get('/flags/:flagId/variants', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { flagId } = request.params as { flagId: string };
+    const flag = await prisma.featureFlag.findFirst({
+      where: { id: flagId, deletedAt: null },
+    });
+    if (!flag) {
+      reply.code(404).send({ error: 'Flag not found' });
+      return;
+    }
+    const role = await requireProjectRole(request, reply, flag.projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const variants = await prisma.featureFlagVariant.findMany({
+      where: { flagId: flag.id },
+      orderBy: [{ weight: 'desc' }, { createdAt: 'asc' }],
+    });
+    reply.send(variants.map(toFeatureFlagVariantDto));
+  });
+
   app.patch('/flag-variants/:variantId', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
@@ -512,6 +537,31 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       metadataJson: { module: 'flags', flagId: rule.flagId },
     });
     reply.code(201).send(toFeatureFlagRuleDto(rule));
+  });
+
+  app.get('/flags/:flagId/rules', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { flagId } = request.params as { flagId: string };
+    const flag = await prisma.featureFlag.findFirst({
+      where: { id: flagId, deletedAt: null },
+    });
+    if (!flag) {
+      reply.code(404).send({ error: 'Flag not found' });
+      return;
+    }
+    const role = await requireProjectRole(request, reply, flag.projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const rules = await prisma.featureFlagRule.findMany({
+      where: { flagId: flag.id },
+      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
+    });
+    reply.send(rules.map(toFeatureFlagRuleDto));
   });
 
   app.patch('/flag-rules/:ruleId', async (request, reply) => {
