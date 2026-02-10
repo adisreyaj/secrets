@@ -31,6 +31,8 @@ export const queryKeys = {
   flag: (flagId: string) => ['flags', flagId] as const,
   flagVariants: (flagId: string) => ['flags', flagId, 'variants'] as const,
   flagRules: (flagId: string) => ['flags', flagId, 'rules'] as const,
+  flagSdkKeys: (projectId: string) =>
+    ['projects', projectId, 'flag-sdk-keys'] as const,
   serviceAccounts: (projectId: string) =>
     ['projects', projectId, 'service-accounts'] as const,
   serviceAccountTokens: (accountId: string) =>

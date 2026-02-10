@@ -52,6 +52,7 @@ import type {
   FeatureFlagDto,
   FeatureFlagVariantDto,
   FeatureFlagRuleDto,
+  FeatureFlagSdkKeyDto,
 } from '@secrets/shared'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
@@ -284,6 +285,26 @@ export const api = {
     }),
   deleteFlagRule: (ruleId: string) =>
     apiFetch<{ ok: true }>(`/flag-rules/${ruleId}`, { method: 'DELETE' }),
+  listFlagSdkKeys: (projectId: string) =>
+    apiFetch<FeatureFlagSdkKeyDto[]>(`/projects/${projectId}/flag-sdk-keys`),
+  createFlagSdkKey: (
+    projectId: string,
+    payload: { name: string; expiresAt?: string | null },
+  ) =>
+    apiFetch<{ key: string; keyMeta: FeatureFlagSdkKeyDto }>(
+      `/projects/${projectId}/flag-sdk-keys`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
+  rotateFlagSdkKey: (keyId: string) =>
+    apiFetch<{ key: string; keyMeta: FeatureFlagSdkKeyDto }>(
+      `/flag-sdk-keys/${keyId}/rotate`,
+      { method: 'POST' },
+    ),
+  revokeFlagSdkKey: (keyId: string) =>
+    apiFetch<{ ok: true }>(`/flag-sdk-keys/${keyId}`, { method: 'DELETE' }),
 
   listEnvironments: (projectId: string) =>
     apiFetch<EnvironmentDto[]>(`/projects/${projectId}/environments`),

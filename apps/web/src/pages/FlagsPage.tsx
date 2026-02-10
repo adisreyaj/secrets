@@ -336,14 +336,24 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
         title="Feature flags"
         subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
         actions={
-          <Button
-            variant="outline"
-            onClick={() => navigate(projectPath(projectId, selectedProject?.slug))}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to overview
-            <ShortcutHint keys="b" />
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() =>
+                navigate(projectPath(projectId, selectedProject?.slug, 'flag-sdk-keys'))
+              }
+            >
+              SDK keys
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate(projectPath(projectId, selectedProject?.slug))}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to overview
+              <ShortcutHint keys="b" />
+            </Button>
+          </div>
         }
       />
 
