@@ -31,6 +31,7 @@ import { logAudit } from './server/services/audit.js';
 import { deleteEnvironmentWithGuards, deleteProjectWithGuards } from './server/services/deletions.js';
 import { formatDotenvValue } from './server/services/format.js';
 import { registerCoreHttpMiddleware } from './server/http/middleware.js';
+import { forbidden, unauthorized } from './server/http/errors.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
 import { registerRoutes as registerFlagRoutes } from './server/routes/flags.js';
 import { registerRoutes as registerFlagRuntimeRoutes } from './server/routes/flagsRuntime.js';
@@ -1648,7 +1649,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     const isRequester = approval.requestedBy === auth.user!.id;
     const isAdmin = role === Role.ADMIN;
     if (!isRequester && !isAdmin) {
-      reply.code(403).send({ error: 'Forbidden' });
+      forbidden(reply);
       return;
     }
     if (approval.status !== ApprovalStatus.PENDING) {
@@ -3483,7 +3484,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
     if (!auth.user) {
-      reply.code(401).send({ error: 'Unauthorized' });
+      unauthorized(reply);
       return;
     }
 
@@ -3521,7 +3522,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
     if (!auth.user) {
-      reply.code(401).send({ error: 'Unauthorized' });
+      unauthorized(reply);
       return;
     }
 
@@ -3594,7 +3595,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
     if (!auth.user) {
-      reply.code(401).send({ error: 'Unauthorized' });
+      unauthorized(reply);
       return;
     }
 
@@ -3639,7 +3640,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
     if (!auth.user) {
-      reply.code(401).send({ error: 'Unauthorized' });
+      unauthorized(reply);
       return;
     }
 
@@ -3685,7 +3686,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
     if (!auth.user) {
-      reply.code(401).send({ error: 'Unauthorized' });
+      unauthorized(reply);
       return;
     }
 
@@ -3780,7 +3781,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       return;
     }
     if (!auth.user) {
-      reply.code(401).send({ error: 'Unauthorized' });
+      unauthorized(reply);
       return;
     }
 
