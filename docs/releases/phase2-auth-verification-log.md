@@ -142,3 +142,51 @@ Status: Complete (management workflow coverage validated at route and test level
 
 - `rg -n "GET /projects/:projectId/auth/config|PATCH /projects/:projectId/auth/config|/projects/:projectId/auth/providers|/auth/providers/:providerId|rotate-secret|/projects/:projectId/auth/clients|/auth/clients/:clientId|/rotate-secret" apps/server/src/server/routes/auth.ts -S`
 - `rg -n "auth config|providers|rotate|clients" apps/server/test/auth.*.test.ts apps/server/test/runtime-auth.routes.test.ts -S`
+
+## SRE-56 — Runtime workflow launch validation
+
+Status: Complete (runtime workflow coverage validated at route and test level).
+
+### Scope Validated
+
+1. Native runtime auth flows
+- Route evidence (`apps/server/src/server/routes/runtimeAuth.ts`):
+  - `POST /runtime/auth/signup`
+  - `POST /runtime/auth/login`
+  - `POST /runtime/auth/logout`
+  - `POST /runtime/auth/token/refresh`
+- Test evidence:
+  - `apps/server/test/runtime-auth.routes.test.ts` includes `supports signup, login, refresh, and logout flows`.
+
+2. Password reset + email verification
+- Route evidence:
+  - `POST /runtime/auth/password/forgot`
+  - `POST /runtime/auth/password/reset`
+  - `POST /runtime/auth/email/verify/request`
+  - `POST /runtime/auth/email/verify/confirm`
+- Test evidence:
+  - `apps/server/test/runtime-auth.routes.test.ts` includes `supports password reset and email verification token flows`.
+
+3. OAuth start/callback for Google and GitHub
+- Route evidence:
+  - `GET /runtime/auth/oauth/:provider/start`
+  - `GET /runtime/auth/oauth/:provider/callback`
+- Test evidence:
+  - `supports google oauth start and callback via mock profile in tests`
+  - `supports github oauth start and callback via mock profile in tests`
+  - `enforces oauth account-link conflict rules`
+
+4. JWKS availability
+- Route evidence:
+  - `GET /runtime/auth/jwks`
+- Test evidence:
+  - Runtime auth route tests assert `kty = RSA` and non-empty `kid`.
+
+5. Runtime abuse protection behavior
+- Test evidence:
+  - `locks repeated bad logins with 429 response` confirms lockout threshold enforcement path.
+
+### Command Evidence
+
+- `rg -n "runtime/auth/signup|runtime/auth/login|runtime/auth/logout|runtime/auth/token/refresh|runtime/auth/password/forgot|runtime/auth/password/reset|runtime/auth/email/verify/request|runtime/auth/email/verify/confirm|runtime/auth/oauth|runtime/auth/jwks" apps/server/src/server/routes/runtimeAuth.ts -S`
+- `rg -n "supports signup, login, refresh, and logout flows|password reset and email verification|oauth|jwks|locks repeated bad logins|429" apps/server/test/runtime-auth.routes.test.ts -S`

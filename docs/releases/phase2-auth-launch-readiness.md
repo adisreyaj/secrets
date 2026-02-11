@@ -60,6 +60,7 @@ Scope: Native Auth launch (email/password + Google/GitHub, management + runtime 
    - password reset and email verification
    - OAuth start/callback
    - JWKS fetch
+   - Evidence logged in `docs/releases/phase2-auth-verification-log.md` (`SRE-56`)
 5. Validate observability:
    - auth runtime error rate
    - auth route latency
