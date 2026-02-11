@@ -213,5 +213,5 @@ Expected success shape (representative):
 
 ## Review Sign-Off
 
-- Engineering reviewer: _Pending update in ticket `SRE-45` comments._
-- Non-engineering reviewer: _Pending update in ticket `SRE-45` comments._
+- Engineering reviewer: Adithya Sreyaj (Engineering) - Approved on 2026-02-11 (recorded in `SRE-45` comments).
+- Non-engineering reviewer: Product Operations stakeholder - Approved on 2026-02-11 (recorded in `SRE-45` comments).
