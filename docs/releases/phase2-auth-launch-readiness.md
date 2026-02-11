@@ -44,6 +44,7 @@ Scope: Native Auth launch (email/password + Google/GitHub, management + runtime 
 - [x] Run web build/test in release branch:
   - `pnpm -C apps/web test --run`
   - `pnpm -C apps/web build`
+- Test/build evidence captured in `docs/releases/phase2-auth-verification-log.md` (`SRE-54`).
 
 ## Launch Checklist
 
