@@ -56,6 +56,12 @@ import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { getLastEnvironmentId } from '../lib/shortcuts.utils'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import {
+  emptyFlagFormState,
+  toFlagMutationPayload,
+  type FlagFormState,
+  validateFlagForm,
+} from './FlagsPage.form'
 import { EnvironmentTabsCard } from './environment/EnvironmentTabsCard'
 
 type FlagsPageProps = {
@@ -64,51 +70,13 @@ type FlagsPageProps = {
   navigate: (path: string) => void
 }
 
-type VariantForm = {
-  key: string
-  valueType: 'string' | 'json'
-  value: string
-}
-
-type FlagFormState = {
-  key: string
-  name: string
-  description: string
-  valueType: 'BOOLEAN' | 'MULTIVARIATE'
-  enabled: boolean
-  runtime: 'both' | 'client' | 'server'
-  labels: string
-  booleanValue: boolean
-  defaultVariantKey: string
-  variants: VariantForm[]
-}
-
-const emptyForm: FlagFormState = {
-  key: '',
-  name: '',
-  description: '',
-  valueType: 'BOOLEAN',
-  enabled: true,
-  runtime: 'both',
-  labels: '',
-  booleanValue: true,
-  defaultVariantKey: '',
-  variants: [],
-}
-
-const parseLabels = (input: string) =>
-  input
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-
 export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingFlagId, setEditingFlagId] = useState<string | null>(null)
-  const [form, setForm] = useState<FlagFormState>(emptyForm)
+  const [form, setForm] = useState<FlagFormState>(emptyFlagFormState)
   const [saving, setSaving] = useState(false)
 
   const [diffOpen, setDiffOpen] = useState(false)
@@ -183,7 +151,7 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
   }) => createEnvironmentAndRefresh(queryClient, projectId, payload)
 
   const resetForm = () => {
-    setForm(emptyForm)
+    setForm(emptyFlagFormState)
     setEditingFlagId(null)
   }
 
@@ -209,42 +177,10 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
     setSheetOpen(true)
   }
 
-  const validateForm = (): string | null => {
-    if (!form.key.trim() || !form.name.trim()) {
-      return 'Key and name are required'
-    }
-
-    if (form.valueType === 'MULTIVARIATE') {
-      if (!form.defaultVariantKey.trim()) {
-        return 'Default variant key is required for multivariate flags'
-      }
-      if (form.variants.length === 0) {
-        return 'Add at least one variant for multivariate flags'
-      }
-      if (!form.variants.some((variant) => variant.key === form.defaultVariantKey)) {
-        return 'Default variant key must match one of the variants'
-      }
-      for (const variant of form.variants) {
-        if (!variant.key.trim()) {
-          return 'Each variant requires a key'
-        }
-        if (variant.valueType === 'json') {
-          try {
-            JSON.parse(variant.value)
-          } catch {
-            return `Variant ${variant.key} has invalid JSON`
-          }
-        }
-      }
-    }
-
-    return null
-  }
-
   const saveFlag = async () => {
     if (!activeEnvironmentId || saving) return
 
-    const validationError = validateForm()
+    const validationError = validateFlagForm(form)
     if (validationError) {
       await runMutationWithToast(async () => {
         throw new Error(validationError)
@@ -253,28 +189,7 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
     }
 
     setSaving(true)
-    const payload = {
-      environmentId: activeEnvironmentId,
-      key: form.key.trim(),
-      name: form.name.trim(),
-      description: form.description.trim() || null,
-      valueType: form.valueType,
-      enabled: form.enabled,
-      runtime: form.runtime,
-      labels: parseLabels(form.labels),
-      booleanValue: form.valueType === 'BOOLEAN' ? form.booleanValue : undefined,
-      multivariate:
-        form.valueType === 'MULTIVARIATE'
-          ? {
-              defaultVariantKey: form.defaultVariantKey,
-              variants: form.variants.map((variant) => ({
-                key: variant.key.trim(),
-                valueType: variant.valueType,
-                value: variant.value,
-              })),
-            }
-          : null,
-    }
+    const payload = toFlagMutationPayload(form, activeEnvironmentId)
 
     await runMutationWithToast(
       async () => {
