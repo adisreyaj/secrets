@@ -24,6 +24,7 @@ import {
 import { ROLE_RANK } from './server/auth/policies.js';
 import { toApprovalRequestDto, toApprovalRuleDto } from './server/mappers/approvals.js';
 import { toInviteDto } from './server/mappers/invites.js';
+import { toProjectModuleDto } from './server/mappers/projectModules.js';
 import { toEnvironmentDto, toProjectDto } from './server/mappers/projects.js';
 import { toUserDto } from './server/mappers/users.js';
 import { findMatchingApprovalRules, findPendingApprovalRequest, createApprovalRequest } from './server/services/approvals.js';
@@ -43,22 +44,6 @@ import { isPrismaUniqueError } from './server/services/prismaErrors.js';
 import { createLogDispatcher } from './server/logging/dispatcher.js';
 import { isRole, parseDateInput } from './server/http/validators.js';
 import './types.js';
-
-function toProjectModuleDto(module: {
-  projectId: string;
-  module: 'SECRETS' | 'FLAGS' | 'AUTH';
-  enabled: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}) {
-  return {
-    projectId: module.projectId,
-    module: module.module.toLowerCase() as 'secrets' | 'flags' | 'auth',
-    enabled: module.enabled,
-    createdAt: module.createdAt.toISOString(),
-    updatedAt: module.updatedAt.toISOString(),
-  };
-}
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
