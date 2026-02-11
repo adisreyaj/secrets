@@ -23,7 +23,6 @@ import {
 } from './server/auth/guards.js';
 import { ROLE_RANK } from './server/auth/policies.js';
 import { toApprovalRequestDto, toApprovalRuleDto } from './server/mappers/approvals.js';
-import { toInviteDto } from './server/mappers/invites.js';
 import { toEnvironmentDto, toProjectDto } from './server/mappers/projects.js';
 import { toUserDto } from './server/mappers/users.js';
 import { findMatchingApprovalRules, findPendingApprovalRequest, createApprovalRequest } from './server/services/approvals.js';
@@ -39,13 +38,13 @@ import { registerRoutes as registerFlagRoutes } from './server/routes/flags.js';
 import { registerRoutes as registerFlagRuntimeRoutes } from './server/routes/flagsRuntime.js';
 import { registerRoutes as registerRuntimeAuthRoutes } from './server/routes/runtimeAuth.js';
 import { registerRoutes as registerProjectSettingsRoutes } from './server/routes/projectSettings.js';
+import { registerRoutes as registerProjectMemberRoutes } from './server/routes/projectMembers.js';
 import { registerRoutes as registerOrganizationRoutes } from './server/routes/organizations.js';
 import { registerRoutes as registerServiceAccountRoutes } from './server/routes/serviceAccounts.js';
 import { ensureUniqueEnvironmentSlug, ensureUniqueProjectSlug } from './server/services/slugs.js';
 import { normalizeIdentifier } from './server/services/identifiers.js';
 import { isPrismaUniqueError } from './server/services/prismaErrors.js';
 import { createLogDispatcher } from './server/logging/dispatcher.js';
-import { isRole } from './server/http/validators.js';
 import './types.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -101,6 +100,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerFlagRuntimeRoutes(app);
   await registerRuntimeAuthRoutes(app);
   await registerProjectSettingsRoutes(app);
+  await registerProjectMemberRoutes(app);
   await registerOrganizationRoutes(app);
   await registerServiceAccountRoutes(app);
 
@@ -307,298 +307,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     reply.send(toProjectDto(project, role));
-  });
-
-  app.post('/projects/:id/members', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-
-    const body = request.body as { email?: string; role?: string } | undefined;
-    if (!body?.email || !body?.role || !isRole(body.role)) {
-      reply.code(400).send({ error: 'Email and role are required' });
-      return;
-    }
-
-    const user = await prisma.user.findUnique({ where: { email: body.email } });
-    if (!user) {
-      reply.code(404).send({ error: 'User not found' });
-      return;
-    }
-
-    const membership = await prisma.projectMember.upsert({
-      where: { projectId_userId: { projectId, userId: user.id } },
-      create: { projectId, userId: user.id, role: body.role },
-      update: { role: body.role },
-    });
-
-    await logAudit({
-      projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'project.member.add',
-      resourceType: 'project_member',
-      resourceId: membership.id,
-      metadataJson: { memberUserId: user.id, role: body.role },
-    });
-
-    reply.code(201).send({ id: membership.id, userId: membership.userId, role: membership.role });
-  });
-
-  app.get('/projects/:id/members', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    const members = await prisma.projectMember.findMany({
-      where: { projectId },
-      include: { user: true },
-    });
-
-    reply.send(
-      members.map((member) => ({
-        id: member.id,
-        projectId: member.projectId,
-        userId: member.userId,
-        email: member.user.email,
-        name: member.user.name,
-        role: member.role,
-      })),
-    );
-  });
-
-  app.post('/projects/:id/invites', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-
-    const body = request.body as { email?: string; role?: string } | undefined;
-    if (!body?.email || !body?.role || !isRole(body.role)) {
-      reply.code(400).send({ error: 'Email and role are required' });
-      return;
-    }
-
-    const normalizedEmail = body.email.trim().toLowerCase();
-    const existingMember = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-      include: {
-        memberships: {
-          where: { projectId },
-          select: { id: true },
-        },
-      },
-    });
-    if (existingMember?.memberships.length) {
-      reply.code(409).send({ error: 'User is already a project member' });
-      return;
-    }
-
-    const existingInvite = await prisma.projectInvite.findFirst({
-      where: {
-        projectId,
-        email: normalizedEmail,
-        status: 'PENDING',
-        expiresAt: { gt: new Date() },
-      },
-    });
-    if (existingInvite) {
-      reply.code(409).send({ error: 'Active invite already exists for this email' });
-      return;
-    }
-    if (!auth.user) {
-      reply.code(403).send({ error: 'Invites require a user session' });
-      return;
-    }
-
-    const token = generateToken();
-    const invite = await prisma.projectInvite.create({
-      data: {
-        projectId,
-        email: normalizedEmail,
-        role: body.role,
-        status: 'PENDING',
-        tokenHash: hashToken(token),
-        createdBy: auth.user.id,
-        expiresAt: new Date(Date.now() + config.inviteTtlDays * 24 * 60 * 60 * 1000),
-      },
-    });
-
-    await logAudit({
-      projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'invite.create',
-      resourceType: 'project_invite',
-      resourceId: invite.id,
-      metadataJson: { email: normalizedEmail, role: body.role },
-    });
-
-    reply.code(201).send({
-      invite: toInviteDto(invite),
-      token,
-    });
-  });
-
-  app.get('/projects/:id/invites', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-
-    const invites = await prisma.projectInvite.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-    });
-    reply.send(invites.map(toInviteDto));
-  });
-
-  app.delete('/projects/:id/invites/:inviteId', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId, inviteId } = request.params as { id: string; inviteId: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-
-    const invite = await prisma.projectInvite.findFirst({
-      where: { id: inviteId, projectId },
-    });
-    if (!invite) {
-      reply.code(404).send({ error: 'Invite not found' });
-      return;
-    }
-
-    await prisma.projectInvite.update({
-      where: { id: inviteId },
-      data: { status: 'REVOKED' },
-    });
-
-    await logAudit({
-      projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'invite.revoke',
-      resourceType: 'project_invite',
-      resourceId: inviteId,
-    });
-
-    reply.send({ ok: true });
-  });
-
-  app.post('/invites/accept', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const body = request.body as { token?: string } | undefined;
-    const token = body?.token?.trim();
-    if (!token) {
-      reply.code(400).send({ error: 'Token is required' });
-      return;
-    }
-
-    const invite = await prisma.projectInvite.findFirst({
-      where: {
-        tokenHash: hashToken(token),
-        status: 'PENDING',
-      },
-    });
-    if (!invite) {
-      reply.code(404).send({ error: 'Invite not found or already used' });
-      return;
-    }
-
-    if (invite.expiresAt <= new Date()) {
-      await prisma.projectInvite.update({
-        where: { id: invite.id },
-        data: { status: 'EXPIRED' },
-      });
-      reply.code(410).send({ error: 'Invite has expired' });
-      return;
-    }
-    if (!auth.user) {
-      reply.code(403).send({ error: 'Invite acceptance requires a user session' });
-      return;
-    }
-
-    if (auth.user.email.toLowerCase() !== invite.email.toLowerCase()) {
-      reply.code(403).send({ error: 'Invite email does not match your account' });
-      return;
-    }
-
-    await prisma.$transaction([
-      prisma.projectMember.upsert({
-        where: {
-          projectId_userId: {
-            projectId: invite.projectId,
-            userId: auth.user.id,
-          },
-        },
-        create: {
-          projectId: invite.projectId,
-          userId: auth.user.id,
-          role: invite.role,
-        },
-        update: {
-          role: invite.role,
-        },
-      }),
-      prisma.projectInvite.update({
-        where: { id: invite.id },
-        data: { status: 'ACCEPTED', acceptedAt: new Date() },
-      }),
-    ]);
-
-    await logAudit({
-      projectId: invite.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'invite.accept',
-      resourceType: 'project_invite',
-      resourceId: invite.id,
-    });
-
-    const project = await prisma.project.findUnique({
-      where: { id: invite.projectId },
-      select: { slug: true },
-    });
-    reply.send({
-      ok: true,
-      projectId: invite.projectId,
-      projectSlug: project?.slug ?? null,
-    });
   });
 
   app.get('/projects/:id/approval-rules', async (request, reply) => {
