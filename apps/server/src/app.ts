@@ -34,6 +34,7 @@ import { formatDotenvValue } from './server/services/format.js';
 import { registerCoreHttpMiddleware } from './server/http/middleware.js';
 import { forbidden } from './server/http/errors.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
+import { registerRoutes as registerApiTokenRoutes } from './server/routes/apiTokens.js';
 import { registerRoutes as registerFlagRoutes } from './server/routes/flags.js';
 import { registerRoutes as registerFlagRuntimeRoutes } from './server/routes/flagsRuntime.js';
 import { registerRoutes as registerRuntimeAuthRoutes } from './server/routes/runtimeAuth.js';
@@ -92,6 +93,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.get('/health', async () => ({ ok: true }));
 
   await registerAuthRoutes(app);
+  await registerApiTokenRoutes(app);
   await registerFlagRoutes(app);
   await registerFlagRuntimeRoutes(app);
   await registerRuntimeAuthRoutes(app);
@@ -3459,128 +3461,6 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     const output = `${lines.join('\n')}\n`;
     reply.type('text/plain').send(output);
-  });
-
-  app.post('/projects/:id/api-tokens', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-
-    const body = request.body as { name?: string; readOnly?: boolean } | undefined;
-    if (!body?.name) {
-      reply.code(400).send({ error: 'Name is required' });
-      return;
-    }
-
-    const raw = generateToken();
-    const expiresAt =
-      config.apiTokenTtlDays > 0
-        ? new Date(Date.now() + config.apiTokenTtlDays * 24 * 60 * 60 * 1000)
-        : null;
-    const token = await prisma.apiToken.create({
-      data: {
-        projectId,
-        name: body.name,
-        tokenHash: hashToken(raw),
-        createdBy: auth.user!.id,
-        readOnly: body.readOnly === true,
-        expiresAt,
-      },
-    });
-
-    await logAudit({
-      projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'token.create',
-      resourceType: 'api_token',
-      resourceId: token.id,
-    });
-
-    reply.code(201).send({
-      token: raw,
-      tokenMeta: {
-        id: token.id,
-        projectId: token.projectId,
-        name: token.name,
-        readOnly: token.readOnly,
-        createdAt: token.createdAt.toISOString(),
-        lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
-        expiresAt: token.expiresAt?.toISOString() ?? null,
-      },
-    });
-  });
-
-  app.get('/projects/:id/api-tokens', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-
-    const tokens = await prisma.apiToken.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    reply.send(
-      tokens.map((token) => ({
-        id: token.id,
-        projectId: token.projectId,
-        name: token.name,
-        readOnly: token.readOnly,
-        createdAt: token.createdAt.toISOString(),
-        lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
-        expiresAt: token.expiresAt?.toISOString() ?? null,
-      })),
-    );
-  });
-
-  app.delete('/projects/:id/api-tokens/:tokenId', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId, tokenId } = request.params as { id: string; tokenId: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-
-    const token = await prisma.apiToken.findFirst({
-      where: { id: tokenId, projectId },
-    });
-
-    if (!token) {
-      reply.code(404).send({ error: 'Token not found' });
-      return;
-    }
-
-    await prisma.apiToken.delete({ where: { id: token.id } });
-
-    await logAudit({
-      projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'token.delete',
-      resourceType: 'api_token',
-      resourceId: token.id,
-    });
-
-    reply.code(204).send();
   });
 
   app.get('/audit', async (request, reply) => {
