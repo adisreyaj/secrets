@@ -22,7 +22,7 @@ import {
   requireUserForApproval,
 } from './server/auth/guards.js';
 import { ROLE_RANK } from './server/auth/policies.js';
-import { toApprovalRequestDto, toApprovalRuleDto } from './server/mappers/approvals.js';
+import { toApprovalRequestDto } from './server/mappers/approvals.js';
 import { toEnvironmentDto } from './server/mappers/projects.js';
 import { toUserDto } from './server/mappers/users.js';
 import { findMatchingApprovalRules, findPendingApprovalRequest, createApprovalRequest } from './server/services/approvals.js';
@@ -33,6 +33,7 @@ import { forbidden } from './server/http/errors.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
 import { registerRoutes as registerApiTokenRoutes } from './server/routes/apiTokens.js';
 import { registerRoutes as registerAuditRoutes } from './server/routes/audit.js';
+import { registerRoutes as registerApprovalRuleRoutes } from './server/routes/approvalRules.js';
 import { registerRoutes as registerExportRoutes } from './server/routes/exports.js';
 import { registerRoutes as registerFlagRoutes } from './server/routes/flags.js';
 import { registerRoutes as registerFlagRuntimeRoutes } from './server/routes/flagsRuntime.js';
@@ -94,6 +95,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.get('/health', async () => ({ ok: true }));
 
   await registerAuthRoutes(app);
+  await registerApprovalRuleRoutes(app);
   await registerApiTokenRoutes(app);
   await registerAuditRoutes(app);
   await registerExportRoutes(app);
@@ -105,162 +107,6 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerProjectMemberRoutes(app);
   await registerOrganizationRoutes(app);
   await registerServiceAccountRoutes(app);
-
-  app.get('/projects/:id/approval-rules', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-    const rules = await prisma.approvalRule.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-    });
-    reply.send(rules.map(toApprovalRuleDto));
-  });
-
-  app.post('/projects/:id/approval-rules', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-    const body = request.body as
-      | {
-          name?: string;
-          environmentId?: string | null;
-          keyPattern?: string;
-          actions?: ApprovalAction[];
-          isActive?: boolean;
-        }
-      | undefined;
-    if (!body?.name || !body.keyPattern || !Array.isArray(body.actions) || body.actions.length === 0) {
-      reply.code(400).send({ error: 'Name, keyPattern, and actions are required' });
-      return;
-    }
-    if (body.environmentId) {
-      const env = await prisma.environment.findUnique({ where: { id: body.environmentId } });
-      if (!env || env.projectId !== projectId) {
-        reply.code(400).send({ error: 'Environment does not belong to project' });
-        return;
-      }
-    }
-    if (!auth.user) {
-      reply.code(403).send({ error: 'Approval rules require a user session' });
-      return;
-    }
-    const rule = await prisma.approvalRule.create({
-      data: {
-        projectId,
-        name: body.name.trim(),
-        environmentId: body.environmentId ?? null,
-        keyPattern: body.keyPattern.trim(),
-        actionsJson: body.actions,
-        isActive: body.isActive ?? true,
-        createdBy: auth.user.id,
-      },
-    });
-    await logAudit({
-      projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'approval.rule.create',
-      resourceType: 'approval_rule',
-      resourceId: rule.id,
-      metadataJson: { name: rule.name },
-    });
-    reply.code(201).send(toApprovalRuleDto(rule));
-  });
-
-  app.patch('/approval-rules/:id', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { id } = request.params as { id: string };
-    const rule = await prisma.approvalRule.findUnique({ where: { id } });
-    if (!rule) {
-      reply.code(404).send({ error: 'Approval rule not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, rule.projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-    const body = request.body as
-      | {
-          name?: string;
-          environmentId?: string | null;
-          keyPattern?: string;
-          actions?: ApprovalAction[];
-          isActive?: boolean;
-        }
-      | undefined;
-    const nextActions = Array.isArray(body?.actions) ? body?.actions : undefined;
-    const hasEnvId = !!body && Object.prototype.hasOwnProperty.call(body, 'environmentId');
-    const nextEnvId = hasEnvId ? body?.environmentId ?? null : undefined;
-    if (nextEnvId) {
-      const env = await prisma.environment.findUnique({ where: { id: nextEnvId } });
-      if (!env || env.projectId !== rule.projectId) {
-        reply.code(400).send({ error: 'Environment does not belong to project' });
-        return;
-      }
-    }
-    const updated = await prisma.approvalRule.update({
-      where: { id },
-      data: {
-        name: body?.name?.trim() ?? undefined,
-        environmentId: nextEnvId,
-        keyPattern: body?.keyPattern?.trim() ?? undefined,
-        actionsJson: nextActions ?? undefined,
-        isActive: body?.isActive ?? undefined,
-      },
-    });
-    await logAudit({
-      projectId: rule.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'approval.rule.update',
-      resourceType: 'approval_rule',
-      resourceId: id,
-    });
-    reply.send(toApprovalRuleDto(updated));
-  });
-
-  app.delete('/approval-rules/:id', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { id } = request.params as { id: string };
-    const rule = await prisma.approvalRule.findUnique({ where: { id } });
-    if (!rule) {
-      reply.code(404).send({ error: 'Approval rule not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, rule.projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-    await prisma.approvalRule.delete({ where: { id } });
-    await logAudit({
-      projectId: rule.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'approval.rule.delete',
-      resourceType: 'approval_rule',
-      resourceId: id,
-    });
-    reply.send({ ok: true });
-  });
 
   app.get('/projects/:id/approvals', async (request, reply) => {
     const auth = requireAuth(request, reply);
