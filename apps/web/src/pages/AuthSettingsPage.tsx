@@ -1,4 +1,9 @@
-import type { AuthProviderDto, ProjectDto } from '@secrets/shared'
+import type {
+  AuditLogDto,
+  AuthClientDto,
+  AuthProviderDto,
+  ProjectDto,
+} from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Save } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -21,6 +26,7 @@ import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
 import { getProjectModuleState } from '../lib/modules'
 import { projectPath } from '../lib/paths'
+import { humanizeAction, humanizeResourceType } from '../features/audit/labels'
 import { runMutationWithToast } from '../lib/mutationFeedback'
 import { queryKeys } from '../lib/queryKeys'
 import { asArray } from '../lib/queryResult'
@@ -75,6 +81,13 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
     DEFAULT_PROVIDER_FORM,
   )
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null)
+  const [providerRotateId, setProviderRotateId] = useState<string | null>(null)
+  const [providerRotateSecret, setProviderRotateSecret] = useState('')
+  const [clientRotateId, setClientRotateId] = useState<string | null>(null)
+  const [revealedClientSecret, setRevealedClientSecret] = useState<{
+    clientId: string
+    clientSecret: string
+  } | null>(null)
 
   const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
     queryKey: queryKeys.projects(),
@@ -104,6 +117,24 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
     queryFn: () => api.listAuthProviders(projectId),
     enabled: Boolean(user) && Boolean(projectId),
   })
+  const {
+    data: clientsData,
+    error: clientsErrorRaw,
+    isLoading: clientsLoading,
+  } = useQuery<AuthClientDto[]>({
+    queryKey: queryKeys.authClients(projectId),
+    queryFn: () => api.listAuthClients(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+  const {
+    data: auditLogsData,
+    error: auditErrorRaw,
+    isLoading: auditLoading,
+  } = useQuery<AuditLogDto[]>({
+    queryKey: queryKeys.audit(projectId, 'auth-module'),
+    queryFn: () => api.listAudit(projectId, { limit: 80 }),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
 
   const projects = asArray(projectsData)
   const selectedProject = useMemo(
@@ -113,6 +144,19 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
   const isAdmin = selectedProject?.role === 'ADMIN'
   const moduleState = useMemo(() => getProjectModuleState(modulesData), [modulesData])
   const providers = asArray(providersData)
+  const clients = asArray(clientsData)
+  const authAuditLogs = useMemo(
+    () =>
+      asArray(auditLogsData).filter(
+        (audit) =>
+          audit.action.startsWith('auth.') ||
+          audit.resourceType.startsWith('auth_') ||
+          (audit.metadataJson &&
+            typeof audit.metadataJson === 'object' &&
+            (audit.metadataJson as { module?: string }).module === 'auth'),
+      ),
+    [auditLogsData],
+  )
 
   useEffect(() => {
     if (!configData) return
@@ -223,9 +267,53 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
     }
   }
 
+  const rotateProviderSecret = async () => {
+    if (!providerRotateId || !providerRotateSecret.trim() || !isAdmin) return
+    await runMutationWithToast(
+      async () => {
+        await api.rotateAuthProviderSecret(providerRotateId, providerRotateSecret.trim())
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.authProviders(projectId),
+        })
+      },
+      { successMessage: 'Provider secret rotated.' },
+    )
+    setProviderRotateId(null)
+    setProviderRotateSecret('')
+  }
+
+  const rotateClientSecret = async (clientId: string) => {
+    if (!isAdmin || clientRotateId) return
+    setClientRotateId(clientId)
+    try {
+      await runMutationWithToast(
+        async () => {
+          const result = await api.updateAuthClient(clientId, { rotateSecret: true })
+          if (result.clientSecret) {
+            setRevealedClientSecret({
+              clientId,
+              clientSecret: result.clientSecret,
+            })
+          }
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.authClients(projectId),
+          })
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.audit(projectId),
+          })
+        },
+        { successMessage: 'Client secret rotated.' },
+      )
+    } finally {
+      setClientRotateId(null)
+    }
+  }
+
   const projectsError = projectsErrorRaw ? getErrorMessage(projectsErrorRaw) : null
   const configError = configErrorRaw ? getErrorMessage(configErrorRaw) : null
   const providersError = providersErrorRaw ? getErrorMessage(providersErrorRaw) : null
+  const clientsError = clientsErrorRaw ? getErrorMessage(clientsErrorRaw) : null
+  const auditError = auditErrorRaw ? getErrorMessage(auditErrorRaw) : null
 
   if (!moduleState.auth) {
     return (
@@ -265,8 +353,12 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
         }
       />
 
-      {(projectsError || configError || providersError) && (
-        <ErrorBanner message={projectsError || configError || providersError} />
+      {(projectsError || configError || providersError || clientsError || auditError) && (
+        <ErrorBanner
+          message={
+            projectsError || configError || providersError || clientsError || auditError
+          }
+        />
       )}
 
       <SectionCard>
@@ -527,6 +619,175 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
                 ) : null}
               </div>
             </div>
+
+            {providerRotateId ? (
+              <div className="border-border bg-card rounded-xl border p-4">
+                <p className="text-foreground text-sm font-medium">
+                  Rotate provider secret
+                </p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Enter the new provider secret. Existing secret is never shown.
+                </p>
+                <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+                  <Input
+                    type="password"
+                    value={providerRotateSecret}
+                    onChange={(event) => setProviderRotateSecret(event.target.value)}
+                    placeholder="New client secret"
+                    disabled={!isAdmin}
+                  />
+                  <Button
+                    onClick={rotateProviderSecret}
+                    disabled={!isAdmin || providerSaving}
+                  >
+                    Rotate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setProviderRotateId(null)
+                      setProviderRotateSecret('')
+                    }}
+                    disabled={providerSaving}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {providers.map((provider) => (
+                  <Button
+                    key={`${provider.id}-rotate`}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setProviderRotateId(provider.id)}
+                    disabled={!isAdmin}
+                  >
+                    Rotate {provider.provider} secret
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard>
+        <SectionHeader kicker="Clients" title="Runtime auth clients" />
+        <p className="text-muted-foreground mt-2 text-sm">
+          Rotate confidential client secrets and review client credential posture.
+        </p>
+
+        {clientsLoading ? (
+          <p className="text-muted-foreground mt-4 text-sm">Loading auth clients...</p>
+        ) : clients.length === 0 ? (
+          <p className="text-muted-foreground mt-4 text-sm">
+            No auth clients configured yet.
+          </p>
+        ) : (
+          <div className="mt-4 grid gap-3">
+            {clients.map((client) => (
+              <div
+                key={client.id}
+                className="border-border bg-card flex items-center justify-between rounded-xl border p-3"
+              >
+                <div>
+                  <p className="text-foreground text-sm font-medium">{client.name}</p>
+                  <p className="text-muted-foreground text-xs">Client ID: {client.clientId}</p>
+                  <p className="text-muted-foreground text-xs capitalize">
+                    Type: {client.type}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  {client.type === 'confidential' ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => rotateClientSecret(client.id)}
+                      disabled={!isAdmin || clientRotateId === client.id}
+                    >
+                      Rotate secret
+                    </Button>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">Public client</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {revealedClientSecret ? (
+          <div className="border-border bg-card mt-4 rounded-xl border p-4">
+            <p className="text-foreground text-sm font-medium">New client secret</p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              This secret is shown once after rotation. Store it now.
+            </p>
+            <Input
+              className="mt-3 font-mono text-xs"
+              value={revealedClientSecret.clientSecret}
+              readOnly
+            />
+            <div className="mt-3 flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRevealedClientSecret(null)}
+              >
+                Hide
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </SectionCard>
+
+      <SectionCard>
+        <SectionHeader
+          kicker="Audit"
+          title="Auth activity"
+          action={
+            <Button
+              variant="outline"
+              onClick={() =>
+                navigate(projectPath(projectId, selectedProject?.slug, 'audit'))
+              }
+            >
+              Open full audit log
+            </Button>
+          }
+        />
+        <p className="text-muted-foreground mt-2 text-sm">
+          Recent auth-related events from project audit logs.
+        </p>
+
+        {auditLoading ? (
+          <p className="text-muted-foreground mt-4 text-sm">Loading auth audit events...</p>
+        ) : authAuditLogs.length === 0 ? (
+          <p className="text-muted-foreground mt-4 text-sm">
+            No auth audit events found yet.
+          </p>
+        ) : (
+          <div className="mt-4 grid gap-3">
+            {authAuditLogs.slice(0, 20).map((audit) => (
+              <div
+                key={audit.id}
+                className="border-border bg-card flex items-start justify-between rounded-xl border p-3"
+              >
+                <div>
+                  <p className="text-foreground text-sm font-medium">
+                    {humanizeAction(audit.action)}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {humanizeResourceType(audit.resourceType)} ·{' '}
+                    {audit.resourceId?.slice(0, 12) ?? '—'}
+                  </p>
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  {formatDate(audit.createdAt)}
+                </p>
+              </div>
+            ))}
           </div>
         )}
       </SectionCard>

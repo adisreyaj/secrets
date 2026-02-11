@@ -356,8 +356,45 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
+  rotateAuthProviderSecret: (providerId: string, clientSecret: string) =>
+    apiFetch<AuthProviderDto>(`/auth/providers/${providerId}/rotate-secret`, {
+      method: 'POST',
+      body: JSON.stringify({ clientSecret }),
+    }),
   listAuthClients: (projectId: string) =>
     apiFetch<AuthClientDto[]>(`/projects/${projectId}/auth/clients`),
+  createAuthClient: (
+    projectId: string,
+    payload: {
+      name: string
+      type?: 'public' | 'confidential'
+      redirectUris?: string[]
+    },
+  ) =>
+    apiFetch<{ client: AuthClientDto; clientSecret?: string }>(
+      `/projects/${projectId}/auth/clients`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    ),
+  updateAuthClient: (
+    clientId: string,
+    payload: {
+      name?: string
+      redirectUris?: string[]
+      rotateSecret?: boolean
+    },
+  ) =>
+    apiFetch<{ client: AuthClientDto; clientSecret?: string }>(
+      `/auth/clients/${clientId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      },
+    ),
+  deleteAuthClient: (clientId: string) =>
+    apiFetch<{ ok: true }>(`/auth/clients/${clientId}`, { method: 'DELETE' }),
 
   listEnvironments: (projectId: string) =>
     apiFetch<EnvironmentDto[]>(`/projects/${projectId}/environments`),
