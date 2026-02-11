@@ -22,16 +22,15 @@ import {
   requireUserForApproval,
 } from './server/auth/guards.js';
 import { ROLE_RANK } from './server/auth/policies.js';
-import { toApprovalRequestDto } from './server/mappers/approvals.js';
 import { toUserDto } from './server/mappers/users.js';
 import { findMatchingApprovalRules, findPendingApprovalRequest, createApprovalRequest } from './server/services/approvals.js';
 import { logAudit } from './server/services/audit.js';
 import { registerCoreHttpMiddleware } from './server/http/middleware.js';
-import { forbidden } from './server/http/errors.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
 import { registerRoutes as registerApiTokenRoutes } from './server/routes/apiTokens.js';
 import { registerRoutes as registerAuditRoutes } from './server/routes/audit.js';
 import { registerRoutes as registerApprovalRuleRoutes } from './server/routes/approvalRules.js';
+import { registerRoutes as registerApprovalRequestRoutes } from './server/routes/approvalRequests.js';
 import { registerRoutes as registerExportRoutes } from './server/routes/exports.js';
 import { registerRoutes as registerEnvironmentRoutes } from './server/routes/environments.js';
 import { registerRoutes as registerFlagRoutes } from './server/routes/flags.js';
@@ -94,6 +93,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await registerAuthRoutes(app);
   await registerApprovalRuleRoutes(app);
+  await registerApprovalRequestRoutes(app);
   await registerApiTokenRoutes(app);
   await registerAuditRoutes(app);
   await registerEnvironmentRoutes(app);
@@ -106,92 +106,6 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerProjectMemberRoutes(app);
   await registerOrganizationRoutes(app);
   await registerServiceAccountRoutes(app);
-
-  app.get('/projects/:id/approvals', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-    const query = (request.query ?? {}) as {
-      status?: ApprovalStatus;
-      environmentId?: string;
-      action?: ApprovalAction;
-      requestedBy?: string;
-    };
-    const approvals = await prisma.approvalRequest.findMany({
-      where: {
-        projectId,
-        status: query.status,
-        environmentId: query.environmentId,
-        action: query.action,
-        requestedBy: query.requestedBy,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    reply.send(approvals.map(toApprovalRequestDto));
-  });
-
-  app.get('/approvals/:id', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { id } = request.params as { id: string };
-    const approval = await prisma.approvalRequest.findUnique({ where: { id } });
-    if (!approval) {
-      reply.code(404).send({ error: 'Approval request not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, approval.projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-    let proposedValue: string | null = null;
-    let currentValue: string | null = null;
-    if (role === Role.ADMIN) {
-      if (approval.payloadCiphertext && approval.payloadIv && approval.payloadTag) {
-        proposedValue = decryptSecret(
-          {
-            ciphertext: approval.payloadCiphertext,
-            iv: approval.payloadIv,
-            tag: approval.payloadTag,
-          },
-          masterKey,
-        );
-      }
-      if (approval.secretId) {
-        const secret = await prisma.secret.findUnique({
-          where: { id: approval.secretId },
-          include: {
-            versions: {
-              where: { isActive: true },
-              orderBy: { createdAt: 'desc' },
-              take: 1,
-            },
-          },
-        });
-        const version = secret?.versions[0];
-        if (version) {
-          currentValue = decryptSecret(
-            { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
-            masterKey,
-          );
-        }
-      }
-    }
-    reply.send(
-      toApprovalRequestDto({
-        ...approval,
-        proposedValue,
-        currentValue,
-      }),
-    );
-  });
 
   app.post('/approvals/:id/approve', async (request, reply) => {
     const auth = requireAuth(request, reply);
@@ -795,82 +709,6 @@ export async function buildApp(): Promise<FastifyInstance> {
       });
     }
 
-    reply.send({ ok: true });
-  });
-
-  app.post('/approvals/:id/deny', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { id } = request.params as { id: string };
-    const approval = await prisma.approvalRequest.findUnique({ where: { id } });
-    if (!approval) {
-      reply.code(404).send({ error: 'Approval request not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, approval.projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-    if (approval.status !== ApprovalStatus.PENDING) {
-      reply.code(409).send({ error: 'Approval request is not pending' });
-      return;
-    }
-    await prisma.approvalRequest.update({
-      where: { id },
-      data: { status: ApprovalStatus.DENIED, deniedAt: new Date() },
-    });
-    await logAudit({
-      projectId: approval.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'approval.denied',
-      resourceType: 'approval_request',
-      resourceId: approval.id,
-      metadataJson: { requestedBy: approval.requestedBy, action: approval.action },
-    });
-    reply.send({ ok: true });
-  });
-
-  app.post('/approvals/:id/cancel', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { id } = request.params as { id: string };
-    const approval = await prisma.approvalRequest.findUnique({ where: { id } });
-    if (!approval) {
-      reply.code(404).send({ error: 'Approval request not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, approval.projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-    const isRequester = approval.requestedBy === auth.user!.id;
-    const isAdmin = role === Role.ADMIN;
-    if (!isRequester && !isAdmin) {
-      forbidden(reply);
-      return;
-    }
-    if (approval.status !== ApprovalStatus.PENDING) {
-      reply.code(409).send({ error: 'Approval request is not pending' });
-      return;
-    }
-    await prisma.approvalRequest.update({
-      where: { id },
-      data: { status: ApprovalStatus.CANCELED, canceledAt: new Date() },
-    });
-    await logAudit({
-      projectId: approval.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'approval.canceled',
-      resourceType: 'approval_request',
-      resourceId: approval.id,
-      metadataJson: { requestedBy: approval.requestedBy, action: approval.action },
-    });
     reply.send({ ok: true });
   });
 
