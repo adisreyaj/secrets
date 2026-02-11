@@ -123,18 +123,24 @@ Scope: Launch-ready integration contracts for the web portal and management/runt
 
 ## Web UI Surfaces
 
-- Auth settings page:
-  - core config
-  - provider config
-  - key/secret rotation controls
-  - auth-focused audit visibility
-- Flags page:
-  - flag CRUD
-  - variants/rules
-  - SDK key controls
-- Secrets pages:
-  - environments
-  - secret CRUD and copy workflows
+- Auth Settings (`/projects/:projectId/auth/*`) owns:
+  - auth core config (`GET/PUT /projects/:projectId/auth/config`)
+  - provider CRUD + provider secret rotation (`/auth/providers/*`)
+  - auth client CRUD (`/projects/:projectId/auth/clients`, `/auth/clients/*`)
+  - auth-focused audit filtering (`metadata_json.module = "auth"`)
+- Flags Management (`/projects/:projectId/flags*`) owns:
+  - flag CRUD, variants, and targeting rules (`/flags/:flagId/*`)
+  - environment overrides (`PUT /flags/:flagId/environments/:environmentId/override`)
+  - SDK key issue/rotate/revoke (`/projects/:projectId/flag-sdk-keys`, `/flag-sdk-keys/:keyId/*`)
+  - flag-focused audit filtering (`metadata_json.module = "flags"`)
+- Secrets Management (`/environments/:id/secrets*`) owns:
+  - environment-scoped secret CRUD + copy workflows (`/secrets/:id`, `/secrets/:id/copy`)
+  - environment-first navigation (select environment before editing keys)
+  - secrets-focused audit filtering (`metadata_json.module = "secrets"`)
+- Overlap boundary rules:
+  - Auth pages do not manage flag rules or secret payloads.
+  - Flags pages do not expose auth credentials or secret values.
+  - Secrets pages do not expose runtime auth or flag evaluation controls.
 
 ## Example Requests
 
