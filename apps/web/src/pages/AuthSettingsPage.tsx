@@ -41,6 +41,11 @@ import { useRegisterShortcut } from '../lib/shortcuts'
 import { getLastEnvironmentId } from '../lib/shortcuts.utils'
 import { useRequireAuth } from '../lib/useRequireAuth'
 import {
+  mapAuthConfigToFormState,
+  parseAuthConfigTtl,
+  type AuthConfigFormState,
+} from './AuthSettingsPage.configForm'
+import {
   createProviderFormFromProvider,
   defaultProviderFormState,
   parseProviderScopes,
@@ -64,13 +69,6 @@ type AuthConfigResponse = {
   updatedAt: string
 }
 
-type FormState = {
-  nativeAuthEnabled: boolean
-  emailPasswordEnabled: boolean
-  accessTokenTtlMinutes: string
-  refreshTokenTtlDays: string
-}
-
 export const AuthSettingsPage = ({
   projectId,
   environmentId,
@@ -79,7 +77,7 @@ export const AuthSettingsPage = ({
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState<FormState | null>(null)
+  const [form, setForm] = useState<AuthConfigFormState | null>(null)
   const [providerSaving, setProviderSaving] = useState(false)
   const [providerForm, setProviderForm] = useState<ProviderFormState>(
     defaultProviderFormState,
@@ -178,12 +176,7 @@ export const AuthSettingsPage = ({
 
   useEffect(() => {
     if (!configData) return
-    setForm({
-      nativeAuthEnabled: configData.nativeAuthEnabled,
-      emailPasswordEnabled: configData.emailPasswordEnabled,
-      accessTokenTtlMinutes: String(configData.accessTokenTtlMinutes),
-      refreshTokenTtlDays: String(configData.refreshTokenTtlDays),
-    })
+    setForm(mapAuthConfigToFormState(configData))
   }, [configData])
 
   useEffect(() => {
@@ -216,16 +209,8 @@ export const AuthSettingsPage = ({
 
   const saveConfig = async () => {
     if (!form || saving) return
-    const accessTokenTtlMinutes = Number(form.accessTokenTtlMinutes)
-    const refreshTokenTtlDays = Number(form.refreshTokenTtlDays)
-    if (
-      !Number.isFinite(accessTokenTtlMinutes) ||
-      !Number.isFinite(refreshTokenTtlDays) ||
-      accessTokenTtlMinutes < 1 ||
-      refreshTokenTtlDays < 1
-    ) {
-      return
-    }
+    const ttlValues = parseAuthConfigTtl(form)
+    if (!ttlValues) return
 
     setSaving(true)
     try {
@@ -234,8 +219,8 @@ export const AuthSettingsPage = ({
           await api.updateAuthConfig(projectId, {
             nativeAuthEnabled: form.nativeAuthEnabled,
             emailPasswordEnabled: form.emailPasswordEnabled,
-            accessTokenTtlMinutes,
-            refreshTokenTtlDays,
+            accessTokenTtlMinutes: ttlValues.accessTokenTtlMinutes,
+            refreshTokenTtlDays: ttlValues.refreshTokenTtlDays,
           })
           await invalidateQueryKeys(queryClient, queryKeys.authConfig(projectId))
         },
