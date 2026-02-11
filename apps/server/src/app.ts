@@ -35,6 +35,7 @@ import { registerRoutes as registerProjectSettingsRoutes } from './server/routes
 import { registerRoutes as registerProjectMemberRoutes } from './server/routes/projectMembers.js';
 import { registerRoutes as registerProjectCoreRoutes } from './server/routes/projectCore.js';
 import { registerRoutes as registerOrganizationRoutes } from './server/routes/organizations.js';
+import { registerRoutes as registerSecretDeleteRoutes } from './server/routes/secretDelete.js';
 import { registerRoutes as registerSecretReadRoutes } from './server/routes/secretReads.js';
 import { registerRoutes as registerSecretRollbackRoutes } from './server/routes/secretRollback.js';
 import { registerRoutes as registerServiceAccountRoutes } from './server/routes/serviceAccounts.js';
@@ -103,6 +104,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerProjectSettingsRoutes(app);
   await registerProjectMemberRoutes(app);
   await registerOrganizationRoutes(app);
+  await registerSecretDeleteRoutes(app);
   await registerSecretReadRoutes(app);
   await registerSecretRollbackRoutes(app);
   await registerServiceAccountRoutes(app);
@@ -1088,100 +1090,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.send({ created, updated, skipped, skippedDetails });
-  });
-
-  app.delete('/secrets/:id', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: secretId } = request.params as { id: string };
-    const secret = await prisma.secret.findUnique({
-      include: {
-        environment: true,
-        versions: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-      },
-      where: { id: secretId },
-    });
-    if (!secret) {
-      reply.code(404).send({ error: 'Secret not found' });
-      return;
-    }
-
-    const role = await requireProjectRole(
-      request,
-      reply,
-      secret.environment.projectId,
-      Role.EDITOR,
-    );
-    if (!role) {
-      return;
-    }
-
-    const activeVersion = secret.versions[0];
-    const matchingRules = await findMatchingApprovalRules({
-      projectId: secret.environment.projectId,
-      environmentId: secret.environmentId,
-      action: ApprovalAction.DELETE,
-      key: secret.key,
-    });
-    if (matchingRules.length > 0) {
-      if (!requireUserForApproval(request, reply)) {
-        return;
-      }
-      const existing = await findPendingApprovalRequest({
-        projectId: secret.environment.projectId,
-        environmentId: secret.environmentId,
-        action: ApprovalAction.DELETE,
-        key: secret.key,
-        secretId: secretId,
-      });
-      if (existing) {
-        reply.code(202).send({ status: 'pending', approvalRequestId: existing.id });
-        return;
-      }
-      const approval = await createApprovalRequest({
-        projectId: secret.environment.projectId,
-        environmentId: secret.environmentId,
-        action: ApprovalAction.DELETE,
-        key: secret.key,
-        requestedBy: auth.user!.id,
-        secretId: secretId,
-        expectedVersionId: activeVersion?.id,
-      });
-      await logAudit({
-        projectId: secret.environment.projectId,
-        actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'approval.requested',
-        resourceType: 'approval_request',
-        resourceId: approval.id,
-        metadataJson: { action: 'DELETE', key: secret.key, secretId },
-      });
-      reply.code(202).send({ status: 'pending', approvalRequestId: approval.id });
-      return;
-    }
-
-    await prisma.secret.update({
-      where: { id: secretId },
-      data: { deletedAt: new Date() },
-    });
-
-    await logAudit({
-      projectId: secret.environment.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'secret.delete',
-      resourceType: 'secret',
-      resourceId: secretId,
-    });
-
-    reply.send({ ok: true });
   });
 
   let auditCleanupRunning = false;
