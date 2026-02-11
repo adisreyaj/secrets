@@ -100,12 +100,26 @@ Scope: Launch-ready integration contracts for the web portal and management/runt
 
 ## Approval and Audit Model
 
-- Approval rules can gate sensitive write operations (including auth config writes).
-- Auth approval requests persist sensitive provider secrets in encrypted approval payload fields.
-- Audit events are module-tagged (`metadata_json.module`) for filtering:
+- Approval rules can gate sensitive write operations, including:
+  - auth config/provider/client mutations
+  - flag override and SDK key lifecycle writes
+  - secret create/update/delete/copy writes in controlled environments
+- Auth approval requests MUST persist provider/client secrets in encrypted approval payload fields:
+  - `payload_ciphertext`
+  - `payload_iv`
+  - `payload_tag`
+  - `payload_key_version`
+- Sensitive auth secrets must not be stored in approval metadata JSON.
+- Audit events are module-tagged (`metadata_json.module`) for filtering and incident triage:
   - `module = "secrets"`
   - `module = "flags"`
   - `module = "auth"`
+- Auth runtime audit coverage includes:
+  - signup/login/logout
+  - token refresh
+  - password reset flows
+  - email verification flows
+  - OAuth start/callback paths
 
 ## Web UI Surfaces
 
