@@ -1,60 +1,60 @@
 import type {
   FeatureFlag,
-  FeatureFlagEnvironmentOverride,
-  FeatureFlagRule,
+  FeatureFlagEnvironmentConfig,
+  FeatureFlagEnvironmentVariant,
+  FeatureFlagRuntime,
   FeatureFlagValueType,
-  FeatureFlagVariant,
 } from '@prisma/client';
 
-export function toFeatureFlagDto(flag: FeatureFlag) {
+type ConfigWithVariants = FeatureFlagEnvironmentConfig & {
+  variants: FeatureFlagEnvironmentVariant[];
+};
+
+function toRuntimeDto(runtime: FeatureFlagRuntime): 'both' | 'client' | 'server' {
+  return runtime.toLowerCase() as 'both' | 'client' | 'server';
+}
+
+function toLabels(labelsJson: unknown): string[] {
+  if (!Array.isArray(labelsJson)) {
+    return [];
+  }
+  return labelsJson.filter((item): item is string => typeof item === 'string');
+}
+
+export function toFeatureFlagDto(
+  flag: FeatureFlag,
+  environmentConfig: ConfigWithVariants,
+) {
+  const variants = environmentConfig.variants
+    .slice()
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+    .map((variant) => ({
+      key: variant.key,
+      valueType: variant.valueType === 'JSON' ? 'json' : 'string',
+      value: variant.value,
+    }));
+
   return {
     id: flag.id,
     projectId: flag.projectId,
+    environmentId: environmentConfig.environmentId,
     key: flag.key,
     name: flag.name,
     description: flag.description,
-    valueType: flag.valueType as 'BOOLEAN' | 'MULTIVARIATE',
-    enabled: flag.enabled,
+    valueType: environmentConfig.valueType as 'BOOLEAN' | 'MULTIVARIATE',
+    enabled: environmentConfig.enabled,
+    runtime: toRuntimeDto(environmentConfig.runtime),
+    labels: toLabels(environmentConfig.labelsJson),
+    booleanValue: environmentConfig.booleanValue,
+    multivariate:
+      environmentConfig.valueType === 'MULTIVARIATE'
+        ? {
+            defaultVariantKey: environmentConfig.defaultVariantKey ?? '',
+            variants,
+          }
+        : null,
     createdAt: flag.createdAt.toISOString(),
-    updatedAt: flag.updatedAt.toISOString(),
-  };
-}
-
-export function toFeatureFlagVariantDto(variant: FeatureFlagVariant) {
-  return {
-    id: variant.id,
-    flagId: variant.flagId,
-    key: variant.key,
-    value: variant.value,
-    weight: variant.weight,
-    createdAt: variant.createdAt.toISOString(),
-    updatedAt: variant.updatedAt.toISOString(),
-  };
-}
-
-export function toFeatureFlagRuleDto(rule: FeatureFlagRule) {
-  return {
-    id: rule.id,
-    flagId: rule.flagId,
-    priority: rule.priority,
-    rolloutPercentage: rule.rolloutPercentage,
-    variantId: rule.variantId,
-    createdAt: rule.createdAt.toISOString(),
-    updatedAt: rule.updatedAt.toISOString(),
-  };
-}
-
-export function toFeatureFlagEnvironmentOverrideDto(
-  override: FeatureFlagEnvironmentOverride,
-) {
-  return {
-    id: override.id,
-    flagId: override.flagId,
-    environmentId: override.environmentId,
-    enabled: override.enabled,
-    variantId: override.variantId,
-    createdAt: override.createdAt.toISOString(),
-    updatedAt: override.updatedAt.toISOString(),
+    updatedAt: environmentConfig.updatedAt.toISOString(),
   };
 }
 

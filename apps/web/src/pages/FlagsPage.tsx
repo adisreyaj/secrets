@@ -1,18 +1,27 @@
 import type {
+  EnvironmentDto,
   FeatureFlagDto,
-  FeatureFlagRuleDto,
-  FeatureFlagVariantDto,
+  FeatureFlagEnvironmentDiffDto,
   ProjectDto,
 } from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
+import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Checkbox } from '../components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import {
   Select,
@@ -21,21 +30,42 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '../components/ui/sheet'
 import { Textarea } from '../components/ui/textarea'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
 import { getProjectModuleState } from '../lib/modules'
-import { projectPath } from '../lib/paths'
+import {
+  flagEnvironmentPath,
+  flagEnvironmentsPath,
+  flagSdkKeysPath,
+  flagsPath,
+} from '../lib/paths'
 import { runMutationWithToast } from '../lib/mutationFeedback'
 import { queryKeys } from '../lib/queryKeys'
 import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { getLastEnvironmentId } from '../lib/shortcuts.utils'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import { EnvironmentTabsCard } from './environment/EnvironmentTabsCard'
 
 type FlagsPageProps = {
   projectId: string
+  environmentId: string
   navigate: (path: string) => void
+}
+
+type VariantForm = {
+  key: string
+  valueType: 'string' | 'json'
+  value: string
 }
 
 type FlagFormState = {
@@ -44,6 +74,11 @@ type FlagFormState = {
   description: string
   valueType: 'BOOLEAN' | 'MULTIVARIATE'
   enabled: boolean
+  runtime: 'both' | 'client' | 'server'
+  labels: string
+  booleanValue: boolean
+  defaultVariantKey: string
+  variants: VariantForm[]
 }
 
 const emptyForm: FlagFormState = {
@@ -52,22 +87,33 @@ const emptyForm: FlagFormState = {
   description: '',
   valueType: 'BOOLEAN',
   enabled: true,
+  runtime: 'both',
+  labels: '',
+  booleanValue: true,
+  defaultVariantKey: '',
+  variants: [],
 }
 
-export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
+const parseLabels = (input: string) =>
+  input
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
-  const [selectedFlagId, setSelectedFlagId] = useState<string | null>(null)
+
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [editingFlagId, setEditingFlagId] = useState<string | null>(null)
   const [form, setForm] = useState<FlagFormState>(emptyForm)
   const [saving, setSaving] = useState(false)
-  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
-  const [variantKey, setVariantKey] = useState('')
-  const [variantValue, setVariantValue] = useState('')
-  const [variantWeight, setVariantWeight] = useState('50')
-  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null)
-  const [rulePriority, setRulePriority] = useState('0')
-  const [ruleRollout, setRuleRollout] = useState('100')
-  const [ruleVariantId, setRuleVariantId] = useState<string>('none')
+
+  const [diffOpen, setDiffOpen] = useState(false)
+  const [diffFlag, setDiffFlag] = useState<FeatureFlagDto | null>(null)
+  const [diffToEnvironmentId, setDiffToEnvironmentId] = useState<string>('')
+  const [diffResult, setDiffResult] = useState<FeatureFlagEnvironmentDiffDto | null>(null)
+  const [diffLoading, setDiffLoading] = useState(false)
 
   const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
     queryKey: queryKeys.projects(),
@@ -80,235 +126,223 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
     enabled: Boolean(user) && Boolean(projectId),
   })
   const {
+    data: environmentsData,
+    isLoading: environmentsLoading,
+    error: environmentsErrorRaw,
+  } = useQuery<EnvironmentDto[]>({
+    queryKey: queryKeys.environments(projectId),
+    queryFn: () => api.listEnvironments(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+
+  const environments = asArray(environmentsData)
+  const selectedEnvironment = useMemo(
+    () => environments.find((env) => env.id === environmentId) ?? null,
+    [environments, environmentId],
+  )
+
+  useEffect(() => {
+    if (!projectId || environmentsLoading || environments.length === 0 || selectedEnvironment) {
+      return
+    }
+    const lastEnvironmentId = getLastEnvironmentId(projectId)
+    const fallbackEnvironment =
+      environments.find((env) => env.id === lastEnvironmentId) ?? environments[0]
+    if (!fallbackEnvironment) return
+    navigate(flagsPath(projectId, undefined, fallbackEnvironment.id))
+  }, [projectId, environments, environmentsLoading, selectedEnvironment, navigate])
+
+  const activeEnvironmentId = selectedEnvironment?.id ?? null
+
+  const {
     data: flagsData,
     isLoading: flagsLoading,
     error: flagsErrorRaw,
   } = useQuery<FeatureFlagDto[]>({
-    queryKey: queryKeys.flags(projectId),
-    queryFn: () => api.listFlags(projectId),
-    enabled: Boolean(user) && Boolean(projectId),
-  })
-  const { data: variantsData, isLoading: variantsLoading } = useQuery<
-    FeatureFlagVariantDto[]
-  >({
-    queryKey: selectedFlagId
-      ? queryKeys.flagVariants(selectedFlagId)
-      : ['flags', 'none', 'variants'],
-    queryFn: () => api.listFlagVariants(selectedFlagId!),
-    enabled: Boolean(user) && Boolean(selectedFlagId),
-  })
-  const { data: rulesData, isLoading: rulesLoading } = useQuery<
-    FeatureFlagRuleDto[]
-  >({
-    queryKey: selectedFlagId
-      ? queryKeys.flagRules(selectedFlagId)
-      : ['flags', 'none', 'rules'],
-    queryFn: () => api.listFlagRules(selectedFlagId!),
-    enabled: Boolean(user) && Boolean(selectedFlagId),
+    queryKey: queryKeys.flags(projectId, activeEnvironmentId),
+    queryFn: () => api.listFlags(projectId, activeEnvironmentId),
+    enabled: Boolean(user) && Boolean(projectId) && Boolean(activeEnvironmentId),
   })
 
   const projects = asArray(projectsData)
   const flags = asArray(flagsData)
-  const moduleState = useMemo(
-    () => getProjectModuleState(modulesData),
-    [modulesData],
-  )
+  const moduleState = useMemo(() => getProjectModuleState(modulesData), [modulesData])
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
     [projects, projectId],
   )
-  const selectedFlag = useMemo(
-    () => flags.find((flag) => flag.id === selectedFlagId) ?? null,
-    [flags, selectedFlagId],
-  )
-  const variants = asArray(variantsData)
-  const rules = asArray(rulesData)
 
-  useRegisterShortcut('b', () =>
-    navigate(projectPath(projectId, selectedProject?.slug)),
-  )
+  useRegisterShortcut('b', () => navigate(flagEnvironmentsPath(projectId, selectedProject?.slug)))
+  useRegisterShortcut('n', () => setSheetOpen(true))
 
-  const resetForm = () => {
-    setSelectedFlagId(null)
-    setForm(emptyForm)
-    setSelectedVariantId(null)
-    setVariantKey('')
-    setVariantValue('')
-    setVariantWeight('50')
-    setSelectedRuleId(null)
-    setRulePriority('0')
-    setRuleRollout('100')
-    setRuleVariantId('none')
+  const handleCreateEnvironment = async (payload: {
+    name: string
+    copyFromEnvironmentId?: string | null
+  }) => {
+    try {
+      await api.createEnvironment(projectId, {
+        name: payload.name,
+        copyFromEnvironmentId: payload.copyFromEnvironmentId ?? undefined,
+      })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.environments(projectId) })
+      return true
+    } catch {
+      return false
+    }
   }
 
-  const populateForm = (flag: FeatureFlagDto) => {
-    setSelectedFlagId(flag.id)
+  const resetForm = () => {
+    setForm(emptyForm)
+    setEditingFlagId(null)
+  }
+
+  const openCreate = () => {
+    resetForm()
+    setSheetOpen(true)
+  }
+
+  const openEdit = (flag: FeatureFlagDto) => {
+    setEditingFlagId(flag.id)
     setForm({
       key: flag.key,
       name: flag.name,
       description: flag.description ?? '',
       valueType: flag.valueType,
       enabled: flag.enabled,
+      runtime: flag.runtime,
+      labels: (flag.labels ?? []).join(', '),
+      booleanValue: flag.booleanValue ?? true,
+      defaultVariantKey: flag.multivariate?.defaultVariantKey ?? '',
+      variants: flag.multivariate?.variants ?? [],
     })
+    setSheetOpen(true)
+  }
+
+  const validateForm = (): string | null => {
+    if (!form.key.trim() || !form.name.trim()) {
+      return 'Key and name are required'
+    }
+
+    if (form.valueType === 'MULTIVARIATE') {
+      if (!form.defaultVariantKey.trim()) {
+        return 'Default variant key is required for multivariate flags'
+      }
+      if (form.variants.length === 0) {
+        return 'Add at least one variant for multivariate flags'
+      }
+      if (!form.variants.some((variant) => variant.key === form.defaultVariantKey)) {
+        return 'Default variant key must match one of the variants'
+      }
+      for (const variant of form.variants) {
+        if (!variant.key.trim()) {
+          return 'Each variant requires a key'
+        }
+        if (variant.valueType === 'json') {
+          try {
+            JSON.parse(variant.value)
+          } catch {
+            return `Variant ${variant.key} has invalid JSON`
+          }
+        }
+      }
+    }
+
+    return null
   }
 
   const saveFlag = async () => {
-    if (!form.key.trim() || !form.name.trim() || saving) return
-    setSaving(true)
-    await runMutationWithToast(
-      async () => {
-        if (selectedFlagId) {
-          await api.updateFlag(selectedFlagId, {
-            key: form.key.trim(),
-            name: form.name.trim(),
-            description: form.description.trim() || null,
-            valueType: form.valueType,
-            enabled: form.enabled,
-          })
-        } else {
-          await api.createFlag(projectId, {
-            key: form.key.trim(),
-            name: form.name.trim(),
-            description: form.description.trim() || null,
-            valueType: form.valueType,
-            enabled: form.enabled,
-          })
-        }
-        await queryClient.invalidateQueries({ queryKey: queryKeys.flags(projectId) })
-      },
-      { successMessage: selectedFlagId ? 'Flag updated.' : 'Flag created.' },
-    )
-    if (!selectedFlagId) {
-      resetForm()
-    }
-    setSaving(false)
-  }
+    if (!activeEnvironmentId || saving) return
 
-  const saveVariant = async () => {
-    if (!selectedFlagId || !variantKey.trim() || !variantValue.trim()) return
-    const weight = Number(variantWeight)
-    if (!Number.isFinite(weight) || weight < 0) return
-    await runMutationWithToast(
-      async () => {
-        if (selectedVariantId) {
-          await api.updateFlagVariant(selectedVariantId, {
-            key: variantKey.trim(),
-            value: variantValue.trim(),
-            weight,
-          })
-        } else {
-          await api.createFlagVariant(selectedFlagId, {
-            key: variantKey.trim(),
-            value: variantValue.trim(),
-            weight,
-          })
-        }
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.flagVariants(selectedFlagId),
-        })
-      },
-      {
-        successMessage: selectedVariantId
-          ? 'Variant updated.'
-          : 'Variant created.',
-      },
-    )
-    setSelectedVariantId(null)
-    setVariantKey('')
-    setVariantValue('')
-    setVariantWeight('50')
-  }
-
-  const saveRule = async () => {
-    if (!selectedFlagId) return
-    const priority = Number(rulePriority)
-    const rolloutPercentage = Number(ruleRollout)
-    if (
-      !Number.isFinite(priority) ||
-      priority < 0 ||
-      !Number.isFinite(rolloutPercentage) ||
-      rolloutPercentage < 0 ||
-      rolloutPercentage > 100
-    ) {
+    const validationError = validateForm()
+    if (validationError) {
+      await runMutationWithToast(async () => {
+        throw new Error(validationError)
+      })
       return
     }
+
+    setSaving(true)
+    const payload = {
+      environmentId: activeEnvironmentId,
+      key: form.key.trim(),
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      valueType: form.valueType,
+      enabled: form.enabled,
+      runtime: form.runtime,
+      labels: parseLabels(form.labels),
+      booleanValue: form.valueType === 'BOOLEAN' ? form.booleanValue : undefined,
+      multivariate:
+        form.valueType === 'MULTIVARIATE'
+          ? {
+              defaultVariantKey: form.defaultVariantKey,
+              variants: form.variants.map((variant) => ({
+                key: variant.key.trim(),
+                valueType: variant.valueType,
+                value: variant.value,
+              })),
+            }
+          : null,
+    }
+
     await runMutationWithToast(
       async () => {
-        const payload = {
-          priority,
-          rolloutPercentage,
-          variantId: ruleVariantId === 'none' ? null : ruleVariantId,
-        }
-        if (selectedRuleId) {
-          await api.updateFlagRule(selectedRuleId, payload)
+        if (editingFlagId) {
+          await api.updateFlag(editingFlagId, payload)
         } else {
-          await api.createFlagRule(selectedFlagId, payload)
+          await api.createFlag(projectId, payload)
         }
         await queryClient.invalidateQueries({
-          queryKey: queryKeys.flagRules(selectedFlagId),
+          queryKey: queryKeys.flags(projectId, activeEnvironmentId),
         })
       },
-      { successMessage: selectedRuleId ? 'Rule updated.' : 'Rule created.' },
+      { successMessage: editingFlagId ? 'Flag updated.' : 'Flag created.' },
     )
-    setSelectedRuleId(null)
-    setRulePriority('0')
-    setRuleRollout('100')
-    setRuleVariantId('none')
+
+    setSaving(false)
+    setSheetOpen(false)
+    resetForm()
   }
 
   const deleteFlag = async (flagId: string) => {
+    if (!activeEnvironmentId) return
     await runMutationWithToast(
       async () => {
-        await api.deleteFlag(flagId)
-        await queryClient.invalidateQueries({ queryKey: queryKeys.flags(projectId) })
+        await api.deleteFlag(flagId, activeEnvironmentId)
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.flags(projectId, activeEnvironmentId),
+        })
       },
       { successMessage: 'Flag deleted.' },
     )
-    if (selectedFlagId === flagId) {
-      resetForm()
-    }
   }
 
-  const deleteVariant = async (variantId: string) => {
-    if (!selectedFlagId) return
-    await runMutationWithToast(
-      async () => {
-        await api.deleteFlagVariant(variantId)
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.flagVariants(selectedFlagId),
-        })
-      },
-      { successMessage: 'Variant deleted.' },
-    )
-    if (selectedVariantId === variantId) {
-      setSelectedVariantId(null)
-      setVariantKey('')
-      setVariantValue('')
-      setVariantWeight('50')
-    }
+  const openDiff = (flag: FeatureFlagDto) => {
+    const fallback = environments.find((environment) => environment.id !== environmentId)
+    setDiffFlag(flag)
+    setDiffToEnvironmentId(fallback?.id ?? '')
+    setDiffResult(null)
+    setDiffOpen(true)
   }
 
-  const deleteRule = async (ruleId: string) => {
-    if (!selectedFlagId) return
-    await runMutationWithToast(
-      async () => {
-        await api.deleteFlagRule(ruleId)
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.flagRules(selectedFlagId),
-        })
-      },
-      { successMessage: 'Rule deleted.' },
-    )
-    if (selectedRuleId === ruleId) {
-      setSelectedRuleId(null)
-      setRulePriority('0')
-      setRuleRollout('100')
-      setRuleVariantId('none')
+  const loadDiff = async () => {
+    if (!diffFlag || !diffToEnvironmentId || !activeEnvironmentId) return
+    setDiffLoading(true)
+    try {
+      const diff = await api.getFlagDiff(diffFlag.id, activeEnvironmentId, diffToEnvironmentId)
+      setDiffResult(diff)
+    } catch (error) {
+      await runMutationWithToast(async () => {
+        throw error
+      })
+    } finally {
+      setDiffLoading(false)
     }
   }
 
   const projectsError = projectsErrorRaw ? getErrorMessage(projectsErrorRaw) : null
   const flagsError = flagsErrorRaw ? getErrorMessage(flagsErrorRaw) : null
+  const environmentsError = environmentsErrorRaw ? getErrorMessage(environmentsErrorRaw) : null
 
   if (!moduleState.flags) {
     return (
@@ -317,15 +351,47 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
           title="Feature flags"
           subtitle="This module is disabled for this project."
           actions={
-            <Button
-              variant="outline"
-              onClick={() => navigate(projectPath(projectId, selectedProject?.slug))}
-            >
+            <Button variant="outline" onClick={() => navigate(flagEnvironmentsPath(projectId, selectedProject?.slug))}>
               <ArrowLeft className="h-4 w-4" />
-              Back to overview
+              Back to environments
             </Button>
           }
         />
+      </section>
+    )
+  }
+
+  if (environmentsLoading && !selectedEnvironment) {
+    return (
+      <section className="flex flex-col gap-6">
+        <PageHeader
+          title="Feature flags"
+          subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
+        />
+        <SectionCard>
+          <p className="text-muted-foreground text-sm">Loading environments...</p>
+        </SectionCard>
+      </section>
+    )
+  }
+
+  if (environments.length === 0) {
+    return (
+      <section className="flex flex-col gap-6">
+        <PageHeader
+          title="Feature flags"
+          subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
+          actions={
+            <Button variant="outline" onClick={() => navigate(flagEnvironmentsPath(projectId, selectedProject?.slug))}>
+              Create environment
+            </Button>
+          }
+        />
+        <SectionCard>
+          <p className="text-muted-foreground text-sm">
+            No environments found. Create an environment to manage flags.
+          </p>
+        </SectionCard>
       </section>
     )
   }
@@ -339,123 +405,141 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
-              onClick={() =>
-                navigate(projectPath(projectId, selectedProject?.slug, 'flag-sdk-keys'))
-              }
+              onClick={() => navigate(flagSdkKeysPath(projectId, selectedProject?.slug, activeEnvironmentId))}
+              disabled={!activeEnvironmentId}
             >
               SDK keys
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => navigate(projectPath(projectId, selectedProject?.slug))}
-            >
+            <Button variant="outline" onClick={() => navigate(flagEnvironmentsPath(projectId, selectedProject?.slug))}>
               <ArrowLeft className="h-4 w-4" />
-              Back to overview
+              Back to environments
               <ShortcutHint keys="b" />
             </Button>
           </div>
         }
       />
 
-      {(projectsError || flagsError) && (
-        <ErrorBanner message={projectsError || flagsError} />
+      {(projectsError || flagsError || environmentsError) && (
+        <ErrorBanner message={projectsError || flagsError || environmentsError} />
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
-        <SectionCard>
-          <SectionHeader
-            kicker="Flags"
-            title="List"
-            action={
-              <Button variant="outline" onClick={resetForm}>
-                <Plus className="h-4 w-4" />
-                New flag
-              </Button>
-            }
-          />
-          <div className="mt-4 space-y-3">
-            {flagsLoading ? (
-              <p className="text-muted-foreground text-sm">Loading flags...</p>
-            ) : flags.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                No flags yet. Create your first flag.
-              </p>
-            ) : (
-              flags.map((flag) => (
-                <div
-                  key={flag.id}
-                  className="border-border/70 bg-card/70 rounded-2xl border p-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => populateForm(flag)}
-                      className="flex-1 text-left"
-                    >
+      <section className="flex flex-col gap-0">
+        <EnvironmentTabsCard
+          environments={environments}
+          envLoading={environmentsLoading}
+          environmentId={environmentId}
+          onSelectEnvironment={(envId) =>
+            navigate(flagEnvironmentPath(projectId, selectedProject?.slug, envId))
+          }
+          environmentOptions={environments.map((env) => ({ id: env.id, name: env.name }))}
+          onCreateEnvironment={handleCreateEnvironment}
+        />
+      </section>
+
+      <SectionCard>
+        <SectionHeader
+          kicker="Flags"
+          title="List"
+          action={
+            <Button variant="outline" onClick={openCreate} disabled={!activeEnvironmentId}>
+              <Plus className="h-4 w-4" />
+              New flag
+              <ShortcutHint keys="n" />
+            </Button>
+          }
+        />
+        <div className="mt-4 space-y-3">
+          {flagsLoading ? (
+            <p className="text-muted-foreground text-sm">Loading flags...</p>
+          ) : flags.length === 0 ? (
+            <p className="text-muted-foreground text-sm">No flags yet. Create your first flag.</p>
+          ) : (
+            flags.map((flag) => (
+              <div key={flag.id} className="border-border/70 bg-card/70 rounded-2xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <button type="button" onClick={() => openEdit(flag)} className="flex-1 text-left">
+                    <div className="flex flex-wrap items-center gap-2">
                       <p className="text-foreground text-sm font-semibold">{flag.name}</p>
-                      <p className="text-muted-foreground text-xs">{flag.key}</p>
-                      <p className="text-muted-foreground mt-1 text-xs">
-                        {flag.valueType} · {flag.enabled ? 'Enabled' : 'Disabled'} · Updated{' '}
-                        {formatDate(flag.updatedAt)}
-                      </p>
-                    </button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => deleteFlag(flag.id)}
-                    >
+                      <Badge variant="outline">{flag.valueType}</Badge>
+                      <Badge variant="secondary">{flag.runtime}</Badge>
+                    </div>
+                    <p className="text-muted-foreground text-xs">{flag.key}</p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {flag.enabled ? 'Enabled' : 'Disabled'} · Updated {formatDate(flag.updatedAt)}
+                    </p>
+                    {flag.labels.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {flag.labels.map((label) => (
+                          <Badge key={label} variant="secondary">
+                            {label}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => openDiff(flag)}>
+                      Compare
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => deleteFlag(flag.id)}>
                       Delete
                     </Button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </SectionCard>
+              </div>
+            ))
+          )}
+        </div>
+      </SectionCard>
 
-        <SectionCard>
-          <SectionHeader
-            kicker="Editor"
-            title={selectedFlag ? `Edit ${selectedFlag.name}` : 'Create flag'}
-          />
-          <div className="mt-4 space-y-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium">Key</p>
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>{editingFlagId ? 'Edit flag' : 'Create flag'}</SheetTitle>
+            <SheetDescription>
+              Configure this flag for {selectedEnvironment?.name ?? 'the selected environment'}.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-6 space-y-5 overflow-y-auto pb-24">
+            <section className="space-y-3">
+              <p className="muted-label">Basics</p>
               <Input
                 value={form.key}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, key: event.target.value }))
-                }
-                placeholder="new_checkout"
+                onChange={(event) => setForm((current) => ({ ...current, key: event.target.value }))}
+                placeholder="Flag key"
+                disabled={Boolean(editingFlagId)}
               />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium">Name</p>
               <Input
                 value={form.name}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, name: event.target.value }))
-                }
-                placeholder="New checkout experience"
+                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="Flag name"
               />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium">Description</p>
               <Textarea
                 value={form.description}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, description: event.target.value }))
+                  setForm((current) => ({ ...current, description: event.target.value }))
                 }
-                placeholder="Flag purpose and rollout notes"
+                placeholder="Description"
               />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium">Type</p>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.enabled}
+                  onCheckedChange={(checked) =>
+                    setForm((current) => ({ ...current, enabled: Boolean(checked) }))
+                  }
+                />
+                Enabled
+              </label>
+            </section>
+
+            <section className="space-y-3">
+              <p className="muted-label">Type and value</p>
               <Select
                 value={form.valueType}
                 onValueChange={(value) =>
-                  setForm((prev) => ({
-                    ...prev,
+                  setForm((current) => ({
+                    ...current,
                     valueType: value as 'BOOLEAN' | 'MULTIVARIATE',
                   }))
                 }
@@ -468,176 +552,206 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
                   <SelectItem value="MULTIVARIATE">MULTIVARIATE</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={form.enabled}
-                onCheckedChange={(checked) =>
-                  setForm((prev) => ({ ...prev, enabled: Boolean(checked) }))
-                }
+
+              {form.valueType === 'BOOLEAN' ? (
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.booleanValue}
+                    onCheckedChange={(checked) =>
+                      setForm((current) => ({ ...current, booleanValue: Boolean(checked) }))
+                    }
+                  />
+                  Boolean value
+                </label>
+              ) : (
+                <div className="space-y-3">
+                  <Input
+                    value={form.defaultVariantKey}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, defaultVariantKey: event.target.value }))
+                    }
+                    placeholder="Default variant key"
+                  />
+                  <div className="space-y-2">
+                    {form.variants.map((variant, index) => (
+                      <div key={`${variant.key}-${index}`} className="rounded-lg border p-3 space-y-2">
+                        <div className="grid gap-2 md:grid-cols-2">
+                          <Input
+                            value={variant.key}
+                            onChange={(event) =>
+                              setForm((current) => ({
+                                ...current,
+                                variants: current.variants.map((item, itemIndex) =>
+                                  itemIndex === index
+                                    ? { ...item, key: event.target.value }
+                                    : item,
+                                ),
+                              }))
+                            }
+                            placeholder="Variant key"
+                          />
+                          <Select
+                            value={variant.valueType}
+                            onValueChange={(value) =>
+                              setForm((current) => ({
+                                ...current,
+                                variants: current.variants.map((item, itemIndex) =>
+                                  itemIndex === index
+                                    ? { ...item, valueType: value as 'string' | 'json' }
+                                    : item,
+                                ),
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="string">String</SelectItem>
+                              <SelectItem value="json">JSON</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Textarea
+                          value={variant.value}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              variants: current.variants.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, value: event.target.value }
+                                  : item,
+                              ),
+                            }))
+                          }
+                          placeholder={variant.valueType === 'json' ? '{"key":"value"}' : 'Variant value'}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setForm((current) => ({
+                              ...current,
+                              variants: current.variants.filter((_, itemIndex) => itemIndex !== index),
+                            }))
+                          }
+                        >
+                          Remove variant
+                        </Button>
+                      </div>
+                    ))}
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          variants: [
+                            ...current.variants,
+                            { key: '', valueType: 'string', value: '' },
+                          ],
+                        }))
+                      }
+                    >
+                      Add variant
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-3">
+              <p className="muted-label">Evaluation runtime</p>
+              <div className="grid gap-2 md:grid-cols-3">
+                {[
+                  { value: 'both', label: 'Both client and server' },
+                  { value: 'client', label: 'Client-side only' },
+                  { value: 'server', label: 'Server-side only' },
+                ].map((runtimeOption) => (
+                  <Button
+                    key={runtimeOption.value}
+                    type="button"
+                    variant={form.runtime === runtimeOption.value ? 'default' : 'outline'}
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        runtime: runtimeOption.value as 'both' | 'client' | 'server',
+                      }))
+                    }
+                  >
+                    {runtimeOption.label}
+                  </Button>
+                ))}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <p className="muted-label">Labels</p>
+              <Input
+                value={form.labels}
+                onChange={(event) => setForm((current) => ({ ...current, labels: event.target.value }))}
+                placeholder="payments, beta, checkout"
               />
-              Enabled
-            </label>
-            <Button className="w-full" disabled={saving} onClick={saveFlag}>
-              {selectedFlag ? 'Save changes' : 'Create flag'}
+              <p className="text-muted-foreground text-xs">Comma-separated labels.</p>
+            </section>
+          </div>
+
+          <div className="bg-background absolute right-0 bottom-0 left-0 border-t p-4">
+            <Button className="w-full" onClick={saveFlag} disabled={saving}>
+              {saving ? 'Saving...' : editingFlagId ? 'Save changes' : 'Create flag'}
             </Button>
           </div>
-        </SectionCard>
-      </div>
+        </SheetContent>
+      </Sheet>
 
-      {selectedFlag ? (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <SectionCard>
-            <SectionHeader kicker="Variants" title="Variant management" />
-            <div className="mt-4 space-y-3">
-              <div className="grid gap-3 md:grid-cols-3">
-                <Input
-                  value={variantKey}
-                  onChange={(event) => setVariantKey(event.target.value)}
-                  placeholder="variant key"
-                />
-                <Input
-                  value={variantValue}
-                  onChange={(event) => setVariantValue(event.target.value)}
-                  placeholder="variant value"
-                />
-                <Input
-                  type="number"
-                  min={0}
-                  value={variantWeight}
-                  onChange={(event) => setVariantWeight(event.target.value)}
-                  placeholder="weight"
-                />
-              </div>
-              <Button onClick={saveVariant}>
-                {selectedVariantId ? 'Save variant' : 'Add variant'}
-              </Button>
-              <div className="space-y-2">
-                {variantsLoading ? (
-                  <p className="text-muted-foreground text-sm">
-                    Loading variants...
-                  </p>
-                ) : variants.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No variants yet.</p>
-                ) : (
-                  variants.map((variant) => (
-                    <div
-                      key={variant.id}
-                      className="border-border/70 bg-card/70 rounded-xl border p-3"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedVariantId(variant.id)
-                            setVariantKey(variant.key)
-                            setVariantValue(variant.value)
-                            setVariantWeight(String(variant.weight))
-                          }}
-                          className="flex-1 text-left"
-                        >
-                          <p className="text-sm font-semibold">{variant.key}</p>
-                          <p className="text-muted-foreground text-xs">
-                            value: {variant.value} · weight: {variant.weight}
-                          </p>
-                        </button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => deleteVariant(variant.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </SectionCard>
+      <Dialog open={diffOpen} onOpenChange={setDiffOpen}>
+        <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Compare environments</DialogTitle>
+            <DialogDescription>
+              Compare values for <span className="font-semibold">{diffFlag?.key ?? 'selected flag'}</span>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm">From: {selectedEnvironment?.name ?? environmentId}</p>
+            <Select value={diffToEnvironmentId} onValueChange={setDiffToEnvironmentId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select target environment" />
+              </SelectTrigger>
+              <SelectContent>
+                {environments
+                  .filter((environment) => environment.id !== environmentId)
+                  .map((environment) => (
+                    <SelectItem key={environment.id} value={environment.id}>
+                      {environment.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <Button onClick={loadDiff} disabled={!diffToEnvironmentId || diffLoading}>
+              {diffLoading ? 'Comparing...' : 'Compare'}
+            </Button>
 
-          <SectionCard>
-            <SectionHeader kicker="Rules" title="Rollout rules" />
-            <div className="mt-4 space-y-3">
-              <div className="grid gap-3 md:grid-cols-3">
-                <Input
-                  type="number"
-                  min={0}
-                  value={rulePriority}
-                  onChange={(event) => setRulePriority(event.target.value)}
-                  placeholder="priority"
-                />
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={ruleRollout}
-                  onChange={(event) => setRuleRollout(event.target.value)}
-                  placeholder="rollout %"
-                />
-                <Select value={ruleVariantId} onValueChange={setRuleVariantId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Variant (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No variant</SelectItem>
-                    {variants.map((variant) => (
-                      <SelectItem key={variant.id} value={variant.id}>
-                        {variant.key}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {diffResult ? (
+              <div className="rounded-xl border p-3 text-sm">
+                <div className="grid gap-1">
+                  <p>Enabled changed: {diffResult.differences.enabled ? 'Yes' : 'No'}</p>
+                  <p>Runtime changed: {diffResult.differences.runtime ? 'Yes' : 'No'}</p>
+                  <p>Labels changed: {diffResult.differences.labels ? 'Yes' : 'No'}</p>
+                  <p>Value changed: {diffResult.differences.value ? 'Yes' : 'No'}</p>
+                </div>
+                <pre className="bg-muted mt-3 max-h-56 overflow-auto rounded-md p-2 text-xs">
+                  {JSON.stringify(diffResult, null, 2)}
+                </pre>
               </div>
-              <Button onClick={saveRule}>
-                {selectedRuleId ? 'Save rule' : 'Add rule'}
-              </Button>
-              <div className="space-y-2">
-                {rulesLoading ? (
-                  <p className="text-muted-foreground text-sm">Loading rules...</p>
-                ) : rules.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No rules yet.</p>
-                ) : (
-                  rules.map((rule) => (
-                    <div
-                      key={rule.id}
-                      className="border-border/70 bg-card/70 rounded-xl border p-3"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedRuleId(rule.id)
-                            setRulePriority(String(rule.priority))
-                            setRuleRollout(String(rule.rolloutPercentage))
-                            setRuleVariantId(rule.variantId ?? 'none')
-                          }}
-                          className="flex-1 text-left"
-                        >
-                          <p className="text-sm font-semibold">
-                            Priority {rule.priority}
-                          </p>
-                          <p className="text-muted-foreground text-xs">
-                            rollout: {rule.rolloutPercentage}% · variant:{' '}
-                            {rule.variantId ?? 'none'}
-                          </p>
-                        </button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => deleteRule(rule.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </SectionCard>
-        </div>
-      ) : null}
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDiffOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

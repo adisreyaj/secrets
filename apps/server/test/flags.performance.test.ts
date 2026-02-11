@@ -11,19 +11,19 @@ describe('flags runtime performance', () => {
         flag: {
           id: 'flag_perf',
           key: 'checkout_redesign',
-          valueType: 'MULTIVARIATE',
-          enabled: true,
         },
-        rules: [
-          { priority: 0, rolloutPercentage: 100, variantId: 'v2' },
-          { priority: 1, rolloutPercentage: 50, variantId: 'v1' },
-        ],
+        config: {
+          enabled: true,
+          valueType: 'MULTIVARIATE',
+          booleanValue: null,
+          runtime: 'BOTH',
+          defaultVariantKey: 'treatment',
+        },
         variants: [
-          { id: 'v1', key: 'control', value: 'A', weight: 20 },
-          { id: 'v2', key: 'treatment', value: 'B', weight: 80 },
+          { key: 'control', value: 'A' },
+          { key: 'treatment', value: 'B' },
         ],
-        override: null,
-        subjectKey: `user_${index}`,
+        runtime: index % 2 === 0 ? 'server' : 'client',
       });
       samples.push(performance.now() - startedAt);
     }

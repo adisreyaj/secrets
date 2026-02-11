@@ -13,7 +13,15 @@ import { Header } from './components/Header'
 import { ShortcutsHelpDialog } from './components/ShortcutsHelpDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useAuth } from './lib/auth'
-import { environmentPath, environmentsPath, projectPath } from './lib/paths'
+import {
+  authEnvironmentsPath,
+  environmentPath,
+  environmentsPath,
+  flagEnvironmentPath,
+  flagEnvironmentsPath,
+  flagSdkKeysPath,
+  projectPath,
+} from './lib/paths'
 import {
   getEnvironmentId,
   getProjectId,
@@ -55,9 +63,19 @@ const FlagSdkKeysPage = lazy(() =>
     default: m.FlagSdkKeysPage,
   })),
 )
+const FlagEnvironmentsPage = lazy(() =>
+  import('./pages/FlagEnvironmentsPage').then((m) => ({
+    default: m.FlagEnvironmentsPage,
+  })),
+)
 const AuthSettingsPage = lazy(() =>
   import('./pages/AuthSettingsPage').then((m) => ({
     default: m.AuthSettingsPage,
+  })),
+)
+const AuthEnvironmentsPage = lazy(() =>
+  import('./pages/AuthEnvironmentsPage').then((m) => ({
+    default: m.AuthEnvironmentsPage,
   })),
 )
 const EnvironmentsPage = lazy(() =>
@@ -174,25 +192,98 @@ const ApprovalRulesRoute = () => {
   return <ApprovalRulesPage projectId={params.projectId} navigate={navigate} />
 }
 
-const FlagsRoute = () => {
+const FlagEnvironmentsRoute = () => {
   const navigate = useNavigate()
   const params = useParams()
   if (!params.projectId) return <Navigate to="/projects" replace />
-  return <FlagsPage projectId={params.projectId} navigate={navigate} />
+  return <FlagEnvironmentsPage projectId={params.projectId} navigate={navigate} />
+}
+
+const FlagEnvironmentRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId || !params.environmentId) {
+    return <Navigate to="/projects" replace />
+  }
+  return (
+    <FlagsPage
+      projectId={params.projectId}
+      environmentId={params.environmentId}
+      navigate={navigate}
+    />
+  )
+}
+
+const FlagsLegacyRoute = () => {
+  const params = useParams()
+  const projectId = params.projectId
+  if (!projectId) return <Navigate to="/projects" replace />
+  const environmentId = getLastEnvironmentId(projectId)
+  return (
+    <Navigate
+      to={
+        environmentId
+          ? flagEnvironmentPath(projectId, undefined, environmentId)
+          : flagEnvironmentsPath(projectId)
+      }
+      replace
+    />
+  )
+}
+
+const FlagsLegacyEnvironmentRoute = () => {
+  const params = useParams()
+  if (!params.projectId || !params.environmentId) {
+    return <Navigate to="/projects" replace />
+  }
+  return (
+    <Navigate
+      to={flagEnvironmentPath(params.projectId, undefined, params.environmentId)}
+      replace
+    />
+  )
 }
 
 const FlagSdkKeysRoute = () => {
   const navigate = useNavigate()
   const params = useParams()
   if (!params.projectId) return <Navigate to="/projects" replace />
-  return <FlagSdkKeysPage projectId={params.projectId} navigate={navigate} />
+  return (
+    <FlagSdkKeysPage
+      projectId={params.projectId}
+      environmentId={params.environmentId ?? null}
+      navigate={navigate}
+    />
+  )
 }
 
 const AuthSettingsRoute = () => {
   const navigate = useNavigate()
   const params = useParams()
+  if (!params.projectId || !params.environmentId) {
+    return <Navigate to="/projects" replace />
+  }
+  return (
+    <AuthSettingsPage
+      projectId={params.projectId}
+      environmentId={params.environmentId}
+      navigate={navigate}
+    />
+  )
+}
+
+const AuthEnvironmentsRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
   if (!params.projectId) return <Navigate to="/projects" replace />
-  return <AuthSettingsPage projectId={params.projectId} navigate={navigate} />
+  return <AuthEnvironmentsPage projectId={params.projectId} navigate={navigate} />
+}
+
+const AuthLegacyRoute = () => {
+  const params = useParams()
+  const projectId = params.projectId
+  if (!projectId) return <Navigate to="/projects" replace />
+  return <Navigate to={authEnvironmentsPath(projectId)} replace />
 }
 
 const TokensRoute = () => {
@@ -264,8 +355,7 @@ const AppShell = () => {
     if (projectId) {
       setLastProjectId(projectId)
     }
-    const environmentId =
-      match.name === 'environment' ? getEnvironmentId(match) : null
+    const environmentId = getEnvironmentId(match)
     if (projectId && environmentId) {
       setLastEnvironmentId(projectId, environmentId)
     }
@@ -351,7 +441,7 @@ const AppShell = () => {
     () => {
       const projectId = resolveProjectId()
       navigate(
-        projectId ? projectPath(projectId, undefined, 'flags') : '/projects',
+        projectId ? flagEnvironmentsPath(projectId) : '/projects',
       )
     },
     { enabled: shortcutsEnabled },
@@ -361,8 +451,11 @@ const AppShell = () => {
     'g k',
     () => {
       const projectId = resolveProjectId()
+      const environmentId = projectId ? resolveEnvironmentId(projectId) : null
       navigate(
-        projectId ? projectPath(projectId, undefined, 'flag-sdk-keys') : '/projects',
+        projectId
+          ? flagSdkKeysPath(projectId, undefined, environmentId)
+          : '/projects',
       )
     },
     { enabled: shortcutsEnabled },
@@ -372,9 +465,7 @@ const AppShell = () => {
     'g h',
     () => {
       const projectId = resolveProjectId()
-      navigate(
-        projectId ? projectPath(projectId, undefined, 'auth') : '/projects',
-      )
+      navigate(projectId ? authEnvironmentsPath(projectId) : '/projects')
     },
     { enabled: shortcutsEnabled },
   )
@@ -489,14 +580,38 @@ const AppShell = () => {
                 />
                 <Route
                   path="/projects/:projectId/flags"
-                  element={<FlagsRoute />}
+                  element={<FlagsLegacyRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/flags/environments"
+                  element={<FlagEnvironmentsRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/flags/environments/:environmentId"
+                  element={<FlagEnvironmentRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/environments/:environmentId/flags"
+                  element={<FlagsLegacyEnvironmentRoute />}
                 />
                 <Route
                   path="/projects/:projectId/flag-sdk-keys"
                   element={<FlagSdkKeysRoute />}
                 />
                 <Route
+                  path="/projects/:projectId/environments/:environmentId/flag-sdk-keys"
+                  element={<FlagSdkKeysRoute />}
+                />
+                <Route
                   path="/projects/:projectId/auth"
+                  element={<AuthLegacyRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/auth/environments"
+                  element={<AuthEnvironmentsRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/auth/environments/:environmentId"
                   element={<AuthSettingsRoute />}
                 />
                 <Route

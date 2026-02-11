@@ -12,8 +12,12 @@ export type RouteMatch =
   | { name: 'audit'; projectId: string }
   | { name: 'approvals'; projectId: string }
   | { name: 'approval-rules'; projectId: string }
-  | { name: 'flags'; projectId: string }
-  | { name: 'flag-sdk-keys'; projectId: string }
+  | { name: 'flag-environments'; projectId: string }
+  | { name: 'flag-environment'; projectId: string; environmentId: string }
+  | { name: 'flags'; projectId: string; environmentId?: string }
+  | { name: 'flag-sdk-keys'; projectId: string; environmentId?: string }
+  | { name: 'auth-environments'; projectId: string }
+  | { name: 'auth-environment'; projectId: string; environmentId: string }
   | { name: 'auth'; projectId: string }
   | { name: 'team'; projectId: string }
   | { name: 'tokens'; projectId: string }
@@ -40,10 +44,31 @@ export const appRoutes: RouteObject[] = [
     path: '/projects/:projectId/approval-rules',
     handle: { name: 'approval-rules' },
   },
+  {
+    path: '/projects/:projectId/flags/environments',
+    handle: { name: 'flag-environments' },
+  },
+  {
+    path: '/projects/:projectId/flags/environments/:environmentId',
+    handle: { name: 'flag-environment' },
+  },
+  {
+    path: '/projects/:projectId/environments/:environmentId/flags',
+    handle: { name: 'flags' },
+  },
   { path: '/projects/:projectId/flags', handle: { name: 'flags' } },
+  {
+    path: '/projects/:projectId/environments/:environmentId/flag-sdk-keys',
+    handle: { name: 'flag-sdk-keys' },
+  },
   {
     path: '/projects/:projectId/flag-sdk-keys',
     handle: { name: 'flag-sdk-keys' },
+  },
+  { path: '/projects/:projectId/auth/environments', handle: { name: 'auth-environments' } },
+  {
+    path: '/projects/:projectId/auth/environments/:environmentId',
+    handle: { name: 'auth-environment' },
   },
   { path: '/projects/:projectId/auth', handle: { name: 'auth' } },
   { path: '/projects/:projectId/team', handle: { name: 'team' } },
@@ -92,11 +117,39 @@ export const getRouteMatch = (pathname: string, search: string): RouteMatch => {
   if (name === 'approval-rules' && params.projectId) {
     return { name: 'approval-rules', projectId: params.projectId }
   }
+  if (name === 'flag-environments' && params.projectId) {
+    return { name: 'flag-environments', projectId: params.projectId }
+  }
+  if (name === 'flag-environment' && params.projectId && params.environmentId) {
+    return {
+      name: 'flag-environment',
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+    }
+  }
   if (name === 'flags' && params.projectId) {
-    return { name: 'flags', projectId: params.projectId }
+    return {
+      name: 'flags',
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+    }
   }
   if (name === 'flag-sdk-keys' && params.projectId) {
-    return { name: 'flag-sdk-keys', projectId: params.projectId }
+    return {
+      name: 'flag-sdk-keys',
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+    }
+  }
+  if (name === 'auth-environments' && params.projectId) {
+    return { name: 'auth-environments', projectId: params.projectId }
+  }
+  if (name === 'auth-environment' && params.projectId && params.environmentId) {
+    return {
+      name: 'auth-environment',
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+    }
   }
   if (name === 'auth' && params.projectId) {
     return { name: 'auth', projectId: params.projectId }
@@ -121,8 +174,12 @@ export const isProjectScopedRoute = (match: RouteMatch) =>
   match.name === 'audit' ||
   match.name === 'approvals' ||
   match.name === 'approval-rules' ||
+  match.name === 'flag-environments' ||
+  match.name === 'flag-environment' ||
   match.name === 'flags' ||
   match.name === 'flag-sdk-keys' ||
+  match.name === 'auth-environments' ||
+  match.name === 'auth-environment' ||
   match.name === 'auth' ||
   match.name === 'team' ||
   match.name === 'tokens' ||
@@ -132,4 +189,10 @@ export const getProjectId = (match: RouteMatch) =>
   isProjectScopedRoute(match) ? match.projectId : null
 
 export const getEnvironmentId = (match: RouteMatch) =>
-  match.name === 'environment' ? match.environmentId : null
+  match.name === 'environment' ||
+  match.name === 'flag-environment' ||
+  match.name === 'auth-environment' ||
+  (match.name === 'flags' && !!match.environmentId) ||
+  (match.name === 'flag-sdk-keys' && !!match.environmentId)
+    ? match.environmentId ?? null
+    : null

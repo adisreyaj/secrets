@@ -22,7 +22,12 @@ import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { useFlagEnabled } from '../lib/feature-flags'
 import { FEATURE_FLAGS } from '../lib/feature-flags/keys'
-import { environmentsPath, projectPath } from '../lib/paths'
+import {
+  authEnvironmentsPath,
+  environmentsPath,
+  flagEnvironmentsPath,
+  projectPath,
+} from '../lib/paths'
 import { getProjectModuleState } from '../lib/modules'
 import { queryKeys } from '../lib/queryKeys'
 import { useRegisterShortcut } from '../lib/shortcuts'
@@ -47,7 +52,7 @@ export const ProjectOverviewPage = ({
     queryFn: () => api.listProjects(),
     enabled: Boolean(user),
   })
-  const { data: environmentsData, error: envErrorRaw } =
+  const { error: envErrorRaw } =
     useQuery<EnvironmentDto[]>({
       queryKey: queryKeys.environments(projectId),
       queryFn: () => api.listEnvironments(projectId),
@@ -59,7 +64,6 @@ export const ProjectOverviewPage = ({
     enabled: Boolean(user) && Boolean(projectId) && !projectDeleted,
   })
   const projects = useMemo(() => projectsData ?? [], [projectsData])
-  const environments = environmentsData ?? []
   const modules = useMemo(() => getProjectModuleState(moduleData), [moduleData])
   const environmentsEnabled = useFlagEnabled(
     FEATURE_FLAGS.ENVIRONMENTS_ALLOW,
@@ -105,12 +109,12 @@ export const ProjectOverviewPage = ({
   )
   useRegisterShortcut(
     'f',
-    () => navigate(projectPath(projectId, selectedProject?.slug, 'flags')),
+    () => navigate(flagEnvironmentsPath(projectId, selectedProject?.slug)),
     { enabled: modules.flags },
   )
   useRegisterShortcut(
     'h',
-    () => navigate(projectPath(projectId, selectedProject?.slug, 'auth')),
+    () => navigate(authEnvironmentsPath(projectId, selectedProject?.slug)),
     { enabled: modules.auth },
   )
   useRegisterShortcut(
@@ -206,10 +210,10 @@ export const ProjectOverviewPage = ({
                 <div>
                   <div className="text-foreground flex items-center gap-2 text-sm font-semibold">
                     <Layers className="text-muted-foreground h-4 w-4" />
-                    Environments
+                    Secrets Management
                   </div>
                   <p className="text-muted-foreground mt-1 text-xs">
-                    {environments.length} environments
+                    Environment list and secrets
                   </p>
                 </div>
                 <ShortcutHint keys="e" />
@@ -217,6 +221,60 @@ export const ProjectOverviewPage = ({
             </Button>
           </li>
         ) : null}
+        <li>
+          <Button
+            variant="outline"
+            disabled={!modules.auth}
+            onClick={() => {
+              if (modules.auth) {
+                navigate(authEnvironmentsPath(projectId, selectedProject?.slug))
+              }
+            }}
+            className="border-border bg-card shadow-soft h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <div className="flex w-full items-start justify-between gap-3">
+              <div>
+                <div className="text-foreground flex items-center gap-2 text-sm font-semibold">
+                  <Shield className="text-muted-foreground h-4 w-4" />
+                  Auth Management
+                </div>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {modules.auth
+                    ? 'Environment-scoped auth settings'
+                    : 'Module disabled'}
+                </p>
+              </div>
+              {modules.auth ? <ShortcutHint keys="h" /> : null}
+            </div>
+          </Button>
+        </li>
+        <li>
+          <Button
+            variant="outline"
+            disabled={!modules.flags}
+            onClick={() => {
+              if (modules.flags) {
+                navigate(flagEnvironmentsPath(projectId, selectedProject?.slug))
+              }
+            }}
+            className="border-border bg-card shadow-soft h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <div className="flex w-full items-start justify-between gap-3">
+              <div>
+                <div className="text-foreground flex items-center gap-2 text-sm font-semibold">
+                  <Flag className="text-muted-foreground h-4 w-4" />
+                  Feature Flags
+                </div>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {modules.flags
+                    ? 'Environment-scoped flags'
+                    : 'Module disabled'}
+                </p>
+              </div>
+              {modules.flags ? <ShortcutHint keys="f" /> : null}
+            </div>
+          </Button>
+        </li>
         {auditEnabled ? (
           <li>
             <Button
@@ -375,56 +433,6 @@ export const ProjectOverviewPage = ({
             </Button>
           </li>
         ) : null}
-        <li>
-          <Button
-            variant="outline"
-            disabled={!modules.flags}
-            onClick={() => {
-              if (modules.flags) {
-                navigate(projectPath(projectId, selectedProject?.slug, 'flags'))
-              }
-            }}
-            className="border-border bg-card shadow-soft h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <div className="flex w-full items-start justify-between gap-3">
-              <div>
-                <div className="text-foreground flex items-center gap-2 text-sm font-semibold">
-                  <Flag className="text-muted-foreground h-4 w-4" />
-                  Feature Flags
-                </div>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  {modules.flags ? 'Flag list and editor' : 'Module disabled'}
-                </p>
-              </div>
-              {modules.flags ? <ShortcutHint keys="f" /> : null}
-            </div>
-          </Button>
-        </li>
-        <li>
-          <Button
-            variant="outline"
-            disabled={!modules.auth}
-            onClick={() => {
-              if (modules.auth) {
-                navigate(projectPath(projectId, selectedProject?.slug, 'auth'))
-              }
-            }}
-            className="border-border bg-card shadow-soft h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <div className="flex w-full items-start justify-between gap-3">
-              <div>
-                <div className="text-foreground flex items-center gap-2 text-sm font-semibold">
-                  <Shield className="text-muted-foreground h-4 w-4" />
-                  Auth Management
-                </div>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  {modules.auth ? 'Settings, providers, clients' : 'Module disabled'}
-                </p>
-              </div>
-              {modules.auth ? <ShortcutHint keys="h" /> : null}
-            </div>
-          </Button>
-        </li>
       </ul>
 
       <SectionCard className="border-destructive/30">

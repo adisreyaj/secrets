@@ -3,20 +3,9 @@ import type { FastifyInstance } from 'fastify';
 import { generateToken, hashToken } from '../../auth.js';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
-import { requireAuth, requireProjectRole, requireUserForApproval } from '../auth/guards.js';
+import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { logAudit } from '../services/audit.js';
-import {
-  createApprovalRequest,
-  findMatchingApprovalRules,
-  findPendingApprovalRequest,
-} from '../services/approvals.js';
-import {
-  isFeatureFlagValueType,
-  toFeatureFlagEnvironmentOverrideDto,
-  toFeatureFlagDto,
-  toFeatureFlagRuleDto,
-  toFeatureFlagVariantDto,
-} from '../mappers/flags.js';
+import { isFeatureFlagValueType, toFeatureFlagDto } from '../mappers/flags.js';
 
 function isPrismaUniqueError(
   error: unknown,
@@ -28,6 +17,85 @@ function isPrismaUniqueError(
 
 function normalizeIdentifier(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function parseRuntime(value: unknown): 'BOTH' | 'CLIENT' | 'SERVER' {
+  if (typeof value !== 'string') return 'BOTH';
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'client') return 'CLIENT';
+  if (normalized === 'server') return 'SERVER';
+  return 'BOTH';
+}
+
+function normalizeLabels(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== 'string') continue;
+    const normalized = item.trim();
+    if (!normalized) continue;
+    seen.add(normalized);
+  }
+  return [...seen];
+}
+
+type MultivariateInput = {
+  defaultVariantKey: string;
+  variants: Array<{
+    key: string;
+    valueType: 'string' | 'json';
+    value: string;
+  }>;
+};
+
+function validateMultivariate(input: unknown): MultivariateInput {
+  if (!input || typeof input !== 'object') {
+    throw new Error('multivariate is required for MULTIVARIATE flags');
+  }
+  const obj = input as {
+    defaultVariantKey?: string;
+    variants?: Array<{ key?: string; valueType?: string; value?: string }>;
+  };
+  const defaultVariantKey = obj.defaultVariantKey?.trim();
+  if (!defaultVariantKey) {
+    throw new Error('multivariate.defaultVariantKey is required');
+  }
+  if (!Array.isArray(obj.variants) || obj.variants.length === 0) {
+    throw new Error('multivariate.variants must contain at least one variant');
+  }
+
+  const variants = obj.variants.map((variant) => {
+    const key = variant.key?.trim();
+    const value = variant.value;
+    const valueType = variant.valueType?.trim().toLowerCase();
+    if (!key || typeof value !== 'string') {
+      throw new Error('Each multivariate variant requires key and value');
+    }
+    if (valueType !== 'string' && valueType !== 'json') {
+      throw new Error('Variant valueType must be string or json');
+    }
+    if (valueType === 'json') {
+      try {
+        JSON.parse(value);
+      } catch {
+        throw new Error(`Variant ${key} has invalid JSON value`);
+      }
+    }
+    return {
+      key,
+      value,
+      valueType: valueType as 'string' | 'json',
+    };
+  });
+
+  if (!variants.some((variant) => variant.key === defaultVariantKey)) {
+    throw new Error('multivariate.defaultVariantKey must match an existing variant key');
+  }
+
+  return {
+    defaultVariantKey,
+    variants,
+  };
 }
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -75,52 +143,164 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     revokedAt: key.revokedAt?.toISOString() ?? null,
   });
 
+  const upsertEnvironmentConfig = async (params: {
+    flagId: string;
+    environmentId: string;
+    valueType: 'BOOLEAN' | 'MULTIVARIATE';
+    enabled: boolean;
+    runtime: 'BOTH' | 'CLIENT' | 'SERVER';
+    labels: string[];
+    booleanValue?: boolean | null;
+    multivariate?: MultivariateInput | null;
+  }) => {
+    const configRecord = await prisma.featureFlagEnvironmentConfig.upsert({
+      where: {
+        flagId_environmentId: {
+          flagId: params.flagId,
+          environmentId: params.environmentId,
+        },
+      },
+      create: {
+        flagId: params.flagId,
+        environmentId: params.environmentId,
+        enabled: params.enabled,
+        valueType: params.valueType,
+        booleanValue:
+          params.valueType === 'BOOLEAN' ? params.booleanValue ?? false : null,
+        runtime: params.runtime,
+        labelsJson: params.labels,
+        defaultVariantKey:
+          params.valueType === 'MULTIVARIATE'
+            ? params.multivariate?.defaultVariantKey ?? null
+            : null,
+      },
+      update: {
+        enabled: params.enabled,
+        valueType: params.valueType,
+        booleanValue:
+          params.valueType === 'BOOLEAN' ? params.booleanValue ?? false : null,
+        runtime: params.runtime,
+        labelsJson: params.labels,
+        defaultVariantKey:
+          params.valueType === 'MULTIVARIATE'
+            ? params.multivariate?.defaultVariantKey ?? null
+            : null,
+      },
+    });
+
+    await prisma.featureFlagEnvironmentVariant.deleteMany({
+      where: { environmentConfigId: configRecord.id },
+    });
+
+    if (params.valueType === 'MULTIVARIATE' && params.multivariate) {
+      await prisma.featureFlagEnvironmentVariant.createMany({
+        data: params.multivariate.variants.map((variant, index) => ({
+          environmentConfigId: configRecord.id,
+          key: variant.key,
+          valueType: variant.valueType === 'json' ? 'JSON' : 'STRING',
+          value: variant.value,
+          orderIndex: index,
+        })),
+      });
+    }
+
+    const withVariants = await prisma.featureFlagEnvironmentConfig.findUnique({
+      where: { id: configRecord.id },
+      include: { variants: true },
+    });
+
+    return withVariants!;
+  };
+
   app.get('/projects/:projectId/flags', async (request, reply) => {
     const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
+    if (!auth) return;
+
     const { projectId } = request.params as { projectId: string };
     const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
+    if (!role) return;
+
+    const query = request.query as { environmentId?: string } | undefined;
+    const environmentId = query?.environmentId?.trim();
+    if (!environmentId) {
+      reply.code(400).send({ error: 'environmentId is required' });
+      return;
+    }
+
+    const environment = await prisma.environment.findUnique({
+      where: { id: environmentId },
+      select: { id: true, projectId: true },
+    });
+    if (!environment || environment.projectId !== projectId) {
+      reply.code(404).send({ error: 'Environment not found' });
       return;
     }
 
     const flags = await prisma.featureFlag.findMany({
       where: { projectId, deletedAt: null },
+      include: {
+        environmentConfigs: {
+          where: { environmentId },
+          include: { variants: true },
+          take: 1,
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
-    reply.send(flags.map(toFeatureFlagDto));
+
+    const payload = flags
+      .map((flag) => {
+        const cfg = flag.environmentConfigs[0];
+        if (!cfg) return null;
+        return toFeatureFlagDto(flag, cfg);
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    reply.send(payload);
   });
 
   app.post('/projects/:projectId/flags', async (request, reply) => {
     const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
+    if (!auth) return;
+
     const { projectId } = request.params as { projectId: string };
     const role = await requireProjectRole(request, reply, projectId, Role.EDITOR);
-    if (!role) {
-      return;
-    }
+    if (!role) return;
 
     const body = request.body as
       | {
+          environmentId?: string;
           key?: string;
           name?: string;
           description?: string | null;
           valueType?: 'BOOLEAN' | 'MULTIVARIATE';
           enabled?: boolean;
+          booleanValue?: boolean;
+          multivariate?: unknown;
+          runtime?: 'both' | 'client' | 'server';
+          labels?: unknown;
         }
       | undefined;
+
+    const environmentId = body?.environmentId?.trim();
     const key = body?.key?.trim();
     const name = body?.name?.trim();
-    if (!key || !name) {
-      reply.code(400).send({ error: 'key and name are required' });
+
+    if (!environmentId || !key || !name) {
+      reply.code(400).send({ error: 'environmentId, key and name are required' });
       return;
     }
-    if (body?.valueType && !isFeatureFlagValueType(body.valueType)) {
+    if (!body?.valueType || !isFeatureFlagValueType(body.valueType)) {
       reply.code(400).send({ error: 'valueType must be BOOLEAN or MULTIVARIATE' });
+      return;
+    }
+
+    const environment = await prisma.environment.findUnique({
+      where: { id: environmentId },
+      select: { id: true, projectId: true },
+    });
+    if (!environment || environment.projectId !== projectId) {
+      reply.code(404).send({ error: 'Environment not found' });
       return;
     }
 
@@ -136,6 +316,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
+    const labels = normalizeLabels(body.labels);
+    const runtime = parseRuntime(body.runtime);
+    const enabled = typeof body.enabled === 'boolean' ? body.enabled : true;
+
+    let multivariate: MultivariateInput | null = null;
+    if (body.valueType === 'MULTIVARIATE') {
+      try {
+        multivariate = validateMultivariate(body.multivariate);
+      } catch (error) {
+        reply.code(400).send({ error: (error as Error).message });
+        return;
+      }
+    }
+
     try {
       const flag = await prisma.featureFlag.create({
         data: {
@@ -143,10 +337,22 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           key,
           name,
           description: body?.description?.trim() ?? null,
-          valueType: body?.valueType ?? 'BOOLEAN',
-          enabled: typeof body?.enabled === 'boolean' ? body.enabled : true,
+          valueType: body.valueType,
+          enabled,
         },
       });
+
+      const envConfig = await upsertEnvironmentConfig({
+        flagId: flag.id,
+        environmentId,
+        valueType: body.valueType,
+        enabled,
+        runtime,
+        labels,
+        booleanValue: body.booleanValue,
+        multivariate,
+      });
+
       await logAudit({
         projectId,
         actorUserId: auth.user?.id,
@@ -154,9 +360,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         action: 'flag.create',
         resourceType: 'feature_flag',
         resourceId: flag.id,
-        metadataJson: { module: 'flags', key: flag.key },
+        metadataJson: { module: 'flags', key: flag.key, environmentId },
       });
-      reply.code(201).send(toFeatureFlagDto(flag));
+
+      reply.code(201).send(toFeatureFlagDto(flag, envConfig));
       return;
     } catch (error) {
       if (isPrismaUniqueError(error)) {
@@ -169,29 +376,47 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/flags/:flagId', async (request, reply) => {
     const auth = requireAuth(request, reply);
-    if (!auth) {
+    if (!auth) return;
+
+    const { flagId } = request.params as { flagId: string };
+    const query = request.query as { environmentId?: string } | undefined;
+    const environmentId = query?.environmentId?.trim();
+    if (!environmentId) {
+      reply.code(400).send({ error: 'environmentId is required' });
       return;
     }
-    const { flagId } = request.params as { flagId: string };
+
     const flag = await prisma.featureFlag.findFirst({
       where: { id: flagId, deletedAt: null },
+      include: {
+        environmentConfigs: {
+          where: { environmentId },
+          include: { variants: true },
+          take: 1,
+        },
+      },
     });
+
     if (!flag) {
       reply.code(404).send({ error: 'Flag not found' });
       return;
     }
     const role = await requireProjectRole(request, reply, flag.projectId, Role.VIEWER);
-    if (!role) {
+    if (!role) return;
+
+    const cfg = flag.environmentConfigs[0];
+    if (!cfg) {
+      reply.code(404).send({ error: 'Environment config not found' });
       return;
     }
-    reply.send(toFeatureFlagDto(flag));
+
+    reply.send(toFeatureFlagDto(flag, cfg));
   });
 
   app.patch('/flags/:flagId', async (request, reply) => {
     const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
+    if (!auth) return;
+
     const { flagId } = request.params as { flagId: string };
     const current = await prisma.featureFlag.findFirst({
       where: { id: flagId, deletedAt: null },
@@ -201,21 +426,35 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
     const role = await requireProjectRole(request, reply, current.projectId, Role.EDITOR);
-    if (!role) {
-      return;
-    }
+    if (!role) return;
+
     const body = request.body as
       | {
+          environmentId?: string;
           key?: string;
           name?: string;
           description?: string | null;
           valueType?: 'BOOLEAN' | 'MULTIVARIATE';
           enabled?: boolean;
+          booleanValue?: boolean;
+          multivariate?: unknown;
+          runtime?: 'both' | 'client' | 'server';
+          labels?: unknown;
         }
       | undefined;
 
-    if (body?.valueType && !isFeatureFlagValueType(body.valueType)) {
-      reply.code(400).send({ error: 'valueType must be BOOLEAN or MULTIVARIATE' });
+    const environmentId = body?.environmentId?.trim();
+    if (!environmentId) {
+      reply.code(400).send({ error: 'environmentId is required' });
+      return;
+    }
+
+    const environment = await prisma.environment.findUnique({
+      where: { id: environmentId },
+      select: { id: true, projectId: true },
+    });
+    if (!environment || environment.projectId !== current.projectId) {
+      reply.code(404).send({ error: 'Environment not found' });
       return;
     }
 
@@ -234,37 +473,185 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    try {
-      const updated = await prisma.featureFlag.update({
-        where: { id: current.id },
-        data: {
-          key: nextKey ?? undefined,
-          name: body?.name?.trim() ?? undefined,
-          description: Object.prototype.hasOwnProperty.call(body ?? {}, 'description')
-            ? body?.description?.trim() ?? null
-            : undefined,
-          valueType: body?.valueType ?? undefined,
-          enabled: typeof body?.enabled === 'boolean' ? body.enabled : undefined,
-        },
-      });
-      await logAudit({
-        projectId: current.projectId,
-        actorUserId: auth.user?.id,
-        actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'flag.update',
-        resourceType: 'feature_flag',
-        resourceId: updated.id,
-        metadataJson: { module: 'flags', key: updated.key },
-      });
-      reply.send(toFeatureFlagDto(updated));
+    const existingConfig = await prisma.featureFlagEnvironmentConfig.findUnique({
+      where: {
+        flagId_environmentId: { flagId: current.id, environmentId },
+      },
+      include: { variants: true },
+    });
+
+    const resolvedValueType = body?.valueType ?? existingConfig?.valueType ?? current.valueType;
+    if (!isFeatureFlagValueType(resolvedValueType)) {
+      reply.code(400).send({ error: 'valueType must be BOOLEAN or MULTIVARIATE' });
       return;
-    } catch (error) {
-      if (isPrismaUniqueError(error)) {
-        reply.code(409).send({ error: 'Flag key already exists' });
+    }
+
+    let multivariate: MultivariateInput | null = null;
+    if (resolvedValueType === 'MULTIVARIATE') {
+      try {
+        multivariate = validateMultivariate(
+          body?.multivariate ??
+            (existingConfig
+              ? {
+                  defaultVariantKey: existingConfig.defaultVariantKey,
+                  variants: existingConfig.variants.map((variant) => ({
+                    key: variant.key,
+                    valueType: variant.valueType === 'JSON' ? 'json' : 'string',
+                    value: variant.value,
+                  })),
+                }
+              : null),
+        );
+      } catch (error) {
+        reply.code(400).send({ error: (error as Error).message });
         return;
       }
-      throw error;
     }
+
+    const labels =
+      typeof body?.labels !== 'undefined'
+        ? normalizeLabels(body.labels)
+        : existingConfig
+          ? (Array.isArray(existingConfig.labelsJson)
+              ? existingConfig.labelsJson.filter((item): item is string => typeof item === 'string')
+              : [])
+          : [];
+
+    const runtime =
+      typeof body?.runtime !== 'undefined'
+        ? parseRuntime(body.runtime)
+        : (existingConfig?.runtime ?? 'BOTH');
+
+    const enabled =
+      typeof body?.enabled === 'boolean'
+        ? body.enabled
+        : (existingConfig?.enabled ?? current.enabled);
+
+    const updatedFlag = await prisma.featureFlag.update({
+      where: { id: current.id },
+      data: {
+        key: nextKey ?? undefined,
+        name: body?.name?.trim() ?? undefined,
+        description: Object.prototype.hasOwnProperty.call(body ?? {}, 'description')
+          ? body?.description?.trim() ?? null
+          : undefined,
+        valueType: body?.valueType ?? undefined,
+        enabled: typeof body?.enabled === 'boolean' ? body.enabled : undefined,
+      },
+    });
+
+    const envConfig = await upsertEnvironmentConfig({
+      flagId: updatedFlag.id,
+      environmentId,
+      valueType: resolvedValueType,
+      enabled,
+      runtime,
+      labels,
+      booleanValue:
+        typeof body?.booleanValue === 'boolean'
+          ? body.booleanValue
+          : existingConfig?.booleanValue ?? updatedFlag.enabled,
+      multivariate,
+    });
+
+    await logAudit({
+      projectId: updatedFlag.projectId,
+      actorUserId: auth.user?.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'flag.update',
+      resourceType: 'feature_flag',
+      resourceId: updatedFlag.id,
+      metadataJson: { module: 'flags', key: updatedFlag.key, environmentId },
+    });
+
+    reply.send(toFeatureFlagDto(updatedFlag, envConfig));
+  });
+
+  app.get('/flags/:flagId/diff', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) return;
+
+    const { flagId } = request.params as { flagId: string };
+    const query = request.query as { fromEnvironmentId?: string; toEnvironmentId?: string };
+
+    const fromEnvironmentId = query.fromEnvironmentId?.trim();
+    const toEnvironmentId = query.toEnvironmentId?.trim();
+
+    if (!fromEnvironmentId || !toEnvironmentId) {
+      reply.code(400).send({ error: 'fromEnvironmentId and toEnvironmentId are required' });
+      return;
+    }
+
+    const flag = await prisma.featureFlag.findFirst({
+      where: { id: flagId, deletedAt: null },
+    });
+    if (!flag) {
+      reply.code(404).send({ error: 'Flag not found' });
+      return;
+    }
+
+    const role = await requireProjectRole(request, reply, flag.projectId, Role.VIEWER);
+    if (!role) return;
+
+    const [fromConfig, toConfig] = await Promise.all([
+      prisma.featureFlagEnvironmentConfig.findUnique({
+        where: { flagId_environmentId: { flagId, environmentId: fromEnvironmentId } },
+        include: { variants: true },
+      }),
+      prisma.featureFlagEnvironmentConfig.findUnique({
+        where: { flagId_environmentId: { flagId, environmentId: toEnvironmentId } },
+        include: { variants: true },
+      }),
+    ]);
+
+    if (!fromConfig || !toConfig) {
+      reply.code(404).send({ error: 'Flag config not found for one or both environments' });
+      return;
+    }
+
+    const toSnapshot = (cfg: NonNullable<typeof fromConfig>, environmentId: string) => ({
+      environmentId,
+      enabled: cfg.enabled,
+      runtime: cfg.runtime.toLowerCase(),
+      labels: Array.isArray(cfg.labelsJson)
+        ? cfg.labelsJson.filter((item): item is string => typeof item === 'string')
+        : [],
+      valueType: cfg.valueType,
+      booleanValue: cfg.booleanValue,
+      multivariate:
+        cfg.valueType === 'MULTIVARIATE'
+          ? {
+              defaultVariantKey: cfg.defaultVariantKey ?? '',
+              variants: cfg.variants
+                .slice()
+                .sort((a, b) => a.orderIndex - b.orderIndex)
+                .map((variant) => ({
+                  key: variant.key,
+                  valueType: variant.valueType === 'JSON' ? 'json' : 'string',
+                  value: variant.value,
+                })),
+            }
+          : null,
+    });
+
+    const from = toSnapshot(fromConfig, fromEnvironmentId);
+    const to = toSnapshot(toConfig, toEnvironmentId);
+
+    reply.send({
+      flagId: flag.id,
+      flagKey: flag.key,
+      from,
+      to,
+      differences: {
+        enabled: from.enabled !== to.enabled,
+        runtime: from.runtime !== to.runtime,
+        labels: JSON.stringify(from.labels) !== JSON.stringify(to.labels),
+        value:
+          from.valueType !== to.valueType ||
+          from.booleanValue !== to.booleanValue ||
+          JSON.stringify(from.multivariate) !== JSON.stringify(to.multivariate),
+      },
+    });
   });
 
   app.delete('/flags/:flagId', async (request, reply) => {
@@ -293,380 +680,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       resourceType: 'feature_flag',
       resourceId: flag.id,
       metadataJson: { module: 'flags', key: flag.key },
-    });
-    reply.send({ ok: true });
-  });
-
-  app.post('/flags/:flagId/variants', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { flagId } = request.params as { flagId: string };
-    const flag = await prisma.featureFlag.findFirst({
-      where: { id: flagId, deletedAt: null },
-    });
-    if (!flag) {
-      reply.code(404).send({ error: 'Flag not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, flag.projectId, Role.EDITOR);
-    if (!role) {
-      return;
-    }
-    const body = request.body as { key?: string; value?: string; weight?: number } | undefined;
-    const key = body?.key?.trim();
-    const value = body?.value;
-    if (!key || typeof value !== 'string') {
-      reply.code(400).send({ error: 'key and value are required' });
-      return;
-    }
-    const weight = typeof body?.weight === 'number' ? body.weight : 0;
-    if (!Number.isFinite(weight) || weight < 0) {
-      reply.code(400).send({ error: 'weight must be >= 0' });
-      return;
-    }
-
-    try {
-      const variant = await prisma.featureFlagVariant.create({
-        data: {
-          flagId: flag.id,
-          key,
-          value,
-          weight: Math.floor(weight),
-        },
-      });
-      await logAudit({
-        projectId: flag.projectId,
-        actorUserId: auth.user?.id,
-        actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'flag.variant.create',
-        resourceType: 'feature_flag_variant',
-        resourceId: variant.id,
-        metadataJson: { module: 'flags', flagId: flag.id, key: variant.key },
-      });
-      reply.code(201).send(toFeatureFlagVariantDto(variant));
-      return;
-    } catch (error) {
-      if (isPrismaUniqueError(error)) {
-        reply.code(409).send({ error: 'Variant key already exists' });
-        return;
-      }
-      throw error;
-    }
-  });
-
-  app.get('/flags/:flagId/variants', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { flagId } = request.params as { flagId: string };
-    const flag = await prisma.featureFlag.findFirst({
-      where: { id: flagId, deletedAt: null },
-    });
-    if (!flag) {
-      reply.code(404).send({ error: 'Flag not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, flag.projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    const variants = await prisma.featureFlagVariant.findMany({
-      where: { flagId: flag.id },
-      orderBy: [{ weight: 'desc' }, { createdAt: 'asc' }],
-    });
-    reply.send(variants.map(toFeatureFlagVariantDto));
-  });
-
-  app.patch('/flag-variants/:variantId', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { variantId } = request.params as { variantId: string };
-    const variant = await prisma.featureFlagVariant.findUnique({
-      where: { id: variantId },
-      include: { flag: true },
-    });
-    if (!variant || variant.flag.deletedAt) {
-      reply.code(404).send({ error: 'Variant not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, variant.flag.projectId, Role.EDITOR);
-    if (!role) {
-      return;
-    }
-
-    const body = request.body as { key?: string; value?: string; weight?: number } | undefined;
-    const nextWeight = body?.weight;
-    if (
-      typeof nextWeight !== 'undefined' &&
-      (!Number.isFinite(nextWeight) || nextWeight < 0)
-    ) {
-      reply.code(400).send({ error: 'weight must be >= 0' });
-      return;
-    }
-
-    try {
-      const updated = await prisma.featureFlagVariant.update({
-        where: { id: variant.id },
-        data: {
-          key: body?.key?.trim() ?? undefined,
-          value: typeof body?.value === 'string' ? body.value : undefined,
-          weight:
-            typeof nextWeight === 'number' ? Math.floor(nextWeight) : undefined,
-        },
-      });
-      await logAudit({
-        projectId: variant.flag.projectId,
-        actorUserId: auth.user?.id,
-        actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'flag.variant.update',
-        resourceType: 'feature_flag_variant',
-        resourceId: updated.id,
-        metadataJson: { module: 'flags', flagId: updated.flagId, key: updated.key },
-      });
-      reply.send(toFeatureFlagVariantDto(updated));
-      return;
-    } catch (error) {
-      if (isPrismaUniqueError(error)) {
-        reply.code(409).send({ error: 'Variant key already exists' });
-        return;
-      }
-      throw error;
-    }
-  });
-
-  app.delete('/flag-variants/:variantId', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { variantId } = request.params as { variantId: string };
-    const variant = await prisma.featureFlagVariant.findUnique({
-      where: { id: variantId },
-      include: { flag: true },
-    });
-    if (!variant || variant.flag.deletedAt) {
-      reply.code(404).send({ error: 'Variant not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, variant.flag.projectId, Role.EDITOR);
-    if (!role) {
-      return;
-    }
-    await prisma.featureFlagVariant.delete({ where: { id: variant.id } });
-    await logAudit({
-      projectId: variant.flag.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'flag.variant.delete',
-      resourceType: 'feature_flag_variant',
-      resourceId: variant.id,
-      metadataJson: { module: 'flags', flagId: variant.flagId, key: variant.key },
-    });
-    reply.send({ ok: true });
-  });
-
-  app.post('/flags/:flagId/rules', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { flagId } = request.params as { flagId: string };
-    const flag = await prisma.featureFlag.findFirst({
-      where: { id: flagId, deletedAt: null },
-    });
-    if (!flag) {
-      reply.code(404).send({ error: 'Flag not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, flag.projectId, Role.EDITOR);
-    if (!role) {
-      return;
-    }
-    const body = request.body as
-      | { priority?: number; rolloutPercentage?: number; variantId?: string | null }
-      | undefined;
-    const priority = typeof body?.priority === 'number' ? body.priority : 0;
-    const rolloutPercentage =
-      typeof body?.rolloutPercentage === 'number' ? body.rolloutPercentage : 100;
-    if (!Number.isFinite(priority) || priority < 0) {
-      reply.code(400).send({ error: 'priority must be >= 0' });
-      return;
-    }
-    if (
-      !Number.isFinite(rolloutPercentage) ||
-      rolloutPercentage < 0 ||
-      rolloutPercentage > 100
-    ) {
-      reply.code(400).send({ error: 'rolloutPercentage must be between 0 and 100' });
-      return;
-    }
-
-    const variantId = body?.variantId?.trim() ?? null;
-    if (variantId) {
-      const variant = await prisma.featureFlagVariant.findFirst({
-        where: { id: variantId, flagId: flag.id },
-        select: { id: true },
-      });
-      if (!variant) {
-        reply.code(400).send({ error: 'variantId must belong to the same flag' });
-        return;
-      }
-    }
-
-    const rule = await prisma.featureFlagRule.create({
-      data: {
-        flagId: flag.id,
-        priority: Math.floor(priority),
-        rolloutPercentage: Math.floor(rolloutPercentage),
-        variantId,
-      },
-    });
-    await logAudit({
-      projectId: flag.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'flag.rule.create',
-      resourceType: 'feature_flag_rule',
-      resourceId: rule.id,
-      metadataJson: { module: 'flags', flagId: rule.flagId },
-    });
-    reply.code(201).send(toFeatureFlagRuleDto(rule));
-  });
-
-  app.get('/flags/:flagId/rules', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { flagId } = request.params as { flagId: string };
-    const flag = await prisma.featureFlag.findFirst({
-      where: { id: flagId, deletedAt: null },
-    });
-    if (!flag) {
-      reply.code(404).send({ error: 'Flag not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, flag.projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    const rules = await prisma.featureFlagRule.findMany({
-      where: { flagId: flag.id },
-      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
-    });
-    reply.send(rules.map(toFeatureFlagRuleDto));
-  });
-
-  app.patch('/flag-rules/:ruleId', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { ruleId } = request.params as { ruleId: string };
-    const rule = await prisma.featureFlagRule.findUnique({
-      where: { id: ruleId },
-      include: { flag: true },
-    });
-    if (!rule || rule.flag.deletedAt) {
-      reply.code(404).send({ error: 'Rule not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, rule.flag.projectId, Role.EDITOR);
-    if (!role) {
-      return;
-    }
-    const body = request.body as
-      | { priority?: number; rolloutPercentage?: number; variantId?: string | null }
-      | undefined;
-
-    if (
-      typeof body?.priority !== 'undefined' &&
-      (!Number.isFinite(body.priority) || body.priority < 0)
-    ) {
-      reply.code(400).send({ error: 'priority must be >= 0' });
-      return;
-    }
-    if (
-      typeof body?.rolloutPercentage !== 'undefined' &&
-      (!Number.isFinite(body.rolloutPercentage) ||
-        body.rolloutPercentage < 0 ||
-        body.rolloutPercentage > 100)
-    ) {
-      reply.code(400).send({ error: 'rolloutPercentage must be between 0 and 100' });
-      return;
-    }
-
-    const hasVariantId = Object.prototype.hasOwnProperty.call(body ?? {}, 'variantId');
-    const variantId = hasVariantId ? body?.variantId?.trim() ?? null : undefined;
-    if (typeof variantId === 'string') {
-      const variant = await prisma.featureFlagVariant.findFirst({
-        where: { id: variantId, flagId: rule.flagId },
-        select: { id: true },
-      });
-      if (!variant) {
-        reply.code(400).send({ error: 'variantId must belong to the same flag' });
-        return;
-      }
-    }
-
-    const updated = await prisma.featureFlagRule.update({
-      where: { id: rule.id },
-      data: {
-        priority:
-          typeof body?.priority === 'number' ? Math.floor(body.priority) : undefined,
-        rolloutPercentage:
-          typeof body?.rolloutPercentage === 'number'
-            ? Math.floor(body.rolloutPercentage)
-            : undefined,
-        variantId,
-      },
-    });
-    await logAudit({
-      projectId: rule.flag.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'flag.rule.update',
-      resourceType: 'feature_flag_rule',
-      resourceId: updated.id,
-      metadataJson: { module: 'flags', flagId: updated.flagId },
-    });
-    reply.send(toFeatureFlagRuleDto(updated));
-  });
-
-  app.delete('/flag-rules/:ruleId', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { ruleId } = request.params as { ruleId: string };
-    const rule = await prisma.featureFlagRule.findUnique({
-      where: { id: ruleId },
-      include: { flag: true },
-    });
-    if (!rule || rule.flag.deletedAt) {
-      reply.code(404).send({ error: 'Rule not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, rule.flag.projectId, Role.EDITOR);
-    if (!role) {
-      return;
-    }
-    await prisma.featureFlagRule.delete({ where: { id: rule.id } });
-    await logAudit({
-      projectId: rule.flag.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'flag.rule.delete',
-      resourceType: 'feature_flag_rule',
-      resourceId: rule.id,
-      metadataJson: { module: 'flags', flagId: rule.flagId },
     });
     reply.send({ ok: true });
   });
@@ -819,210 +832,5 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
 
     reply.send({ ok: true });
-  });
-
-  app.put('/flags/:flagId/environments/:environmentId/override', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { flagId, environmentId } = request.params as {
-      flagId: string;
-      environmentId: string;
-    };
-
-    const flag = await prisma.featureFlag.findFirst({
-      where: { id: flagId, deletedAt: null },
-    });
-    if (!flag) {
-      reply.code(404).send({ error: 'Flag not found' });
-      return;
-    }
-    const role = await requireProjectRole(request, reply, flag.projectId, Role.EDITOR);
-    if (!role) {
-      return;
-    }
-
-    const environment = await prisma.environment.findUnique({
-      where: { id: environmentId },
-      select: { id: true, projectId: true },
-    });
-    if (!environment || environment.projectId !== flag.projectId) {
-      reply.code(404).send({ error: 'Environment not found' });
-      return;
-    }
-
-    const body = request.body as
-      | {
-          enabled?: boolean | null;
-          variantId?: string | null;
-        }
-      | undefined;
-
-    if (!body) {
-      reply.code(400).send({ error: 'Request body is required' });
-      return;
-    }
-
-    const hasEnabled = Object.prototype.hasOwnProperty.call(body, 'enabled');
-    const hasVariantId = Object.prototype.hasOwnProperty.call(body, 'variantId');
-    if (!hasEnabled && !hasVariantId) {
-      reply.code(400).send({ error: 'enabled or variantId is required' });
-      return;
-    }
-
-    const enabled = hasEnabled ? (body.enabled ?? null) : null;
-    const variantId = hasVariantId ? body.variantId?.trim() ?? null : null;
-
-    if (typeof enabled !== 'boolean' && enabled !== null) {
-      reply.code(400).send({ error: 'enabled must be boolean or null' });
-      return;
-    }
-
-    if (variantId) {
-      const variant = await prisma.featureFlagVariant.findFirst({
-        where: { id: variantId, flagId: flag.id },
-        select: { id: true },
-      });
-      if (!variant) {
-        reply.code(400).send({ error: 'variantId must belong to the same flag' });
-        return;
-      }
-    }
-
-    const existingOverride = await prisma.featureFlagEnvironmentOverride.findUnique({
-      where: {
-        flagId_environmentId: {
-          flagId: flag.id,
-          environmentId: environment.id,
-        },
-      },
-    });
-    const approvalAction =
-      enabled === null && variantId === null
-        ? 'DELETE'
-        : existingOverride
-          ? 'UPDATE'
-          : 'CREATE';
-
-    const matchingRules = await findMatchingApprovalRules({
-      projectId: flag.projectId,
-      environmentId: environment.id,
-      action: approvalAction,
-      key: flag.key,
-    });
-    if (matchingRules.length > 0) {
-      if (!requireUserForApproval(request, reply)) {
-        return;
-      }
-      if (!auth.user) {
-        reply.code(403).send({ error: 'Approval requests require a user session' });
-        return;
-      }
-
-      const pending = await findPendingApprovalRequest({
-        projectId: flag.projectId,
-        environmentId: environment.id,
-        action: approvalAction,
-        key: flag.key,
-      });
-      if (pending) {
-        reply.code(202).send({ status: 'pending', approvalRequestId: pending.id });
-        return;
-      }
-
-      const approval = await createApprovalRequest({
-        projectId: flag.projectId,
-        environmentId: environment.id,
-        action: approvalAction,
-        key: flag.key,
-        requestedBy: auth.user.id,
-        metadataJson: {
-          module: 'flags',
-          resourceType: 'feature_flag_env_override',
-          flagId: flag.id,
-          environmentId: environment.id,
-          overrideEnabled: enabled,
-          variantId,
-        },
-      });
-
-      await logAudit({
-        projectId: flag.projectId,
-        actorUserId: auth.user.id,
-        actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'approval.requested',
-        resourceType: 'approval_request',
-        resourceId: approval.id,
-        metadataJson: {
-          module: 'flags',
-          action: approvalAction,
-          key: flag.key,
-          flagId: flag.id,
-          environmentId: environment.id,
-        },
-      });
-
-      reply.code(202).send({ status: 'pending', approvalRequestId: approval.id });
-      return;
-    }
-
-    if (enabled === null && variantId === null) {
-      await prisma.featureFlagEnvironmentOverride.deleteMany({
-        where: {
-          flagId: flag.id,
-          environmentId: environment.id,
-        },
-      });
-      await logAudit({
-        projectId: flag.projectId,
-        actorUserId: auth.user?.id,
-        actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'flag.override.delete',
-        resourceType: 'feature_flag_env_override',
-        resourceId: `${flag.id}:${environment.id}`,
-        metadataJson: { module: 'flags', flagId: flag.id, environmentId: environment.id },
-      });
-      reply.send({ ok: true });
-      return;
-    }
-
-    const upserted = await prisma.featureFlagEnvironmentOverride.upsert({
-      where: {
-        flagId_environmentId: {
-          flagId: flag.id,
-          environmentId: environment.id,
-        },
-      },
-      create: {
-        flagId: flag.id,
-        environmentId: environment.id,
-        enabled,
-        variantId,
-      },
-      update: {
-        enabled,
-        variantId,
-      },
-    });
-
-    await logAudit({
-      projectId: flag.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'flag.override.update',
-      resourceType: 'feature_flag_env_override',
-      resourceId: upserted.id,
-      metadataJson: {
-        module: 'flags',
-        flagId: upserted.flagId,
-        environmentId: upserted.environmentId,
-        enabled: upserted.enabled,
-        variantId: upserted.variantId,
-      },
-    });
-
-    reply.send(toFeatureFlagEnvironmentOverrideDto(upserted));
   });
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  getRouteMatch,
   getEnvironmentId,
   getProjectId,
   isProjectScopedRoute,
@@ -22,6 +23,36 @@ describe('router helpers', () => {
     }
     expect(getProjectId(match)).toBe('p1')
     expect(getEnvironmentId(match)).toBe('e1')
+  })
+
+  it('resolves environment id for canonical flags route', () => {
+    const match = getRouteMatch(
+      '/projects/p1/flags/environments/e1',
+      '',
+    )
+    expect(match).toEqual({ name: 'flag-environment', projectId: 'p1', environmentId: 'e1' })
+    expect(getEnvironmentId(match)).toBe('e1')
+  })
+
+  it('resolves auth environments route', () => {
+    const match = getRouteMatch('/projects/p1/auth/environments/e1', '')
+    expect(match).toEqual({
+      name: 'auth-environment',
+      projectId: 'p1',
+      environmentId: 'e1',
+    })
+    expect(getEnvironmentId(match)).toBe('e1')
+  })
+
+  it('resolves module environment list routes', () => {
+    expect(getRouteMatch('/projects/p1/auth/environments', '')).toEqual({
+      name: 'auth-environments',
+      projectId: 'p1',
+    })
+    expect(getRouteMatch('/projects/p1/flags/environments', '')).toEqual({
+      name: 'flag-environments',
+      projectId: 'p1',
+    })
   })
 
   it('returns null for non project routes', () => {

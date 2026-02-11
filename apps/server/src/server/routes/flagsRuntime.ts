@@ -73,11 +73,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           environmentId?: string;
           flagKey?: string;
           subjectKey?: string;
+          runtime?: 'client' | 'server';
         }
       | undefined;
     const environmentId = body?.environmentId?.trim();
     const flagKey = body?.flagKey?.trim();
     const subjectKey = body?.subjectKey?.trim();
+    const runtime =
+      body?.runtime === 'client' || body?.runtime === 'server'
+        ? body.runtime
+        : 'server';
     if (!environmentId || !flagKey || !subjectKey) {
       reply
         .code(400)
@@ -100,10 +105,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             deletedAt: null,
           },
           include: {
-            variants: true,
-            rules: true,
-            envOverrides: {
+            environmentConfigs: {
               where: { environmentId },
+              include: { variants: true },
               take: 1,
             },
           },
@@ -116,12 +120,17 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
+    const config = flag.environmentConfigs[0];
+    if (!config) {
+      reply.code(404).send({ error: 'Flag config not found for environment' });
+      return;
+    }
+
     const result = evaluateFlag({
       flag,
-      rules: flag.rules,
-      variants: flag.variants,
-      override: flag.envOverrides[0] ?? null,
-      subjectKey,
+      config,
+      variants: config.variants,
+      runtime,
     });
 
     reply.send({
@@ -153,10 +162,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           environmentId?: string;
           subjectKey?: string;
           flagKeys?: string[];
+          runtime?: 'client' | 'server';
         }
       | undefined;
     const environmentId = body?.environmentId?.trim();
     const subjectKey = body?.subjectKey?.trim();
+    const runtime =
+      body?.runtime === 'client' || body?.runtime === 'server'
+        ? body.runtime
+        : 'server';
     if (!environmentId || !subjectKey) {
       reply.code(400).send({ error: 'environmentId and subjectKey are required' });
       return;
@@ -181,22 +195,31 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             ...(flagKeys.length > 0 ? { key: { in: flagKeys } } : {}),
           },
           include: {
-            variants: true,
-            rules: true,
-            envOverrides: {
+            environmentConfigs: {
               where: { environmentId },
+              include: { variants: true },
+              take: 1,
             },
           },
         }),
     );
 
     const results = flags.map((flag) => {
+      const config = flag.environmentConfigs[0];
+      if (!config) {
+        return {
+          flagKey: flag.key,
+          projectId: flag.projectId,
+          environmentId,
+          enabled: false,
+          reason: 'flag_disabled' as const,
+        };
+      }
       const evaluation = evaluateFlag({
         flag,
-        rules: flag.rules,
-        variants: flag.variants,
-        override: flag.envOverrides[0] ?? null,
-        subjectKey,
+        config,
+        variants: config.variants,
+        runtime,
       });
 
       return {

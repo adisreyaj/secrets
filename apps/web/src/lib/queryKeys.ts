@@ -27,12 +27,15 @@ export const queryKeys = {
   members: (projectId: string) => ['projects', projectId, 'members'] as const,
   invites: (projectId: string) => ['projects', projectId, 'invites'] as const,
   tokens: (projectId: string) => ['projects', projectId, 'tokens'] as const,
-  flags: (projectId: string) => ['projects', projectId, 'flags'] as const,
+  flags: (projectId: string, environmentId?: string | null) =>
+    ['projects', projectId, 'flags', environmentId ?? 'all'] as const,
   flag: (flagId: string) => ['flags', flagId] as const,
-  flagVariants: (flagId: string) => ['flags', flagId, 'variants'] as const,
-  flagRules: (flagId: string) => ['flags', flagId, 'rules'] as const,
-  flagSdkKeys: (projectId: string) =>
-    ['projects', projectId, 'flag-sdk-keys'] as const,
+  flagVariants: (flagId: string, environmentId?: string | null) =>
+    ['flags', flagId, 'variants', environmentId ?? 'all'] as const,
+  flagRules: (flagId: string, environmentId?: string | null) =>
+    ['flags', flagId, 'rules', environmentId ?? 'all'] as const,
+  flagSdkKeys: (projectId: string, environmentId?: string | null) =>
+    ['projects', projectId, 'flag-sdk-keys', environmentId ?? 'all'] as const,
   authConfig: (projectId: string) =>
     ['projects', projectId, 'auth', 'config'] as const,
   authProviders: (projectId: string) =>

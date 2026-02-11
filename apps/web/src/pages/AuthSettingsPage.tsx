@@ -2,6 +2,7 @@ import type {
   AuditLogDto,
   AuthClientDto,
   AuthProviderDto,
+  EnvironmentDto,
   ProjectDto,
 } from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -25,16 +26,23 @@ import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
 import { getProjectModuleState } from '../lib/modules'
-import { projectPath } from '../lib/paths'
+import {
+  authEnvironmentPath,
+  authEnvironmentsPath,
+  projectPath,
+} from '../lib/paths'
 import { humanizeAction, humanizeResourceType } from '../features/audit/labels'
 import { runMutationWithToast } from '../lib/mutationFeedback'
 import { queryKeys } from '../lib/queryKeys'
 import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
+import { getLastEnvironmentId } from '../lib/shortcuts.utils'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import { EnvironmentTabsCard } from './environment/EnvironmentTabsCard'
 
 type AuthSettingsPageProps = {
   projectId: string
+  environmentId: string
   navigate: (path: string) => void
 }
 
@@ -71,7 +79,11 @@ const DEFAULT_PROVIDER_FORM: ProviderFormState = {
   scopes: 'openid,email,profile',
 }
 
-export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps) => {
+export const AuthSettingsPage = ({
+  projectId,
+  environmentId,
+  navigate,
+}: AuthSettingsPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
   const [saving, setSaving] = useState(false)
@@ -97,6 +109,15 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
   const { data: modulesData } = useQuery({
     queryKey: queryKeys.projectModules(projectId),
     queryFn: () => api.listProjectModules(projectId),
+    enabled: Boolean(user) && Boolean(projectId),
+  })
+  const {
+    data: environmentsData,
+    error: environmentsErrorRaw,
+    isLoading: environmentsLoading,
+  } = useQuery<EnvironmentDto[]>({
+    queryKey: queryKeys.environments(projectId),
+    queryFn: () => api.listEnvironments(projectId),
     enabled: Boolean(user) && Boolean(projectId),
   })
   const {
@@ -137,9 +158,14 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
   })
 
   const projects = asArray(projectsData)
+  const environments = asArray(environmentsData)
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
     [projects, projectId],
+  )
+  const selectedEnvironment = useMemo(
+    () => environments.find((env) => env.id === environmentId) ?? null,
+    [environments, environmentId],
   )
   const isAdmin = selectedProject?.role === 'ADMIN'
   const moduleState = useMemo(() => getProjectModuleState(modulesData), [modulesData])
@@ -168,9 +194,46 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
     })
   }, [configData])
 
+  useEffect(() => {
+    if (!projectId || environmentsLoading || environments.length === 0 || selectedEnvironment) {
+      return
+    }
+    const fallbackEnvironmentId = getLastEnvironmentId(projectId)
+    const fallback =
+      environments.find((env) => env.id === fallbackEnvironmentId) ??
+      environments[0]
+    if (!fallback) return
+    navigate(authEnvironmentPath(projectId, selectedProject?.slug, fallback.id))
+  }, [
+    projectId,
+    environments,
+    environmentsLoading,
+    selectedEnvironment,
+    navigate,
+    selectedProject?.slug,
+  ])
+
   useRegisterShortcut('b', () =>
-    navigate(projectPath(projectId, selectedProject?.slug)),
+    navigate(authEnvironmentsPath(projectId, selectedProject?.slug)),
   )
+
+  const handleCreateEnvironment = async (payload: {
+    name: string
+    copyFromEnvironmentId?: string | null
+  }) => {
+    try {
+      await api.createEnvironment(projectId, {
+        name: payload.name,
+        copyFromEnvironmentId: payload.copyFromEnvironmentId ?? undefined,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.environments(projectId),
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
 
   const saveConfig = async () => {
     if (!form || saving) return
@@ -314,6 +377,7 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
   const providersError = providersErrorRaw ? getErrorMessage(providersErrorRaw) : null
   const clientsError = clientsErrorRaw ? getErrorMessage(clientsErrorRaw) : null
   const auditError = auditErrorRaw ? getErrorMessage(auditErrorRaw) : null
+  const environmentsError = environmentsErrorRaw ? getErrorMessage(environmentsErrorRaw) : null
 
   if (!moduleState.auth) {
     return (
@@ -324,7 +388,9 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
           actions={
             <Button
               variant="outline"
-              onClick={() => navigate(projectPath(projectId, selectedProject?.slug))}
+              onClick={() =>
+                navigate(authEnvironmentsPath(projectId, selectedProject?.slug))
+              }
             >
               <ArrowLeft className="h-4 w-4" />
               Back to overview
@@ -340,11 +406,13 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
     <section className="flex flex-col gap-6">
       <PageHeader
         title="Auth settings"
-        subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
+        subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}${selectedEnvironment ? ` · Environment: ${selectedEnvironment.name}` : ''}`}
         actions={
           <Button
             variant="outline"
-            onClick={() => navigate(projectPath(projectId, selectedProject?.slug))}
+            onClick={() =>
+              navigate(authEnvironmentsPath(projectId, selectedProject?.slug))
+            }
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview
@@ -353,13 +421,39 @@ export const AuthSettingsPage = ({ projectId, navigate }: AuthSettingsPageProps)
         }
       />
 
-      {(projectsError || configError || providersError || clientsError || auditError) && (
+      {(projectsError ||
+        configError ||
+        providersError ||
+        clientsError ||
+        auditError ||
+        environmentsError) && (
         <ErrorBanner
           message={
-            projectsError || configError || providersError || clientsError || auditError
+            projectsError ||
+            configError ||
+            providersError ||
+            clientsError ||
+            auditError ||
+            environmentsError
           }
         />
       )}
+
+      <section className="flex flex-col gap-0">
+        <EnvironmentTabsCard
+          environments={environments}
+          envLoading={environmentsLoading}
+          environmentId={environmentId}
+          onSelectEnvironment={(envId) =>
+            navigate(authEnvironmentPath(projectId, selectedProject?.slug, envId))
+          }
+          environmentOptions={environments.map((env) => ({
+            id: env.id,
+            name: env.name,
+          }))}
+          onCreateEnvironment={handleCreateEnvironment}
+        />
+      </section>
 
       <SectionCard>
         <SectionHeader

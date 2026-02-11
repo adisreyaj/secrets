@@ -14,13 +14,27 @@ type Flag = {
   deletedAt: Date | null;
 };
 
-type Rule = {
+type EnvironmentConfig = {
   id: string;
   flagId: string;
-  priority: number;
-  rolloutPercentage: number;
-  variantId: string | null;
-  environmentId: string | null;
+  environmentId: string;
+  enabled: boolean;
+  valueType: 'BOOLEAN' | 'MULTIVARIATE';
+  booleanValue: boolean | null;
+  runtime: 'BOTH' | 'CLIENT' | 'SERVER';
+  labelsJson: string[];
+  defaultVariantKey: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type EnvironmentVariant = {
+  id: string;
+  environmentConfigId: string;
+  key: string;
+  valueType: 'STRING' | 'JSON';
+  value: string;
+  orderIndex: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -58,7 +72,8 @@ const state = {
     updatedAt: new Date(),
   },
   flags: [] as Flag[],
-  rules: [] as Rule[],
+  environmentConfigs: [] as EnvironmentConfig[],
+  environmentVariants: [] as EnvironmentVariant[],
   sdkKeys: [] as SdkKey[],
 };
 
@@ -106,28 +121,62 @@ vi.mock('../src/db.js', () => ({
       findMany: async () => [],
     },
     featureFlag: {
-      findMany: async ({ where, include }: any) => {
+      findMany: async ({ where, include, select }: any) => {
         const filtered = state.flags.filter(
           (flag) =>
             flag.projectId === where.projectId &&
             flag.deletedAt === null &&
-            (!where.key?.in || where.key.in.includes(flag.key)),
+            (!where.key?.in || where.key.in.includes(flag.key)) &&
+            (!where.NOT?.id || flag.id !== where.NOT.id),
         );
+        if (select?.key) {
+          return filtered.map((flag) => ({ key: flag.key }));
+        }
         if (!include) return filtered;
         return filtered.map((flag) => ({
           ...flag,
-          variants: [],
-          rules: state.rules.filter((rule) => rule.flagId === flag.id),
-          envOverrides: [],
+          environmentConfigs: state.environmentConfigs
+            .filter(
+              (config) =>
+                config.flagId === flag.id &&
+                (!include.environmentConfigs?.where?.environmentId ||
+                  config.environmentId === include.environmentConfigs.where.environmentId),
+            )
+            .map((config) => ({
+              ...config,
+              variants: state.environmentVariants.filter(
+                (variant) => variant.environmentConfigId === config.id,
+              ),
+            })),
         }));
       },
-      findFirst: async ({ where }: any) =>
-        state.flags.find(
-          (flag) =>
-            (!where?.id || flag.id === where.id) &&
-            (!where?.projectId || flag.projectId === where.projectId) &&
-            flag.deletedAt === null,
-        ) ?? null,
+      findFirst: async ({ where, include }: any) => {
+        const found =
+          state.flags.find(
+            (flag) =>
+              (!where?.id || flag.id === where.id) &&
+              (!where?.projectId || flag.projectId === where.projectId) &&
+              flag.deletedAt === null,
+          ) ?? null;
+        if (!found) return null;
+        if (!include) return found;
+        return {
+          ...found,
+          environmentConfigs: state.environmentConfigs
+            .filter(
+              (config) =>
+                config.flagId === found.id &&
+                (!include.environmentConfigs?.where?.environmentId ||
+                  config.environmentId === include.environmentConfigs.where.environmentId),
+            )
+            .map((config) => ({
+              ...config,
+              variants: state.environmentVariants.filter(
+                (variant) => variant.environmentConfigId === config.id,
+              ),
+            })),
+        };
+      },
       create: async ({ data }: any) => {
         const now = new Date();
         const created: Flag = {
@@ -148,41 +197,91 @@ vi.mock('../src/db.js', () => ({
       update: async ({ where, data }: any) => {
         const current = state.flags.find((flag) => flag.id === where.id);
         if (!current) throw new Error('Flag not found');
-        Object.assign(current, data, { updatedAt: new Date() });
+        if (typeof data.key !== 'undefined') current.key = data.key;
+        if (typeof data.name !== 'undefined') current.name = data.name;
+        if (Object.prototype.hasOwnProperty.call(data, 'description')) {
+          current.description = data.description ?? null;
+        }
+        if (typeof data.valueType !== 'undefined') current.valueType = data.valueType;
+        if (typeof data.enabled !== 'undefined') current.enabled = data.enabled;
+        current.updatedAt = new Date();
         return current;
       },
     },
-    featureFlagVariant: {
-      findFirst: async () => null,
-      create: async () => {
-        throw new Error('not implemented in test');
-      },
-      findMany: async () => [],
-    },
-    featureFlagRule: {
-      create: async ({ data }: any) => {
+    featureFlagEnvironmentConfig: {
+      upsert: async ({ where, create, update }: any) => {
+        const existing = state.environmentConfigs.find(
+          (item) =>
+            item.flagId === where.flagId_environmentId.flagId &&
+            item.environmentId === where.flagId_environmentId.environmentId,
+        );
+        if (existing) {
+          Object.assign(existing, update, { updatedAt: new Date() });
+          return existing;
+        }
         const now = new Date();
-        const created: Rule = {
-          id: nextId('rule', state.rules.length),
-          flagId: data.flagId,
-          priority: data.priority,
-          rolloutPercentage: data.rolloutPercentage,
-          variantId: data.variantId ?? null,
-          environmentId: data.environmentId ?? null,
+        const created: EnvironmentConfig = {
+          id: nextId('ffc', state.environmentConfigs.length),
+          flagId: create.flagId,
+          environmentId: create.environmentId,
+          enabled: create.enabled,
+          valueType: create.valueType,
+          booleanValue: create.booleanValue ?? null,
+          runtime: create.runtime,
+          labelsJson: create.labelsJson ?? [],
+          defaultVariantKey: create.defaultVariantKey ?? null,
           createdAt: now,
           updatedAt: now,
         };
-        state.rules.push(created);
+        state.environmentConfigs.push(created);
         return created;
       },
-      findMany: async ({ where }: any) =>
-        state.rules.filter((rule) => rule.flagId === where.flagId),
+      findUnique: async ({ where, include }: any) => {
+        let config: EnvironmentConfig | null = null;
+        if (where?.id) {
+          config =
+            state.environmentConfigs.find((item) => item.id === where.id) ?? null;
+        } else if (where?.flagId_environmentId) {
+          config =
+            state.environmentConfigs.find(
+              (item) =>
+                item.flagId === where.flagId_environmentId.flagId &&
+                item.environmentId === where.flagId_environmentId.environmentId,
+            ) ?? null;
+        }
+        if (!config) return null;
+        if (!include?.variants) return config;
+        return {
+          ...config,
+          variants: state.environmentVariants.filter(
+            (variant) => variant.environmentConfigId === config.id,
+          ),
+        };
+      },
     },
-    featureFlagEnvironmentOverride: {
-      findMany: async () => [],
-      findUnique: async () => null,
-      upsert: async () => ({ id: 'override_1' }),
-      deleteMany: async () => ({ count: 0 }),
+    featureFlagEnvironmentVariant: {
+      createMany: async ({ data }: any) => {
+        for (const item of data) {
+          state.environmentVariants.push({
+            id: nextId('ffv', state.environmentVariants.length),
+            environmentConfigId: item.environmentConfigId,
+            key: item.key,
+            valueType: item.valueType,
+            value: item.value,
+            orderIndex: item.orderIndex,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        }
+        return { count: data.length };
+      },
+      deleteMany: async ({ where }: any) => {
+        const before = state.environmentVariants.length;
+        state.environmentVariants = state.environmentVariants.filter(
+          (item) => item.environmentConfigId !== where.environmentConfigId,
+        );
+        return { count: before - state.environmentVariants.length };
+      },
     },
     featureFlagSdkKey: {
       create: async ({ data }: any) => {
@@ -203,9 +302,7 @@ vi.mock('../src/db.js', () => ({
       },
       findMany: async ({ where }: any) =>
         state.sdkKeys.filter(
-          (key) =>
-            key.projectId === where.projectId &&
-            key.revokedAt === where.revokedAt,
+          (key) => key.projectId === where.projectId && key.revokedAt === where.revokedAt,
         ),
       findFirst: async ({ where }: any) =>
         state.sdkKeys.find(
@@ -235,7 +332,8 @@ describe('cross-module e2e', () => {
 
   beforeEach(() => {
     state.flags = [];
-    state.rules = [];
+    state.environmentConfigs = [];
+    state.environmentVariants = [];
     state.sdkKeys = [];
   });
 
@@ -263,18 +361,19 @@ describe('cross-module e2e', () => {
       method: 'POST',
       url: '/projects/project_1/flags',
       headers,
-      payload: { key: 'checkout-redesign', name: 'Checkout Redesign', valueType: 'BOOLEAN' },
+      payload: {
+        environmentId: 'env_1',
+        key: 'checkout-redesign',
+        name: 'Checkout Redesign',
+        valueType: 'BOOLEAN',
+        enabled: true,
+        booleanValue: true,
+        runtime: 'both',
+        labels: ['checkout'],
+      },
     });
     expect(createdFlag.statusCode).toBe(201);
     const flag = createdFlag.json() as { id: string; key: string };
-
-    const createdRule = await app.inject({
-      method: 'POST',
-      url: `/flags/${flag.id}/rules`,
-      headers,
-      payload: { priority: 0, rolloutPercentage: 100 },
-    });
-    expect(createdRule.statusCode).toBe(201);
 
     const sdkCreate = await app.inject({
       method: 'POST',
@@ -300,9 +399,14 @@ describe('cross-module e2e', () => {
       },
     });
     expect(evaluate.statusCode).toBe(200);
-    const evalBody = evaluate.json() as { enabled: boolean; flagKey: string };
+    const evalBody = evaluate.json() as {
+      enabled: boolean;
+      flagKey: string;
+      reason: string;
+    };
     expect(evalBody.flagKey).toBe('checkout-redesign');
     expect(evalBody.enabled).toBe(true);
+    expect(evalBody.reason).toBe('boolean_value');
 
     await app.close();
   });

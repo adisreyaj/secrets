@@ -18,31 +18,25 @@ type Flag = {
 
 type Variant = {
   id: string
-  flagId: string
+  environmentConfigId: string
   key: string
   value: string
-  weight: number
+  valueType: 'STRING' | 'JSON'
+  orderIndex: number
   createdAt: Date
   updatedAt: Date
 }
 
-type Rule = {
-  id: string
-  flagId: string
-  priority: number
-  rolloutPercentage: number
-  variantId: string | null
-  environmentId: string | null
-  createdAt: Date
-  updatedAt: Date
-}
-
-type Override = {
+type EnvironmentConfig = {
   id: string
   flagId: string
   environmentId: string
-  enabled: boolean | null
-  variantId: string | null
+  enabled: boolean
+  valueType: 'BOOLEAN' | 'MULTIVARIATE'
+  booleanValue: boolean | null
+  runtime: 'BOTH' | 'CLIENT' | 'SERVER'
+  labelsJson: string[]
+  defaultVariantKey: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -74,9 +68,8 @@ const state = {
   role: 'ADMIN' as Role,
   environments: [{ id: 'env_1', projectId: 'project_1' }],
   flags: [] as Flag[],
+  environmentConfigs: [] as EnvironmentConfig[],
   variants: [] as Variant[],
-  rules: [] as Rule[],
-  overrides: [] as Override[],
   sdkKeys: [] as SdkKey[],
 }
 
@@ -126,23 +119,57 @@ vi.mock('../src/db.js', () => ({
         }
         return filtered.map((flag) => ({
           ...flag,
-          variants: state.variants.filter((variant) => variant.flagId === flag.id),
-          rules: state.rules.filter((rule) => rule.flagId === flag.id),
-          envOverrides: state.overrides.filter(
-            (override) =>
-              override.flagId === flag.id &&
-              (!include.envOverrides?.where?.environmentId ||
-                override.environmentId === include.envOverrides.where.environmentId),
-          ),
+          environmentConfigs: state.environmentConfigs
+            .filter(
+              (config) =>
+                config.flagId === flag.id &&
+                (!include.environmentConfigs?.where?.environmentId ||
+                  config.environmentId === include.environmentConfigs.where.environmentId),
+            )
+            .map((config) => ({
+              ...config,
+              variants: state.variants.filter(
+                (variant) => variant.environmentConfigId === config.id,
+              ),
+            })),
+          variants: include.variants
+            ? state.environmentConfigs
+                .filter((config) => config.flagId === flag.id)
+                .flatMap((config) =>
+                  state.variants.filter(
+                    (variant) => variant.environmentConfigId === config.id,
+                  ),
+                )
+            : [],
+          rules: [],
+          envOverrides: [],
         }))
       },
-      findFirst: async ({ where }: any) => {
+      findFirst: async ({ where, include }: any) => {
         const found = state.flags.find((flag) => {
           if (where?.id && flag.id !== where.id) return false
+          if (where?.projectId && flag.projectId !== where.projectId) return false
           if (where?.deletedAt === null && flag.deletedAt !== null) return false
           return true
         })
-        return found ?? null
+        if (!found) return null
+        if (!include) return found
+        return {
+          ...found,
+          environmentConfigs: state.environmentConfigs
+            .filter(
+              (config) =>
+                config.flagId === found.id &&
+                (!include.environmentConfigs?.where?.environmentId ||
+                  config.environmentId === include.environmentConfigs.where.environmentId),
+            )
+            .map((config) => ({
+              ...config,
+              variants: state.variants.filter(
+                (variant) => variant.environmentConfigId === config.id,
+              ),
+            })),
+        }
       },
       create: async ({ data }: any) => {
         const now = new Date()
@@ -161,16 +188,112 @@ vi.mock('../src/db.js', () => ({
         state.flags.push(created)
         return created
       },
+      update: async ({ where, data }: any) => {
+        const found = state.flags.find((flag) => flag.id === where.id)
+        if (!found) throw new Error('Flag not found')
+        if (typeof data.key !== 'undefined') found.key = data.key
+        if (typeof data.name !== 'undefined') found.name = data.name
+        if (Object.prototype.hasOwnProperty.call(data, 'description')) {
+          found.description = data.description ?? null
+        }
+        if (typeof data.valueType !== 'undefined') {
+          found.valueType = data.valueType
+        }
+        if (typeof data.enabled !== 'undefined') found.enabled = data.enabled
+        found.updatedAt = new Date()
+        return found
+      },
     },
-    featureFlagVariant: {
+    featureFlagEnvironmentConfig: {
+      upsert: async ({ where, create, update }: any) => {
+        const existing = state.environmentConfigs.find(
+          (config) =>
+            config.flagId === where.flagId_environmentId.flagId &&
+            config.environmentId === where.flagId_environmentId.environmentId,
+        )
+        if (existing) {
+          existing.enabled = update.enabled
+          existing.valueType = update.valueType
+          existing.booleanValue = update.booleanValue ?? null
+          existing.runtime = update.runtime
+          existing.labelsJson = update.labelsJson ?? []
+          existing.defaultVariantKey = update.defaultVariantKey ?? null
+          existing.updatedAt = new Date()
+          return existing
+        }
+        const now = new Date()
+        const created: EnvironmentConfig = {
+          id: nextId('ffc', state.environmentConfigs.length),
+          flagId: create.flagId,
+          environmentId: create.environmentId,
+          enabled: create.enabled,
+          valueType: create.valueType,
+          booleanValue: create.booleanValue ?? null,
+          runtime: create.runtime,
+          labelsJson: create.labelsJson ?? [],
+          defaultVariantKey: create.defaultVariantKey ?? null,
+          createdAt: now,
+          updatedAt: now,
+        }
+        state.environmentConfigs.push(created)
+        return created
+      },
+      findUnique: async ({ where, include }: any) => {
+        let config: EnvironmentConfig | null = null
+        if (where?.id) {
+          config =
+            state.environmentConfigs.find((item) => item.id === where.id) ?? null
+        } else if (where?.flagId_environmentId) {
+          config =
+            state.environmentConfigs.find(
+              (item) =>
+                item.flagId === where.flagId_environmentId.flagId &&
+                item.environmentId === where.flagId_environmentId.environmentId,
+            ) ?? null
+        }
+        if (!config) return null
+        if (!include?.variants) return config
+        return {
+          ...config,
+          variants: state.variants.filter(
+            (variant) => variant.environmentConfigId === config.id,
+          ),
+        }
+      },
+    },
+    featureFlagEnvironmentVariant: {
+      createMany: async ({ data }: any) => {
+        for (const item of data) {
+          const now = new Date()
+          state.variants.push({
+            id: nextId('ffv', state.variants.length),
+            environmentConfigId: item.environmentConfigId,
+            key: item.key,
+            valueType: item.valueType,
+            value: item.value,
+            orderIndex: item.orderIndex ?? 0,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }
+        return { count: data.length }
+      },
+      deleteMany: async ({ where }: any) => {
+        const before = state.variants.length
+        state.variants = state.variants.filter(
+          (variant) => variant.environmentConfigId !== where.environmentConfigId,
+        )
+        return { count: before - state.variants.length }
+      },
       create: async ({ data }: any) => {
         const now = new Date()
         const created: Variant = {
-          id: nextId('variant', state.variants.length),
-          flagId: data.flagId,
+          id: nextId('ffv', state.variants.length),
+          environmentConfigId: data.environmentConfigId,
           key: data.key,
           value: data.value,
-          weight: data.weight,
+          valueType: data.valueType ?? 'STRING',
+          orderIndex: data.orderIndex ?? 0,
           createdAt: now,
           updatedAt: now,
         }
@@ -181,71 +304,13 @@ vi.mock('../src/db.js', () => ({
         state.variants.find(
           (variant) =>
             (!where?.id || variant.id === where.id) &&
-            (!where?.flagId || variant.flagId === where.flagId),
+            (!where?.environmentConfigId ||
+              variant.environmentConfigId === where.environmentConfigId),
         ) ?? null,
       findMany: async ({ where }: any) =>
-        state.variants.filter((variant) => variant.flagId === where.flagId),
-    },
-    featureFlagRule: {
-      create: async ({ data }: any) => {
-        const now = new Date()
-        const created: Rule = {
-          id: nextId('rule', state.rules.length),
-          flagId: data.flagId,
-          priority: data.priority,
-          rolloutPercentage: data.rolloutPercentage,
-          variantId: data.variantId ?? null,
-          environmentId: null,
-          createdAt: now,
-          updatedAt: now,
-        }
-        state.rules.push(created)
-        return created
-      },
-      findMany: async ({ where }: any) => state.rules.filter((rule) => rule.flagId === where.flagId),
-    },
-    featureFlagEnvironmentOverride: {
-      findUnique: async ({ where }: any) =>
-        state.overrides.find(
-          (override) =>
-            override.flagId === where.flagId_environmentId.flagId &&
-            override.environmentId === where.flagId_environmentId.environmentId,
-        ) ?? null,
-      upsert: async ({ where, create, update }: any) => {
-        const existing = state.overrides.find(
-          (override) =>
-            override.flagId === where.flagId_environmentId.flagId &&
-            override.environmentId === where.flagId_environmentId.environmentId,
-        )
-        if (existing) {
-          existing.enabled = update.enabled
-          existing.variantId = update.variantId
-          existing.updatedAt = new Date()
-          return existing
-        }
-        const created: Override = {
-          id: nextId('override', state.overrides.length),
-          flagId: create.flagId,
-          environmentId: create.environmentId,
-          enabled: create.enabled ?? null,
-          variantId: create.variantId ?? null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }
-        state.overrides.push(created)
-        return created
-      },
-      deleteMany: async ({ where }: any) => {
-        const before = state.overrides.length
-        state.overrides = state.overrides.filter(
-          (override) =>
-            !(
-              override.flagId === where.flagId &&
-              override.environmentId === where.environmentId
-            ),
-        )
-        return { count: before - state.overrides.length }
-      },
+        state.variants.filter(
+          (variant) => variant.environmentConfigId === where.environmentConfigId,
+        ),
     },
     environment: {
       findUnique: async ({ where }: any) =>
@@ -324,9 +389,8 @@ describe('feature flags integration flow', () => {
 
   beforeEach(() => {
     state.flags = []
+    state.environmentConfigs = []
     state.variants = []
-    state.rules = []
-    state.overrides = []
     state.sdkKeys = []
     state.role = 'ADMIN'
     state.apiToken = {
@@ -339,7 +403,7 @@ describe('feature flags integration flow', () => {
     }
   })
 
-  it('covers create -> rollout -> override -> runtime SDK evaluation', async () => {
+  it('covers create -> update -> runtime SDK evaluation', async () => {
     const app = await buildApp()
     const authHeaders = { authorization: 'Bearer mgmt-token' }
 
@@ -348,39 +412,25 @@ describe('feature flags integration flow', () => {
       url: '/projects/project_1/flags',
       headers: authHeaders,
       payload: {
+        environmentId: 'env_1',
         key: 'checkout-redesign',
         name: 'Checkout redesign',
         valueType: 'MULTIVARIATE',
         enabled: true,
+        runtime: 'both',
+        labels: ['checkout', 'beta'],
+        multivariate: {
+          defaultVariantKey: 'treatment',
+          variants: [
+            { key: 'control', valueType: 'string', value: 'A' },
+            { key: 'treatment', valueType: 'json', value: '{"bucket":"B"}' },
+          ],
+        },
       },
     })
     expect(flagResponse.statusCode).toBe(201)
-    const flag = flagResponse.json() as { id: string; key: string }
-
-    const controlVariantResponse = await app.inject({
-      method: 'POST',
-      url: `/flags/${flag.id}/variants`,
-      headers: authHeaders,
-      payload: { key: 'control', value: 'A', weight: 20 },
-    })
-    expect(controlVariantResponse.statusCode).toBe(201)
-
-    const treatmentVariantResponse = await app.inject({
-      method: 'POST',
-      url: `/flags/${flag.id}/variants`,
-      headers: authHeaders,
-      payload: { key: 'treatment', value: 'B', weight: 80 },
-    })
-    expect(treatmentVariantResponse.statusCode).toBe(201)
-    const treatment = treatmentVariantResponse.json() as { id: string; key: string }
-
-    const ruleResponse = await app.inject({
-      method: 'POST',
-      url: `/flags/${flag.id}/rules`,
-      headers: authHeaders,
-      payload: { priority: 0, rolloutPercentage: 100, variantId: treatment.id },
-    })
-    expect(ruleResponse.statusCode).toBe(201)
+    const flag = flagResponse.json() as { id: string; key: string; runtime: string }
+    expect(flag.runtime).toBe('both')
 
     const sdkKeyResponse = await app.inject({
       method: 'POST',
@@ -425,20 +475,23 @@ describe('feature flags integration flow', () => {
     })
     expect(preOverride.enabled).toBe(true)
     expect(preOverride.variantKey).toBe('treatment')
-    expect(preOverride.reason).toBe('rule_enabled')
+    expect(preOverride.reason).toBe('multivariate_default')
 
-    const overrideResponse = await app.inject({
-      method: 'PUT',
-      url: `/flags/${flag.id}/environments/env_1/override`,
+    const updateResponse = await app.inject({
+      method: 'PATCH',
+      url: `/flags/${flag.id}`,
       headers: authHeaders,
-      payload: { enabled: false },
+      payload: {
+        environmentId: 'env_1',
+        runtime: 'server',
+      },
     })
-    expect(overrideResponse.statusCode).toBe(200)
+    expect(updateResponse.statusCode).toBe(200)
 
     await app.close()
 
     const runtimeApp = await buildApp()
-    const runtimeFetchAfterOverride: typeof fetch = async (input, init) => {
+    const runtimeFetchAfterUpdate: typeof fetch = async (input, init) => {
       const url = new URL(typeof input === 'string' ? input : String(input))
       const payload =
         typeof init?.body === 'string' && init.body.length > 0
@@ -462,16 +515,17 @@ describe('feature flags integration flow', () => {
     const runtimeClientAfterOverride = createFeatureFlagRuntimeClient({
       baseUrl: 'http://localhost:3001',
       sdkKey: sdkKey.key,
-      fetch: runtimeFetchAfterOverride,
+      fetch: runtimeFetchAfterUpdate,
     })
 
-    const postOverride = await runtimeClientAfterOverride.evaluate({
+    const postUpdate = await runtimeClientAfterOverride.evaluate({
       environmentId: 'env_1',
       flagKey: 'checkout-redesign',
       subjectKey: 'user_123',
+      runtime: 'client',
     })
-    expect(postOverride.enabled).toBe(false)
-    expect(postOverride.reason).toBe('override_disabled')
+    expect(postUpdate.enabled).toBe(false)
+    expect(postUpdate.reason).toBe('runtime_not_allowed')
 
     const batch = await runtimeClientAfterOverride.evaluateBatch({
       environmentId: 'env_1',
@@ -479,7 +533,7 @@ describe('feature flags integration flow', () => {
       flagKeys: ['checkout-redesign'],
     })
     expect(batch.results).toHaveLength(1)
-    expect(batch.results[0]?.enabled).toBe(false)
+    expect(batch.results[0]?.enabled).toBe(true)
 
     await runtimeApp.close()
   })

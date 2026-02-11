@@ -1,6 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
-  engineType      = "client"
+  provider   = "prisma-client-js"
+  engineType = "client"
 }
 
 datasource db {
@@ -47,6 +47,17 @@ enum FeatureFlagValueType {
   MULTIVARIATE
 }
 
+enum FeatureFlagRuntime {
+  BOTH
+  CLIENT
+  SERVER
+}
+
+enum FeatureFlagVariantValueType {
+  STRING
+  JSON
+}
+
 enum AuthIdentityProvider {
   LOCAL
   GOOGLE
@@ -59,27 +70,27 @@ enum AuthClientType {
 }
 
 model User {
-  id            String           @id @default(cuid())
-  email         String           @unique
-  passwordHash  String           @map("password_hash")
-  name          String?
-  createdAt     DateTime         @default(now()) @map("created_at")
-  updatedAt     DateTime         @updatedAt @map("updated_at")
-  sessions      UserSession[]
-  cliLoginSessions CliLoginSession[]
-  memberships   ProjectMember[]
+  id                      String                     @id @default(cuid())
+  email                   String                     @unique
+  passwordHash            String                     @map("password_hash")
+  name                    String?
+  createdAt               DateTime                   @default(now()) @map("created_at")
+  updatedAt               DateTime                   @updatedAt @map("updated_at")
+  sessions                UserSession[]
+  cliLoginSessions        CliLoginSession[]
+  memberships             ProjectMember[]
   organizationMemberships OrganizationMember[]
-  createdTokens ApiToken[]       @relation("ApiTokenCreator")
-  globalCliTokens GlobalCliToken[] @relation("GlobalCliTokenCreator")
-  serviceAccounts ServiceAccount[] @relation("ServiceAccountCreator")
-  secretVersions SecretVersion[] @relation("SecretVersionCreator")
-  auditLogs     AuditLog[]       @relation("AuditActor")
-  projectInvites ProjectInvite[] @relation("ProjectInviteCreator")
-  approvalRules ApprovalRule[]   @relation("ApprovalRuleCreator")
-  approvalRequests ApprovalRequest[] @relation("ApprovalRequestRequester")
-  approvalApprovals ApprovalRequest[] @relation("ApprovalRequestApprover")
-  featureFlagSdkKeys FeatureFlagSdkKey[] @relation("FeatureFlagSdkKeyCreator")
-  featureFlagChanges FeatureFlagChangeHistory[] @relation("FeatureFlagChangeActor")
+  createdTokens           ApiToken[]                 @relation("ApiTokenCreator")
+  globalCliTokens         GlobalCliToken[]           @relation("GlobalCliTokenCreator")
+  serviceAccounts         ServiceAccount[]           @relation("ServiceAccountCreator")
+  secretVersions          SecretVersion[]            @relation("SecretVersionCreator")
+  auditLogs               AuditLog[]                 @relation("AuditActor")
+  projectInvites          ProjectInvite[]            @relation("ProjectInviteCreator")
+  approvalRules           ApprovalRule[]             @relation("ApprovalRuleCreator")
+  approvalRequests        ApprovalRequest[]          @relation("ApprovalRequestRequester")
+  approvalApprovals       ApprovalRequest[]          @relation("ApprovalRequestApprover")
+  featureFlagSdkKeys      FeatureFlagSdkKey[]        @relation("FeatureFlagSdkKeyCreator")
+  featureFlagChanges      FeatureFlagChangeHistory[] @relation("FeatureFlagChangeActor")
 
   @@map("users")
 }
@@ -99,13 +110,13 @@ model UserSession {
 }
 
 model CliLoginSession {
-  id         String   @id @default(cuid())
-  code       String   @unique
-  token      String?  @map("token")
-  userId     String?  @map("user_id")
-  projectId  String?  @map("project_id")
-  createdAt  DateTime @default(now()) @map("created_at")
-  expiresAt  DateTime @map("expires_at")
+  id         String    @id @default(cuid())
+  code       String    @unique
+  token      String?   @map("token")
+  userId     String?   @map("user_id")
+  projectId  String?   @map("project_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  expiresAt  DateTime  @map("expires_at")
   consumedAt DateTime? @map("consumed_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -117,36 +128,36 @@ model CliLoginSession {
 }
 
 model Project {
-  id          String          @id @default(cuid())
-  organizationId String?      @map("organization_id")
-  name        String
-  slug        String?         @unique
-  auditRetentionDays Int?     @default(90) @map("audit_retention_days")
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
-  members     ProjectMember[]
-  environments Environment[]
-  tokens      ApiToken[]
-  serviceAccounts ServiceAccount[]
-  audits      AuditLog[]
-  invites     ProjectInvite[]
-  approvalRules ApprovalRule[]
-  approvalRequests ApprovalRequest[]
-  organization Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  modules ProjectModule[]
-  featureFlags FeatureFlag[]
-  featureFlagSdkKeys FeatureFlagSdkKey[]
-  featureFlagChanges FeatureFlagChangeHistory[]
-  authProjectConfig AuthProjectConfig?
-  authEndUsers AuthEndUser[]
-  authIdentities AuthIdentity[]
-  authSessions AuthSession[]
-  authRefreshTokens AuthRefreshToken[]
-  authSigningKeys AuthSigningKey[]
-  authPasswordResetTokens AuthPasswordResetToken[]
+  id                          String                       @id @default(cuid())
+  organizationId              String?                      @map("organization_id")
+  name                        String
+  slug                        String?                      @unique
+  auditRetentionDays          Int?                         @default(90) @map("audit_retention_days")
+  createdAt                   DateTime                     @default(now()) @map("created_at")
+  updatedAt                   DateTime                     @updatedAt @map("updated_at")
+  members                     ProjectMember[]
+  environments                Environment[]
+  tokens                      ApiToken[]
+  serviceAccounts             ServiceAccount[]
+  audits                      AuditLog[]
+  invites                     ProjectInvite[]
+  approvalRules               ApprovalRule[]
+  approvalRequests            ApprovalRequest[]
+  organization                Organization?                @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  modules                     ProjectModule[]
+  featureFlags                FeatureFlag[]
+  featureFlagSdkKeys          FeatureFlagSdkKey[]
+  featureFlagChanges          FeatureFlagChangeHistory[]
+  authProjectConfig           AuthProjectConfig?
+  authEndUsers                AuthEndUser[]
+  authIdentities              AuthIdentity[]
+  authSessions                AuthSession[]
+  authRefreshTokens           AuthRefreshToken[]
+  authSigningKeys             AuthSigningKey[]
+  authPasswordResetTokens     AuthPasswordResetToken[]
   authEmailVerificationTokens AuthEmailVerificationToken[]
-  authClients AuthClient[]
-  authProviderConfigs AuthProviderConfig[]
+  authClients                 AuthClient[]
+  authProviderConfigs         AuthProviderConfig[]
 
   @@index([organizationId])
   @@map("projects")
@@ -174,7 +185,7 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  members OrganizationMember[]
+  members  OrganizationMember[]
   projects Project[]
 
   @@map("organizations")
@@ -197,9 +208,9 @@ model OrganizationMember {
 }
 
 model ProjectMember {
-  id        String  @id @default(cuid())
-  projectId String  @map("project_id")
-  userId    String  @map("user_id")
+  id        String @id @default(cuid())
+  projectId String @map("project_id")
+  userId    String @map("user_id")
   role      Role
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -241,13 +252,14 @@ model Environment {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  secrets Secret[]
-  approvalRules ApprovalRule[]
-  approvalRequests ApprovalRequest[]
-  serviceAccountEnvironments ServiceAccountEnvironment[]
+  project                         Project                          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  secrets                         Secret[]
+  approvalRules                   ApprovalRule[]
+  approvalRequests                ApprovalRequest[]
+  serviceAccountEnvironments      ServiceAccountEnvironment[]
   serviceAccountTokenEnvironments ServiceAccountTokenEnvironment[]
-  featureFlagOverrides FeatureFlagEnvironmentOverride[]
+  featureFlagOverrides            FeatureFlagEnvironmentOverride[]
+  featureFlagEnvironmentConfigs   FeatureFlagEnvironmentConfig[]
 
   @@unique([projectId, name])
   @@unique([projectId, slug])
@@ -266,25 +278,65 @@ model FeatureFlag {
   updatedAt   DateTime             @updatedAt @map("updated_at")
   deletedAt   DateTime?            @map("deleted_at")
 
-  project      Project                         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  variants     FeatureFlagVariant[]
-  rules        FeatureFlagRule[]
-  envOverrides FeatureFlagEnvironmentOverride[]
-  changeHistory FeatureFlagChangeHistory[]
+  project            Project                          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  variants           FeatureFlagVariant[]
+  rules              FeatureFlagRule[]
+  envOverrides       FeatureFlagEnvironmentOverride[]
+  environmentConfigs FeatureFlagEnvironmentConfig[]
+  changeHistory      FeatureFlagChangeHistory[]
 
   @@unique([projectId, key])
   @@index([projectId, enabled])
   @@map("feature_flags")
 }
 
+model FeatureFlagEnvironmentConfig {
+  id                String               @id @default(cuid())
+  flagId            String               @map("flag_id")
+  environmentId     String               @map("environment_id")
+  enabled           Boolean              @default(true)
+  valueType         FeatureFlagValueType @map("value_type")
+  booleanValue      Boolean?             @map("boolean_value")
+  runtime           FeatureFlagRuntime   @default(BOTH)
+  labelsJson        Json?                @map("labels_json")
+  defaultVariantKey String?              @map("default_variant_key")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  flag        FeatureFlag                     @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  environment Environment                     @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  variants    FeatureFlagEnvironmentVariant[]
+
+  @@unique([flagId, environmentId], map: "ff_env_cfg_flag_env_uk")
+  @@index([environmentId], map: "ff_env_cfg_env_idx")
+  @@map("feature_flag_environment_configs")
+}
+
+model FeatureFlagEnvironmentVariant {
+  id                  String                      @id @default(cuid())
+  environmentConfigId String                      @map("environment_config_id")
+  key                 String
+  valueType           FeatureFlagVariantValueType @map("value_type")
+  value               String
+  orderIndex          Int                         @default(0) @map("order_index")
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
+
+  environmentConfig FeatureFlagEnvironmentConfig @relation(fields: [environmentConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([environmentConfigId, key], map: "ff_env_var_cfg_key_uk")
+  @@index([environmentConfigId, orderIndex], map: "ff_env_var_cfg_order_idx")
+  @@map("feature_flag_environment_variants")
+}
+
 model FeatureFlagSdkKey {
-  id         String   @id @default(cuid())
-  projectId  String   @map("project_id")
+  id         String    @id @default(cuid())
+  projectId  String    @map("project_id")
   name       String
-  keyPrefix  String   @map("key_prefix")
-  tokenHash  String   @map("token_hash")
-  createdBy  String   @map("created_by")
-  createdAt  DateTime @default(now()) @map("created_at")
+  keyPrefix  String    @map("key_prefix")
+  tokenHash  String    @map("token_hash")
+  createdBy  String    @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
   lastUsedAt DateTime? @map("last_used_at")
   expiresAt  DateTime? @map("expires_at")
   revokedAt  DateTime? @map("revoked_at")
@@ -328,7 +380,7 @@ model FeatureFlagVariant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  flag      FeatureFlag        @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  flag      FeatureFlag                      @relation(fields: [flagId], references: [id], onDelete: Cascade)
   rules     FeatureFlagRule[]
   overrides FeatureFlagEnvironmentOverride[]
 
@@ -358,7 +410,7 @@ model FeatureFlagEnvironmentOverride {
   id            String   @id @default(cuid())
   flagId        String   @map("flag_id")
   environmentId String   @map("environment_id")
-  enabled       Boolean? 
+  enabled       Boolean?
   variantId     String?  @map("variant_id")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -374,14 +426,14 @@ model FeatureFlagEnvironmentOverride {
 }
 
 model AuthProjectConfig {
-  id                  String   @id @default(cuid())
-  projectId           String   @unique @map("project_id")
-  nativeAuthEnabled   Boolean  @default(true) @map("native_auth_enabled")
-  emailPasswordEnabled Boolean @default(true) @map("email_password_enabled")
-  accessTokenTtlMinutes Int    @default(15) @map("access_token_ttl_minutes")
-  refreshTokenTtlDays Int      @default(30) @map("refresh_token_ttl_days")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  id                    String   @id @default(cuid())
+  projectId             String   @unique @map("project_id")
+  nativeAuthEnabled     Boolean  @default(true) @map("native_auth_enabled")
+  emailPasswordEnabled  Boolean  @default(true) @map("email_password_enabled")
+  accessTokenTtlMinutes Int      @default(15) @map("access_token_ttl_minutes")
+  refreshTokenTtlDays   Int      @default(30) @map("refresh_token_ttl_days")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -389,20 +441,20 @@ model AuthProjectConfig {
 }
 
 model AuthEndUser {
-  id              String   @id @default(cuid())
-  projectId       String   @map("project_id")
+  id              String    @id @default(cuid())
+  projectId       String    @map("project_id")
   email           String
-  displayName     String?  @map("display_name")
+  displayName     String?   @map("display_name")
   emailVerifiedAt DateTime? @map("email_verified_at")
   disabledAt      DateTime? @map("disabled_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  identities AuthIdentity[]
-  sessions AuthSession[]
-  refreshTokens AuthRefreshToken[]
-  passwordResetTokens AuthPasswordResetToken[]
+  project                 Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  identities              AuthIdentity[]
+  sessions                AuthSession[]
+  refreshTokens           AuthRefreshToken[]
+  passwordResetTokens     AuthPasswordResetToken[]
   emailVerificationTokens AuthEmailVerificationToken[]
 
   @@unique([projectId, email])
@@ -420,7 +472,7 @@ model AuthIdentity {
   createdAt       DateTime             @default(now()) @map("created_at")
   updatedAt       DateTime             @updatedAt @map("updated_at")
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   endUser AuthEndUser @relation(fields: [endUserId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, provider, providerSubject])
@@ -429,19 +481,19 @@ model AuthIdentity {
 }
 
 model AuthSession {
-  id               String   @id @default(cuid())
-  projectId        String   @map("project_id")
-  endUserId        String   @map("end_user_id")
-  sessionTokenHash String   @unique @map("session_token_hash")
-  userAgent        String?  @map("user_agent")
-  ipAddress        String?  @map("ip_address")
+  id               String    @id @default(cuid())
+  projectId        String    @map("project_id")
+  endUserId        String    @map("end_user_id")
+  sessionTokenHash String    @unique @map("session_token_hash")
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address")
   lastSeenAt       DateTime? @map("last_seen_at")
-  expiresAt        DateTime @map("expires_at")
+  expiresAt        DateTime  @map("expires_at")
   revokedAt        DateTime? @map("revoked_at")
-  createdAt        DateTime @default(now()) @map("created_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  endUser AuthEndUser @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  endUser       AuthEndUser        @relation(fields: [endUserId], references: [id], onDelete: Cascade)
   refreshTokens AuthRefreshToken[]
 
   @@index([projectId, endUserId])
@@ -450,21 +502,21 @@ model AuthSession {
 }
 
 model AuthRefreshToken {
-  id          String   @id @default(cuid())
-  projectId   String   @map("project_id")
-  endUserId   String   @map("end_user_id")
-  sessionId   String   @map("session_id")
-  tokenHash   String   @unique @map("token_hash")
-  expiresAt   DateTime @map("expires_at")
-  revokedAt   DateTime? @map("revoked_at")
-  rotatedFromId String? @map("rotated_from_id")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id            String    @id @default(cuid())
+  projectId     String    @map("project_id")
+  endUserId     String    @map("end_user_id")
+  sessionId     String    @map("session_id")
+  tokenHash     String    @unique @map("token_hash")
+  expiresAt     DateTime  @map("expires_at")
+  revokedAt     DateTime? @map("revoked_at")
+  rotatedFromId String?   @map("rotated_from_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  endUser AuthEndUser @relation(fields: [endUserId], references: [id], onDelete: Cascade)
-  session AuthSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  rotatedFrom AuthRefreshToken? @relation("AuthRefreshTokenRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
-  rotatedTo AuthRefreshToken[] @relation("AuthRefreshTokenRotation")
+  project     Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  endUser     AuthEndUser        @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  session     AuthSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  rotatedFrom AuthRefreshToken?  @relation("AuthRefreshTokenRotation", fields: [rotatedFromId], references: [id], onDelete: SetNull)
+  rotatedTo   AuthRefreshToken[] @relation("AuthRefreshTokenRotation")
 
   @@index([projectId, endUserId])
   @@index([sessionId])
@@ -473,17 +525,17 @@ model AuthRefreshToken {
 }
 
 model AuthSigningKey {
-  id                   String   @id @default(cuid())
-  projectId            String   @map("project_id")
+  id                   String    @id @default(cuid())
+  projectId            String    @map("project_id")
   kid                  String
   algorithm            String
-  publicKeyPem         String   @map("public_key_pem")
-  privateKeyCiphertext Bytes    @map("private_key_ciphertext")
-  privateKeyIv         Bytes    @map("private_key_iv")
-  privateKeyTag        Bytes    @map("private_key_tag")
-  keyVersion           String   @map("key_version")
-  active               Boolean  @default(false)
-  createdAt            DateTime @default(now()) @map("created_at")
+  publicKeyPem         String    @map("public_key_pem")
+  privateKeyCiphertext Bytes     @map("private_key_ciphertext")
+  privateKeyIv         Bytes     @map("private_key_iv")
+  privateKeyTag        Bytes     @map("private_key_tag")
+  keyVersion           String    @map("key_version")
+  active               Boolean   @default(false)
+  createdAt            DateTime  @default(now()) @map("created_at")
   retiredAt            DateTime? @map("retired_at")
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -494,15 +546,15 @@ model AuthSigningKey {
 }
 
 model AuthPasswordResetToken {
-  id         String   @id @default(cuid())
-  projectId  String   @map("project_id")
-  endUserId  String   @map("end_user_id")
-  tokenHash  String   @unique @map("token_hash")
-  expiresAt  DateTime @map("expires_at")
+  id         String    @id @default(cuid())
+  projectId  String    @map("project_id")
+  endUserId  String    @map("end_user_id")
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
   consumedAt DateTime? @map("consumed_at")
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   endUser AuthEndUser @relation(fields: [endUserId], references: [id], onDelete: Cascade)
 
   @@index([projectId, endUserId])
@@ -511,15 +563,15 @@ model AuthPasswordResetToken {
 }
 
 model AuthEmailVerificationToken {
-  id         String   @id @default(cuid())
-  projectId  String   @map("project_id")
-  endUserId  String   @map("end_user_id")
-  tokenHash  String   @unique @map("token_hash")
-  expiresAt  DateTime @map("expires_at")
+  id         String    @id @default(cuid())
+  projectId  String    @map("project_id")
+  endUserId  String    @map("end_user_id")
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
   consumedAt DateTime? @map("consumed_at")
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   endUser AuthEndUser @relation(fields: [endUserId], references: [id], onDelete: Cascade)
 
   @@index([projectId, endUserId])
@@ -567,15 +619,15 @@ model AuthProviderConfig {
 }
 
 model Secret {
-  id            String          @id @default(cuid())
-  environmentId String          @map("environment_id")
+  id            String    @id @default(cuid())
+  environmentId String    @map("environment_id")
   key           String
-  createdAt     DateTime        @default(now()) @map("created_at")
-  updatedAt     DateTime        @updatedAt @map("updated_at")
-  deletedAt     DateTime?       @map("deleted_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
 
-  environment Environment    @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  versions    SecretVersion[]
+  environment      Environment       @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  versions         SecretVersion[]
   approvalRequests ApprovalRequest[]
 
   @@unique([environmentId, key])
@@ -602,13 +654,13 @@ model SecretVersion {
 }
 
 model ApiToken {
-  id         String   @id @default(cuid())
-  projectId  String   @map("project_id")
+  id         String    @id @default(cuid())
+  projectId  String    @map("project_id")
   name       String
-  tokenHash  String   @map("token_hash")
-  createdBy  String   @map("created_by")
-  readOnly   Boolean  @default(false) @map("read_only")
-  createdAt  DateTime @default(now()) @map("created_at")
+  tokenHash  String    @map("token_hash")
+  createdBy  String    @map("created_by")
+  readOnly   Boolean   @default(false) @map("read_only")
+  createdAt  DateTime  @default(now()) @map("created_at")
   lastUsedAt DateTime? @map("last_used_at")
   expiresAt  DateTime? @map("expires_at")
 
@@ -621,13 +673,13 @@ model ApiToken {
 }
 
 model GlobalCliToken {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   name       String
-  tokenHash  String   @map("token_hash")
-  createdBy  String   @map("created_by")
-  createdAt  DateTime @default(now()) @map("created_at")
+  tokenHash  String    @map("token_hash")
+  createdBy  String    @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
   lastUsedAt DateTime? @map("last_used_at")
-  expiresAt  DateTime @map("expires_at")
+  expiresAt  DateTime  @map("expires_at")
   revokedAt  DateTime? @map("revoked_at")
   deletedAt  DateTime? @map("deleted_at")
 
@@ -646,28 +698,28 @@ model ServiceAccount {
   createdBy String   @map("created_by")
   createdAt DateTime @default(now()) @map("created_at")
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  creator User    @relation("ServiceAccountCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-  tokens  ServiceAccountToken[]
+  project      Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creator      User                        @relation("ServiceAccountCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  tokens       ServiceAccountToken[]
   environments ServiceAccountEnvironment[]
-  auditLogs AuditLog[]
+  auditLogs    AuditLog[]
 
   @@index([projectId])
   @@map("service_accounts")
 }
 
 model ServiceAccountToken {
-  id               String   @id @default(cuid())
-  serviceAccountId String   @map("service_account_id")
+  id               String    @id @default(cuid())
+  serviceAccountId String    @map("service_account_id")
   name             String
-  tokenHash        String   @map("token_hash")
-  readOnly         Boolean  @default(false) @map("read_only")
-  createdAt        DateTime @default(now()) @map("created_at")
+  tokenHash        String    @map("token_hash")
+  readOnly         Boolean   @default(false) @map("read_only")
+  createdAt        DateTime  @default(now()) @map("created_at")
   lastUsedAt       DateTime? @map("last_used_at")
   expiresAt        DateTime? @map("expires_at")
 
-  serviceAccount ServiceAccount @relation(fields: [serviceAccountId], references: [id], onDelete: Cascade)
-  environments ServiceAccountTokenEnvironment[]
+  serviceAccount ServiceAccount                   @relation(fields: [serviceAccountId], references: [id], onDelete: Cascade)
+  environments   ServiceAccountTokenEnvironment[]
 
   @@index([serviceAccountId])
   @@index([tokenHash])
@@ -688,10 +740,10 @@ model ServiceAccountEnvironment {
 
 model ServiceAccountTokenEnvironment {
   serviceAccountTokenId String @map("service_account_token_id")
-  environmentId        String @map("environment_id")
+  environmentId         String @map("environment_id")
 
   serviceAccountToken ServiceAccountToken @relation(fields: [serviceAccountTokenId], references: [id], onDelete: Cascade)
-  environment        Environment        @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  environment         Environment         @relation(fields: [environmentId], references: [id], onDelete: Cascade)
 
   @@id([serviceAccountTokenId, environmentId])
   @@index([environmentId])
@@ -699,18 +751,18 @@ model ServiceAccountTokenEnvironment {
 }
 
 model AuditLog {
-  id           String   @id @default(cuid())
-  projectId    String   @map("project_id")
-  actorUserId  String?  @map("actor_user_id")
-  actorServiceAccountId String? @map("actor_service_account_id")
-  action       String
-  resourceType String   @map("resource_type")
-  resourceId   String?  @map("resource_id")
-  metadataJson Json?    @map("metadata_json")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id                    String   @id @default(cuid())
+  projectId             String   @map("project_id")
+  actorUserId           String?  @map("actor_user_id")
+  actorServiceAccountId String?  @map("actor_service_account_id")
+  action                String
+  resourceType          String   @map("resource_type")
+  resourceId            String?  @map("resource_id")
+  metadataJson          Json?    @map("metadata_json")
+  createdAt             DateTime @default(now()) @map("created_at")
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  actor   User?   @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor          User?           @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   serviceAccount ServiceAccount? @relation(fields: [actorServiceAccountId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
@@ -720,20 +772,20 @@ model AuditLog {
 }
 
 model ApprovalRule {
-  id            String         @id @default(cuid())
-  projectId     String         @map("project_id")
+  id            String   @id @default(cuid())
+  projectId     String   @map("project_id")
   name          String
-  environmentId String?        @map("environment_id")
-  keyPattern    String         @map("key_pattern")
-  actionsJson   Json           @map("actions_json")
-  isActive      Boolean        @default(true) @map("is_active")
-  createdBy     String         @map("created_by")
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
+  environmentId String?  @map("environment_id")
+  keyPattern    String   @map("key_pattern")
+  actionsJson   Json     @map("actions_json")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdBy     String   @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   environment Environment? @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  creator     User        @relation("ApprovalRuleCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  creator     User         @relation("ApprovalRuleCreator", fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([environmentId])

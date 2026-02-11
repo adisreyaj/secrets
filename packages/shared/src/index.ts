@@ -432,38 +432,59 @@ export interface UpdateProjectModuleRequest {
 }
 
 export type FlagValueType = 'BOOLEAN' | 'MULTIVARIATE';
+export type FeatureFlagRuntime = 'both' | 'client' | 'server';
+export type FeatureFlagVariantValueType = 'string' | 'json';
 
 export interface FeatureFlagVariantDto {
-  id: string;
-  flagId: string;
   key: string;
+  valueType: FeatureFlagVariantValueType;
   value: string;
-  weight: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface FeatureFlagRuleDto {
-  id: string;
-  flagId: string;
-  priority: number;
-  environmentId?: string | null;
-  rolloutPercentage: number;
-  variantId?: string | null;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface FeatureFlagDto {
   id: string;
   projectId: string;
+  environmentId: string;
   key: string;
   name: string;
   description?: string | null;
   valueType: FlagValueType;
   enabled: boolean;
+  runtime: FeatureFlagRuntime;
+  labels: string[];
+  booleanValue?: boolean | null;
+  multivariate?: {
+    defaultVariantKey: string;
+    variants: FeatureFlagVariantDto[];
+  } | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface FeatureFlagEnvironmentSnapshotDto {
+  environmentId: string;
+  enabled: boolean;
+  runtime: FeatureFlagRuntime;
+  labels: string[];
+  valueType: FlagValueType;
+  booleanValue?: boolean | null;
+  multivariate?: {
+    defaultVariantKey: string;
+    variants: FeatureFlagVariantDto[];
+  } | null;
+}
+
+export interface FeatureFlagEnvironmentDiffDto {
+  flagId: string;
+  flagKey: string;
+  from: FeatureFlagEnvironmentSnapshotDto;
+  to: FeatureFlagEnvironmentSnapshotDto;
+  differences: {
+    enabled: boolean;
+    runtime: boolean;
+    labels: boolean;
+    value: boolean;
+  };
 }
 
 export interface FeatureFlagSdkKeyDto {
@@ -471,6 +492,7 @@ export interface FeatureFlagSdkKeyDto {
   projectId: string;
   name: string;
   keyPrefix: string;
+  environmentIds?: string[];
   lastUsedAt?: string | null;
   expiresAt?: string | null;
   createdAt: string;
