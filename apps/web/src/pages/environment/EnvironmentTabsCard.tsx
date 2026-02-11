@@ -1,15 +1,12 @@
 import type { EnvironmentDto } from '@secrets/shared'
 import { SectionCard } from '../../components/SectionCard'
 import { Tabs, TabsList, TabsTrigger } from '../../components/ui/tabs'
-import { NewEnvironmentDialog } from './NewEnvironmentDialog'
 
 export const EnvironmentTabsCard = ({
   environments,
   envLoading,
   environmentId,
   onSelectEnvironment,
-  environmentOptions,
-  onCreateEnvironment,
 }: {
   environments: EnvironmentDto[]
   envLoading: boolean
@@ -22,7 +19,7 @@ export const EnvironmentTabsCard = ({
   }) => Promise<boolean>
 }) => {
   return (
-    <SectionCard className="-mb-px rounded-b-none border-b-0 p-4">
+    <SectionCard className="-mb-px rounded-b-none border-b-0 p-4 shadow-none">
       <p className="muted-label">Environments</p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
@@ -52,10 +49,6 @@ export const EnvironmentTabsCard = ({
             </Tabs>
           )}
         </div>
-        <NewEnvironmentDialog
-          environmentOptions={environmentOptions}
-          onCreateEnvironment={onCreateEnvironment}
-        />
       </div>
     </SectionCard>
   )

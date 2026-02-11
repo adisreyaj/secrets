@@ -945,7 +945,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       expiresInMinutes: authConfig.accessTokenTtlMinutes,
     });
 
-    await logRuntimeAuth(oauthState.projectId, 'auth.oauth.login', 'auth_identity', identity.id, {
+    await logRuntimeAuth(oauthState.projectId, 'auth.oauth.login', 'auth_identity', identity?.id ?? null, {
       provider,
       endUserId: endUser.id,
     });

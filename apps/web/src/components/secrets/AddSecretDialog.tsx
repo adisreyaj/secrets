@@ -119,13 +119,9 @@ export const AddSecretDialog = ({
       }}
     >
       <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9"
-        >
+        <Button size="sm" className="h-9">
           <Plus className="h-3.5 w-3.5" />
-          Add secret
+          New secret
           <ShortcutHint keys="n" />
         </Button>
       </DialogTrigger>

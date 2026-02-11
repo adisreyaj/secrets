@@ -9,6 +9,18 @@ export interface EncryptedPayload {
   tag: Uint8Array<ArrayBuffer>;
 }
 
+type DecryptablePayload = {
+  ciphertext: Buffer | Uint8Array;
+  iv: Buffer | Uint8Array;
+  tag: Buffer | Uint8Array;
+};
+
+function toBytes(input: Uint8Array): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(input.byteLength);
+  bytes.set(input);
+  return bytes;
+}
+
 export function loadMasterKey(): Buffer {
   const raw = process.env.MASTER_KEY;
   if (!raw) {
@@ -37,13 +49,13 @@ export function encryptSecret(plaintext: string, key: Buffer): EncryptedPayload 
   const tag = cipher.getAuthTag();
 
   return {
-    ciphertext: new Uint8Array(ciphertext),
-    iv: new Uint8Array(iv),
-    tag: new Uint8Array(tag),
+    ciphertext: toBytes(ciphertext),
+    iv: toBytes(iv),
+    tag: toBytes(tag),
   };
 }
 
-export function decryptSecret(payload: EncryptedPayload, key: Buffer): string {
+export function decryptSecret(payload: DecryptablePayload, key: Buffer): string {
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, payload.iv);
   decipher.setAuthTag(payload.tag);
   const plaintext = Buffer.concat([decipher.update(payload.ciphertext), decipher.final()]);

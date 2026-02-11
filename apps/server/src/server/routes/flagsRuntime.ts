@@ -1,9 +1,16 @@
 import { performance } from 'node:perf_hooks';
+import type { Prisma } from '@prisma/client';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { hashToken } from '../../auth.js';
 import { prisma } from '../../db.js';
 import { evaluateFlag } from '../services/flags/evaluation.js';
 import { createRuntimeCatalogCache } from '../services/flags/runtimeCache.js';
+
+type FlagWithEnvConfig = Prisma.FeatureFlagGetPayload<{
+  include: {
+    environmentConfigs: { include: { variants: true } };
+  };
+}>;
 
 type RuntimeAuth = {
   projectId: string;
@@ -55,9 +62,7 @@ async function requireRuntimeSdkKey(
 }
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  const runtimeCatalogCache = createRuntimeCatalogCache<
-    Awaited<ReturnType<typeof prisma.featureFlag.findMany>>
-  >(5000);
+  const runtimeCatalogCache = createRuntimeCatalogCache<FlagWithEnvConfig[]>(5000);
 
   app.post(
     '/runtime/flags/evaluate',

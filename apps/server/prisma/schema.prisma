@@ -122,8 +122,8 @@ model CliLoginSession {
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId])
-  @@index([code])
   @@index([expiresAt])
+  @@index([consumedAt])
   @@map("cli_login_sessions")
 }
 
@@ -174,7 +174,6 @@ model ProjectModule {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, module])
-  @@index([projectId])
   @@map("project_modules")
 }
 
@@ -203,7 +202,6 @@ model OrganizationMember {
 
   @@unique([organizationId, userId])
   @@index([userId])
-  @@index([organizationId])
   @@map("organization_members")
 }
 
@@ -218,7 +216,6 @@ model ProjectMember {
 
   @@unique([projectId, userId])
   @@index([userId])
-  @@index([projectId])
   @@map("project_members")
 }
 
@@ -287,6 +284,7 @@ model FeatureFlag {
 
   @@unique([projectId, key])
   @@index([projectId, enabled])
+  @@index([projectId, deletedAt])
   @@map("feature_flags")
 }
 
@@ -385,7 +383,6 @@ model FeatureFlagVariant {
   overrides FeatureFlagEnvironmentOverride[]
 
   @@unique([flagId, key])
-  @@index([flagId])
   @@map("feature_flag_variants")
 }
 
@@ -458,7 +455,6 @@ model AuthEndUser {
   emailVerificationTokens AuthEmailVerificationToken[]
 
   @@unique([projectId, email])
-  @@index([projectId])
   @@map("auth_end_users")
 }
 
@@ -498,6 +494,7 @@ model AuthSession {
 
   @@index([projectId, endUserId])
   @@index([expiresAt])
+  @@index([revokedAt, expiresAt])
   @@map("auth_sessions")
 }
 
@@ -631,6 +628,7 @@ model Secret {
   approvalRequests ApprovalRequest[]
 
   @@unique([environmentId, key])
+  @@index([environmentId, deletedAt])
   @@map("secrets")
 }
 
@@ -648,8 +646,7 @@ model SecretVersion {
   secret  Secret @relation(fields: [secretId], references: [id], onDelete: Cascade)
   creator User?  @relation("SecretVersionCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
-  @@index([secretId])
-  @@index([isActive])
+  @@index([secretId, isActive])
   @@map("secret_versions")
 }
 
@@ -669,6 +666,7 @@ model ApiToken {
 
   @@index([projectId])
   @@index([tokenHash])
+  @@index([expiresAt])
   @@map("api_tokens")
 }
 
@@ -688,6 +686,7 @@ model GlobalCliToken {
   @@index([tokenHash])
   @@index([createdBy])
   @@index([expiresAt])
+  @@index([revokedAt, deletedAt])
   @@map("global_cli_tokens")
 }
 
@@ -767,6 +766,8 @@ model AuditLog {
 
   @@index([projectId])
   @@index([actorUserId])
+  @@index([projectId, createdAt])
+  @@index([resourceType, resourceId])
   @@index([actorServiceAccountId])
   @@map("audit_logs")
 }
@@ -823,6 +824,7 @@ model ApprovalRequest {
   approver    User?       @relation("ApprovalRequestApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
 
   @@index([projectId, status])
+  @@index([status, createdAt])
   @@index([environmentId, status])
   @@index([requestedBy, status])
   @@index([secretId, status])

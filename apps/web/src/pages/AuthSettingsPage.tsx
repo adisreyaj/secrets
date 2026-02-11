@@ -1,12 +1,11 @@
 import type {
-  AuditLogDto,
   AuthClientDto,
   AuthProviderDto,
   EnvironmentDto,
   ProjectDto,
 } from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Plus, Save } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
@@ -14,6 +13,14 @@ import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { Checkbox } from '../components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import {
   Select,
@@ -22,17 +29,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select'
+import { Switch } from '../components/ui/switch'
 import { api } from '../lib/api'
 import { createEnvironmentAndRefresh } from '../lib/environmentMutations'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
 import { getProjectModuleState } from '../lib/modules'
-import {
-  authEnvironmentPath,
-  authEnvironmentsPath,
-  projectPath,
-} from '../lib/paths'
-import { humanizeAction, humanizeResourceType } from '../features/audit/labels'
+import { authEnvironmentPath, authEnvironmentsPath } from '../lib/paths'
 import { runMutationWithToast } from '../lib/mutationFeedback'
 import { invalidateQueryKeys } from '../lib/queryInvalidation'
 import { queryKeys } from '../lib/queryKeys'
@@ -82,8 +85,8 @@ export const AuthSettingsPage = ({
   const [providerForm, setProviderForm] = useState<ProviderFormState>(
     defaultProviderFormState,
   )
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false)
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null)
-  const [providerRotateId, setProviderRotateId] = useState<string | null>(null)
   const [providerRotateSecret, setProviderRotateSecret] = useState('')
   const [clientRotateId, setClientRotateId] = useState<string | null>(null)
   const [revealedClientSecret, setRevealedClientSecret] = useState<{
@@ -137,16 +140,6 @@ export const AuthSettingsPage = ({
     queryFn: () => api.listAuthClients(projectId),
     enabled: Boolean(user) && Boolean(projectId),
   })
-  const {
-    data: auditLogsData,
-    error: auditErrorRaw,
-    isLoading: auditLoading,
-  } = useQuery<AuditLogDto[]>({
-    queryKey: queryKeys.audit(projectId, 'auth-module'),
-    queryFn: () => api.listAudit(projectId, { limit: 80 }),
-    enabled: Boolean(user) && Boolean(projectId),
-  })
-
   const projects = asArray(projectsData)
   const environments = asArray(environmentsData)
   const selectedProject = useMemo(
@@ -161,18 +154,6 @@ export const AuthSettingsPage = ({
   const moduleState = useMemo(() => getProjectModuleState(modulesData), [modulesData])
   const providers = asArray(providersData)
   const clients = asArray(clientsData)
-  const authAuditLogs = useMemo(
-    () =>
-      asArray(auditLogsData).filter(
-        (audit) =>
-          audit.action.startsWith('auth.') ||
-          audit.resourceType.startsWith('auth_') ||
-          (audit.metadataJson &&
-            typeof audit.metadataJson === 'object' &&
-            (audit.metadataJson as { module?: string }).module === 'auth'),
-      ),
-    [auditLogsData],
-  )
 
   useEffect(() => {
     if (!configData) return
@@ -234,11 +215,18 @@ export const AuthSettingsPage = ({
   const resetProviderForm = () => {
     setProviderForm(defaultProviderFormState)
     setEditingProviderId(null)
+    setProviderRotateSecret('')
+  }
+
+  const openCreateProvider = () => {
+    resetProviderForm()
+    setProviderDialogOpen(true)
   }
 
   const startEditProvider = (provider: AuthProviderDto) => {
     setEditingProviderId(provider.id)
     setProviderForm(createProviderFormFromProvider(provider))
+    setProviderDialogOpen(true)
   }
 
   const saveProvider = async () => {
@@ -271,6 +259,7 @@ export const AuthSettingsPage = ({
           }
           await invalidateQueryKeys(queryClient, queryKeys.authProviders(projectId))
           resetProviderForm()
+          setProviderDialogOpen(false)
         },
         {
           successMessage: editingProviderId
@@ -284,15 +273,14 @@ export const AuthSettingsPage = ({
   }
 
   const rotateProviderSecret = async () => {
-    if (!providerRotateId || !providerRotateSecret.trim() || !isAdmin) return
+    if (!editingProviderId || !providerRotateSecret.trim() || !isAdmin) return
     await runMutationWithToast(
       async () => {
-        await api.rotateAuthProviderSecret(providerRotateId, providerRotateSecret.trim())
+        await api.rotateAuthProviderSecret(editingProviderId, providerRotateSecret.trim())
         await invalidateQueryKeys(queryClient, queryKeys.authProviders(projectId))
       },
       { successMessage: 'Provider secret rotated.' },
     )
-    setProviderRotateId(null)
     setProviderRotateSecret('')
   }
 
@@ -326,7 +314,6 @@ export const AuthSettingsPage = ({
   const configError = configErrorRaw ? getErrorMessage(configErrorRaw) : null
   const providersError = providersErrorRaw ? getErrorMessage(providersErrorRaw) : null
   const clientsError = clientsErrorRaw ? getErrorMessage(clientsErrorRaw) : null
-  const auditError = auditErrorRaw ? getErrorMessage(auditErrorRaw) : null
   const environmentsError = environmentsErrorRaw ? getErrorMessage(environmentsErrorRaw) : null
 
   if (!moduleState.auth) {
@@ -375,7 +362,6 @@ export const AuthSettingsPage = ({
         configError ||
         providersError ||
         clientsError ||
-        auditError ||
         environmentsError) && (
         <ErrorBanner
           message={
@@ -383,7 +369,6 @@ export const AuthSettingsPage = ({
             configError ||
             providersError ||
             clientsError ||
-            auditError ||
             environmentsError
           }
         />
@@ -403,438 +388,386 @@ export const AuthSettingsPage = ({
           }))}
           onCreateEnvironment={handleCreateEnvironment}
         />
-      </section>
+        <SectionCard className="rounded-t-none border-t-0">
+          <SectionHeader kicker="Configuration" title="Core auth policy" />
+          <p className="text-muted-foreground mt-2 text-sm">
+            Configure local auth and token lifetime policy for this project.
+          </p>
 
-      <SectionCard>
-        <SectionHeader
-          kicker="Configuration"
-          title="Core auth policy"
-          action={
+          {configLoading || !form ? (
+            <p className="text-muted-foreground mt-4 text-sm">Loading auth config...</p>
+          ) : (
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="border-border bg-card flex items-start gap-3 rounded-xl border p-3">
+                <Checkbox
+                  checked={form.nativeAuthEnabled}
+                  onCheckedChange={(checked) =>
+                    setForm((current) =>
+                      current
+                        ? { ...current, nativeAuthEnabled: checked === true }
+                        : current,
+                    )
+                  }
+                  disabled={!isAdmin}
+                />
+                <span className="space-y-1">
+                  <span className="text-foreground block text-sm font-medium">
+                    Native auth enabled
+                  </span>
+                  <span className="text-muted-foreground block text-xs">
+                    Allows runtime signup/login flows for end users.
+                  </span>
+                </span>
+              </label>
+
+              <label className="border-border bg-card flex items-start gap-3 rounded-xl border p-3">
+                <Checkbox
+                  checked={form.emailPasswordEnabled}
+                  onCheckedChange={(checked) =>
+                    setForm((current) =>
+                      current
+                        ? { ...current, emailPasswordEnabled: checked === true }
+                        : current,
+                    )
+                  }
+                  disabled={!isAdmin}
+                />
+                <span className="space-y-1">
+                  <span className="text-foreground block text-sm font-medium">
+                    Email/password enabled
+                  </span>
+                  <span className="text-muted-foreground block text-xs">
+                    Enables local identity login with password credentials.
+                  </span>
+                </span>
+              </label>
+
+              <div className="grid gap-2">
+                <p className="muted-label">Access token TTL (minutes)</p>
+                <Input
+                  value={form.accessTokenTtlMinutes}
+                  onChange={(event) =>
+                    setForm((current) =>
+                      current
+                        ? { ...current, accessTokenTtlMinutes: event.target.value }
+                        : current,
+                    )
+                  }
+                  disabled={!isAdmin}
+                  inputMode="numeric"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <p className="muted-label">Refresh token TTL (days)</p>
+                <Input
+                  value={form.refreshTokenTtlDays}
+                  onChange={(event) =>
+                    setForm((current) =>
+                      current
+                        ? { ...current, refreshTokenTtlDays: event.target.value }
+                        : current,
+                    )
+                  }
+                  disabled={!isAdmin}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+          )}
+          <div className="mt-4 flex justify-start">
             <Button onClick={saveConfig} disabled={!isAdmin || !form || saving}>
               <Save className="h-4 w-4" />
               Save
             </Button>
-          }
-        />
-        <p className="text-muted-foreground mt-2 text-sm">
-          Configure local auth and token lifetime policy for this project.
-        </p>
-
-        {configLoading || !form ? (
-          <p className="text-muted-foreground mt-4 text-sm">Loading auth config...</p>
-        ) : (
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <label className="border-border bg-card flex items-start gap-3 rounded-xl border p-3">
-              <Checkbox
-                checked={form.nativeAuthEnabled}
-                onCheckedChange={(checked) =>
-                  setForm((current) =>
-                    current
-                      ? { ...current, nativeAuthEnabled: checked === true }
-                      : current,
-                  )
-                }
-                disabled={!isAdmin}
-              />
-              <span className="space-y-1">
-                <span className="text-foreground block text-sm font-medium">
-                  Native auth enabled
-                </span>
-                <span className="text-muted-foreground block text-xs">
-                  Allows runtime signup/login flows for end users.
-                </span>
-              </span>
-            </label>
-
-            <label className="border-border bg-card flex items-start gap-3 rounded-xl border p-3">
-              <Checkbox
-                checked={form.emailPasswordEnabled}
-                onCheckedChange={(checked) =>
-                  setForm((current) =>
-                    current
-                      ? { ...current, emailPasswordEnabled: checked === true }
-                      : current,
-                  )
-                }
-                disabled={!isAdmin}
-              />
-              <span className="space-y-1">
-                <span className="text-foreground block text-sm font-medium">
-                  Email/password enabled
-                </span>
-                <span className="text-muted-foreground block text-xs">
-                  Enables local identity login with password credentials.
-                </span>
-              </span>
-            </label>
-
-            <div className="grid gap-2">
-              <p className="muted-label">Access token TTL (minutes)</p>
-              <Input
-                value={form.accessTokenTtlMinutes}
-                onChange={(event) =>
-                  setForm((current) =>
-                    current
-                      ? { ...current, accessTokenTtlMinutes: event.target.value }
-                      : current,
-                  )
-                }
-                disabled={!isAdmin}
-                inputMode="numeric"
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <p className="muted-label">Refresh token TTL (days)</p>
-              <Input
-                value={form.refreshTokenTtlDays}
-                onChange={(event) =>
-                  setForm((current) =>
-                    current
-                      ? { ...current, refreshTokenTtlDays: event.target.value }
-                      : current,
-                  )
-                }
-                disabled={!isAdmin}
-                inputMode="numeric"
-              />
-            </div>
           </div>
-        )}
-      </SectionCard>
+          <div className="border-border/70 mt-8 border-t pt-8">
+            <div className="space-y-10">
+          <section className="space-y-4">
+            <SectionHeader
+              kicker="Providers"
+              title="Provider config"
+              action={
+                <Button onClick={openCreateProvider} disabled={!isAdmin}>
+                  <Plus className="h-4 w-4" />
+                  Add provider
+                </Button>
+              }
+            />
+            <p className="text-muted-foreground text-sm">
+              Configure provider credentials, scopes, and signup policy toggles.
+            </p>
 
-      <SectionCard>
-        <SectionHeader
-          kicker="Providers"
-          title="Provider config"
-        />
-        <p className="text-muted-foreground mt-2 text-sm">
-          Configure provider credentials, scopes, and signup policy toggles.
-        </p>
+            {providersLoading ? (
+              <p className="text-muted-foreground text-sm">Loading providers...</p>
+            ) : (
+              <div className="grid gap-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {providers.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">
+                      No providers configured yet.
+                    </p>
+                  ) : (
+                    providers.map((provider) => (
+                      <div
+                        key={provider.id}
+                        className="border-border bg-card flex items-center justify-between rounded-xl border p-3"
+                      >
+                        <div>
+                          <p className="text-foreground text-sm font-medium capitalize">
+                            {provider.provider}
+                          </p>
+                          <p className="text-muted-foreground text-xs">
+                            Client ID: {provider.clientId}
+                          </p>
+                          <p className="text-muted-foreground text-xs">
+                            Scopes: {provider.scopes.join(', ') || 'default'}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-2 text-right">
+                          <p className="text-foreground text-xs font-medium">
+                            {provider.enabled ? 'Enabled' : 'Disabled'}
+                          </p>
+                          <p className="text-muted-foreground text-xs">
+                            Updated {formatDate(provider.updatedAt)}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => startEditProvider(provider)}
+                            disabled={!isAdmin}
+                          >
+                            Edit
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
 
-        {providersLoading ? (
-          <p className="text-muted-foreground mt-4 text-sm">Loading providers...</p>
-        ) : (
-          <div className="mt-4 grid gap-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              {providers.length === 0 ? (
-                <p className="text-muted-foreground text-sm">
-                  No providers configured yet.
-                </p>
-              ) : (
-                providers.map((provider) => (
+              </div>
+            )}
+          </section>
+
+          <section className="border-border/70 space-y-4 border-t pt-8">
+            <SectionHeader kicker="Clients" title="Runtime auth clients" />
+            <p className="text-muted-foreground text-sm">
+              Rotate confidential client secrets and review client credential posture.
+            </p>
+
+            {clientsLoading ? (
+              <p className="text-muted-foreground text-sm">Loading auth clients...</p>
+            ) : clients.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                No auth clients configured yet.
+              </p>
+            ) : (
+              <div className="grid gap-3">
+                {clients.map((client) => (
                   <div
-                    key={provider.id}
+                    key={client.id}
                     className="border-border bg-card flex items-center justify-between rounded-xl border p-3"
                   >
                     <div>
-                      <p className="text-foreground text-sm font-medium capitalize">
-                        {provider.provider}
-                      </p>
-                      <p className="text-muted-foreground text-xs">
-                        Client ID: {provider.clientId}
-                      </p>
-                      <p className="text-muted-foreground text-xs">
-                        Scopes: {provider.scopes.join(', ') || 'default'}
+                      <p className="text-foreground text-sm font-medium">{client.name}</p>
+                      <p className="text-muted-foreground text-xs">Client ID: {client.clientId}</p>
+                      <p className="text-muted-foreground text-xs capitalize">
+                        Type: {client.type}
                       </p>
                     </div>
-                    <div className="flex flex-col items-end gap-2 text-right">
-                      <p className="text-foreground text-xs font-medium">
-                        {provider.enabled ? 'Enabled' : 'Disabled'}
-                      </p>
-                      <p className="text-muted-foreground text-xs">
-                        Updated {formatDate(provider.updatedAt)}
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => startEditProvider(provider)}
-                        disabled={!isAdmin}
-                      >
-                        Edit
-                      </Button>
+                    <div className="flex flex-col items-end gap-2">
+                      {client.type === 'confidential' ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => rotateClientSecret(client.id)}
+                          disabled={!isAdmin || clientRotateId === client.id}
+                        >
+                          Rotate secret
+                        </Button>
+                      ) : (
+                        <p className="text-muted-foreground text-xs">Public client</p>
+                      )}
                     </div>
                   </div>
-                ))
-              )}
-            </div>
-
-            <div className="border-border bg-card rounded-xl border p-4">
-              <p className="text-foreground text-sm font-medium">
-                {editingProviderId ? 'Edit provider' : 'Add provider'}
-              </p>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <div className="grid gap-2">
-                  <p className="muted-label">Provider</p>
-                  <Select
-                    value={providerForm.provider}
-                    onValueChange={(value) =>
-                      setProviderForm((current) => ({
-                        ...current,
-                        provider: value as 'google' | 'github',
-                      }))
-                    }
-                    disabled={!isAdmin || Boolean(editingProviderId)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="google">Google</SelectItem>
-                      <SelectItem value="github">GitHub</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <p className="muted-label">Client ID</p>
-                  <Input
-                    value={providerForm.clientId}
-                    onChange={(event) =>
-                      setProviderForm((current) => ({
-                        ...current,
-                        clientId: event.target.value,
-                      }))
-                    }
-                    disabled={!isAdmin}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <p className="muted-label">
-                    Client secret
-                    {editingProviderId ? ' (leave blank to keep current)' : ''}
-                  </p>
-                  <Input
-                    type="password"
-                    value={providerForm.clientSecret}
-                    onChange={(event) =>
-                      setProviderForm((current) => ({
-                        ...current,
-                        clientSecret: event.target.value,
-                      }))
-                    }
-                    disabled={!isAdmin || Boolean(editingProviderId)}
-                    placeholder={editingProviderId ? '••••••••' : ''}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <p className="muted-label">Scopes (comma separated)</p>
-                  <Input
-                    value={providerForm.scopes}
-                    onChange={(event) =>
-                      setProviderForm((current) => ({
-                        ...current,
-                        scopes: event.target.value,
-                      }))
-                    }
-                    disabled={!isAdmin}
-                  />
-                </div>
-              </div>
-
-              <label className="mt-3 flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={providerForm.enabled}
-                  onCheckedChange={(checked) =>
-                    setProviderForm((current) => ({
-                      ...current,
-                      enabled: checked === true,
-                    }))
-                  }
-                  disabled={!isAdmin}
-                />
-                Enable provider
-              </label>
-
-              <div className="mt-4 flex gap-2">
-                <Button
-                  onClick={saveProvider}
-                  disabled={!isAdmin || providerSaving}
-                >
-                  {editingProviderId ? 'Update provider' : 'Create provider'}
-                </Button>
-                {editingProviderId ? (
-                  <Button
-                    variant="outline"
-                    onClick={resetProviderForm}
-                    disabled={providerSaving}
-                  >
-                    Cancel
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-
-            {providerRotateId ? (
-              <div className="border-border bg-card rounded-xl border p-4">
-                <p className="text-foreground text-sm font-medium">
-                  Rotate provider secret
-                </p>
-                <p className="text-muted-foreground mt-1 text-xs">
-                  Enter the new provider secret. Existing secret is never shown.
-                </p>
-                <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_auto]">
-                  <Input
-                    type="password"
-                    value={providerRotateSecret}
-                    onChange={(event) => setProviderRotateSecret(event.target.value)}
-                    placeholder="New client secret"
-                    disabled={!isAdmin}
-                  />
-                  <Button
-                    onClick={rotateProviderSecret}
-                    disabled={!isAdmin || providerSaving}
-                  >
-                    Rotate
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setProviderRotateId(null)
-                      setProviderRotateSecret('')
-                    }}
-                    disabled={providerSaving}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {providers.map((provider) => (
-                  <Button
-                    key={`${provider.id}-rotate`}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setProviderRotateId(provider.id)}
-                    disabled={!isAdmin}
-                  >
-                    Rotate {provider.provider} secret
-                  </Button>
                 ))}
               </div>
             )}
-          </div>
-        )}
-      </SectionCard>
 
-      <SectionCard>
-        <SectionHeader kicker="Clients" title="Runtime auth clients" />
-        <p className="text-muted-foreground mt-2 text-sm">
-          Rotate confidential client secrets and review client credential posture.
-        </p>
-
-        {clientsLoading ? (
-          <p className="text-muted-foreground mt-4 text-sm">Loading auth clients...</p>
-        ) : clients.length === 0 ? (
-          <p className="text-muted-foreground mt-4 text-sm">
-            No auth clients configured yet.
-          </p>
-        ) : (
-          <div className="mt-4 grid gap-3">
-            {clients.map((client) => (
-              <div
-                key={client.id}
-                className="border-border bg-card flex items-center justify-between rounded-xl border p-3"
-              >
-                <div>
-                  <p className="text-foreground text-sm font-medium">{client.name}</p>
-                  <p className="text-muted-foreground text-xs">Client ID: {client.clientId}</p>
-                  <p className="text-muted-foreground text-xs capitalize">
-                    Type: {client.type}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  {client.type === 'confidential' ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => rotateClientSecret(client.id)}
-                      disabled={!isAdmin || clientRotateId === client.id}
-                    >
-                      Rotate secret
-                    </Button>
-                  ) : (
-                    <p className="text-muted-foreground text-xs">Public client</p>
-                  )}
+            {revealedClientSecret ? (
+              <div className="border-border bg-card rounded-xl border p-4">
+                <p className="text-foreground text-sm font-medium">New client secret</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  This secret is shown once after rotation. Store it now.
+                </p>
+                <Input
+                  className="mt-3 font-mono text-xs"
+                  value={revealedClientSecret.clientSecret}
+                  readOnly
+                />
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRevealedClientSecret(null)}
+                  >
+                    Hide
+                  </Button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            ) : null}
+          </section>
 
-        {revealedClientSecret ? (
-          <div className="border-border bg-card mt-4 rounded-xl border p-4">
-            <p className="text-foreground text-sm font-medium">New client secret</p>
-            <p className="text-muted-foreground mt-1 text-xs">
-              This secret is shown once after rotation. Store it now.
-            </p>
-            <Input
-              className="mt-3 font-mono text-xs"
-              value={revealedClientSecret.clientSecret}
-              readOnly
-            />
-            <div className="mt-3 flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setRevealedClientSecret(null)}
+        </div>
+          </div>
+        </SectionCard>
+      </section>
+
+      <Dialog
+        open={providerDialogOpen}
+        onOpenChange={(open) => {
+          setProviderDialogOpen(open)
+          if (!open && !providerSaving) resetProviderForm()
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingProviderId ? 'Edit provider' : 'Add provider'}</DialogTitle>
+            <DialogDescription>
+              Configure provider credentials, scopes, and enablement.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2">
+              <p className="muted-label">Provider</p>
+              <Select
+                value={providerForm.provider}
+                onValueChange={(value) =>
+                  setProviderForm((current) => ({
+                    ...current,
+                    provider: value as 'google' | 'github',
+                  }))
+                }
+                disabled={!isAdmin || Boolean(editingProviderId)}
               >
-                Hide
-              </Button>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="google">Google</SelectItem>
+                  <SelectItem value="github">GitHub</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <p className="muted-label">Client ID</p>
+              <Input
+                value={providerForm.clientId}
+                onChange={(event) =>
+                  setProviderForm((current) => ({
+                    ...current,
+                    clientId: event.target.value,
+                  }))
+                }
+                disabled={!isAdmin}
+              />
+            </div>
+            <div className="grid gap-2">
+              <p className="muted-label">
+                Client secret
+                {editingProviderId ? ' (leave blank to keep current)' : ''}
+              </p>
+              <Input
+                type="password"
+                value={providerForm.clientSecret}
+                onChange={(event) =>
+                  setProviderForm((current) => ({
+                    ...current,
+                    clientSecret: event.target.value,
+                  }))
+                }
+                disabled={!isAdmin || Boolean(editingProviderId)}
+                placeholder={editingProviderId ? '••••••••' : ''}
+              />
+            </div>
+            <div className="grid gap-2">
+              <p className="muted-label">Scopes (comma separated)</p>
+              <Input
+                value={providerForm.scopes}
+                onChange={(event) =>
+                  setProviderForm((current) => ({
+                    ...current,
+                    scopes: event.target.value,
+                  }))
+                }
+                disabled={!isAdmin}
+              />
             </div>
           </div>
-        ) : null}
-      </SectionCard>
 
-      <SectionCard>
-        <SectionHeader
-          kicker="Audit"
-          title="Auth activity"
-          action={
-            <Button
-              variant="outline"
-              onClick={() =>
-                navigate(projectPath(projectId, selectedProject?.slug, 'audit'))
+          <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm">
+            <span className="text-foreground font-medium">
+              {providerForm.enabled ? 'Enabled' : 'Disabled'}
+            </span>
+            <Switch
+              checked={providerForm.enabled}
+              onCheckedChange={(checked) =>
+                setProviderForm((current) => ({
+                  ...current,
+                  enabled: checked,
+                }))
               }
-            >
-              Open full audit log
-            </Button>
-          }
-        />
-        <p className="text-muted-foreground mt-2 text-sm">
-          Recent auth-related events from project audit logs.
-        </p>
+              disabled={!isAdmin}
+              aria-label="Toggle provider enabled state"
+            />
+          </label>
 
-        {auditLoading ? (
-          <p className="text-muted-foreground mt-4 text-sm">Loading auth audit events...</p>
-        ) : authAuditLogs.length === 0 ? (
-          <p className="text-muted-foreground mt-4 text-sm">
-            No auth audit events found yet.
-          </p>
-        ) : (
-          <div className="mt-4 grid gap-3">
-            {authAuditLogs.slice(0, 20).map((audit) => (
-              <div
-                key={audit.id}
-                className="border-border bg-card flex items-start justify-between rounded-xl border p-3"
-              >
-                <div>
-                  <p className="text-foreground text-sm font-medium">
-                    {humanizeAction(audit.action)}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    {humanizeResourceType(audit.resourceType)} ·{' '}
-                    {audit.resourceId?.slice(0, 12) ?? '—'}
-                  </p>
-                </div>
+          {editingProviderId ? (
+            <div className="border-border/70 space-y-3 border-t pt-4">
+              <div>
+                <p className="text-foreground text-sm font-medium">Rotate provider secret</p>
                 <p className="text-muted-foreground text-xs">
-                  {formatDate(audit.createdAt)}
+                  Enter a new client secret for this provider.
                 </p>
               </div>
-            ))}
-          </div>
-        )}
-      </SectionCard>
+              <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                <Input
+                  type="password"
+                  value={providerRotateSecret}
+                  onChange={(event) => setProviderRotateSecret(event.target.value)}
+                  placeholder="New client secret"
+                  disabled={!isAdmin || providerSaving}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={rotateProviderSecret}
+                  disabled={!isAdmin || providerSaving || !providerRotateSecret.trim()}
+                >
+                  Rotate secret
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setProviderDialogOpen(false)}
+              disabled={providerSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={saveProvider}
+              disabled={!isAdmin || providerSaving}
+            >
+              {editingProviderId ? 'Update provider' : 'Create provider'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

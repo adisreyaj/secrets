@@ -43,13 +43,13 @@ import { createEnvironmentAndRefresh } from '../lib/environmentMutations'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
 import { getProjectModuleState } from '../lib/modules'
+import { runMutationWithToast } from '../lib/mutationFeedback'
 import {
   flagEnvironmentPath,
   flagEnvironmentsPath,
   flagSdkKeysPath,
   flagsPath,
 } from '../lib/paths'
-import { runMutationWithToast } from '../lib/mutationFeedback'
 import { invalidateQueryKeys } from '../lib/queryInvalidation'
 import { queryKeys } from '../lib/queryKeys'
 import { asArray } from '../lib/queryResult'
@@ -59,8 +59,8 @@ import { useRequireAuth } from '../lib/useRequireAuth'
 import {
   emptyFlagFormState,
   toFlagMutationPayload,
-  type FlagFormState,
   validateFlagForm,
+  type FlagFormState,
 } from './FlagsPage.form'
 import { EnvironmentTabsCard } from './environment/EnvironmentTabsCard'
 
@@ -313,12 +313,25 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
-              onClick={() => navigate(flagSdkKeysPath(projectId, selectedProject?.slug, activeEnvironmentId))}
+              onClick={() =>
+                navigate(
+                  flagSdkKeysPath(
+                    projectId,
+                    selectedProject?.slug,
+                    activeEnvironmentId,
+                  ),
+                )
+              }
               disabled={!activeEnvironmentId}
             >
               SDK keys
             </Button>
-            <Button variant="outline" onClick={() => navigate(flagEnvironmentsPath(projectId, selectedProject?.slug))}>
+            <Button
+              variant="outline"
+              onClick={() =>
+                navigate(flagEnvironmentsPath(projectId, selectedProject?.slug))
+              }
+            >
               <ArrowLeft className="h-4 w-4" />
               Back to environments
               <ShortcutHint keys="b" />
@@ -328,7 +341,9 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
       />
 
       {(projectsError || flagsError || environmentsError) && (
-        <ErrorBanner message={projectsError || flagsError || environmentsError} />
+        <ErrorBanner
+          message={projectsError || flagsError || environmentsError}
+        />
       )}
 
       <section className="flex flex-col gap-0">
@@ -337,96 +352,142 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
           envLoading={environmentsLoading}
           environmentId={environmentId}
           onSelectEnvironment={(envId) =>
-            navigate(flagEnvironmentPath(projectId, selectedProject?.slug, envId))
+            navigate(
+              flagEnvironmentPath(projectId, selectedProject?.slug, envId),
+            )
           }
-          environmentOptions={environments.map((env) => ({ id: env.id, name: env.name }))}
+          environmentOptions={environments.map((env) => ({
+            id: env.id,
+            name: env.name,
+          }))}
           onCreateEnvironment={handleCreateEnvironment}
         />
-      </section>
-
-      <SectionCard>
-        <SectionHeader
-          kicker="Flags"
-          title="List"
-          action={
-            <Button variant="outline" onClick={openCreate} disabled={!activeEnvironmentId}>
-              <Plus className="h-4 w-4" />
-              New flag
-              <ShortcutHint keys="n" />
-            </Button>
-          }
-        />
-        <div className="mt-4 space-y-3">
-          {flagsLoading ? (
-            <p className="text-muted-foreground text-sm">Loading flags...</p>
-          ) : flags.length === 0 ? (
-            <p className="text-muted-foreground text-sm">No flags yet. Create your first flag.</p>
-          ) : (
-            flags.map((flag) => (
-              <div key={flag.id} className="border-border/70 bg-card/70 rounded-2xl border p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <button type="button" onClick={() => openEdit(flag)} className="flex-1 text-left">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-foreground text-sm font-semibold">{flag.name}</p>
-                      <Badge variant="outline">{flag.valueType}</Badge>
-                      <Badge variant="secondary">{flag.runtime}</Badge>
-                    </div>
-                    <p className="text-muted-foreground text-xs">{flag.key}</p>
-                    <p className="text-muted-foreground mt-1 text-xs">
-                      {flag.enabled ? 'Enabled' : 'Disabled'} · Updated {formatDate(flag.updatedAt)}
-                    </p>
-                    {flag.labels.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {flag.labels.map((label) => (
-                          <Badge key={label} variant="secondary">
-                            {label}
-                          </Badge>
-                        ))}
+        <SectionCard className="rounded-t-none border-t-0">
+          <SectionHeader
+            kicker="Flags"
+            title="List"
+            action={
+              <Button
+                variant="default"
+                onClick={openCreate}
+                disabled={!activeEnvironmentId}
+              >
+                <Plus className="h-4 w-4" />
+                New flag
+                <ShortcutHint keys="n" />
+              </Button>
+            }
+          />
+          <div className="mt-4 space-y-3">
+            {flagsLoading ? (
+              <p className="text-muted-foreground text-sm">Loading flags...</p>
+            ) : flags.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                No flags yet. Create your first flag.
+              </p>
+            ) : (
+              flags.map((flag) => (
+                <div
+                  key={flag.id}
+                  className="border-border/70 bg-card/70 rounded-2xl border p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(flag)}
+                      className="flex-1 text-left"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-foreground text-sm font-semibold">
+                          {flag.name}
+                        </p>
+                        <Badge variant="outline">{flag.valueType}</Badge>
+                        <Badge variant="secondary">{flag.runtime}</Badge>
                       </div>
-                    ) : null}
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openDiff(flag)}>
-                      Compare
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => deleteFlag(flag.id)}>
-                      Delete
-                    </Button>
+                      <p className="text-muted-foreground text-xs">
+                        {flag.key}
+                      </p>
+                      <p className="text-muted-foreground mt-1 text-xs">
+                        {flag.enabled ? 'Enabled' : 'Disabled'} · Updated{' '}
+                        {formatDate(flag.updatedAt)}
+                      </p>
+                      {flag.labels.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {flag.labels.map((label) => (
+                            <Badge key={label} variant="secondary">
+                              {label}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openDiff(flag)}
+                      >
+                        Compare
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => deleteFlag(flag.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
-          )}
-        </div>
-      </SectionCard>
+              ))
+            )}
+          </div>
+        </SectionCard>
+      </section>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>{editingFlagId ? 'Edit flag' : 'Create flag'}</SheetTitle>
+        <SheetContent className="flex flex-col p-0 sm:max-w-xl">
+          <SheetHeader className="px-6 pt-6">
+            <SheetTitle>
+              {editingFlagId ? 'Edit flag' : 'Create flag'}
+            </SheetTitle>
             <SheetDescription>
-              Configure this flag for {selectedEnvironment?.name ?? 'the selected environment'}.
+              Configure this flag for{' '}
+              {selectedEnvironment?.name ?? 'the selected environment'}.
             </SheetDescription>
           </SheetHeader>
 
-          <div className="mt-6 space-y-5 overflow-y-auto pb-24">
+          <div className="mt-6 flex-1 space-y-5 overflow-y-auto px-6 pb-6">
             <section className="space-y-3">
               <p className="muted-label">Basics</p>
               <Input
                 value={form.key}
-                onChange={(event) => setForm((current) => ({ ...current, key: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    key: event.target.value,
+                  }))
+                }
                 placeholder="Flag key"
                 disabled={Boolean(editingFlagId)}
               />
               <Input
                 value={form.name}
-                onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
                 placeholder="Flag name"
               />
               <Textarea
                 value={form.description}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, description: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
                 }
                 placeholder="Description"
               />
@@ -434,7 +495,10 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                 <Checkbox
                   checked={form.enabled}
                   onCheckedChange={(checked) =>
-                    setForm((current) => ({ ...current, enabled: Boolean(checked) }))
+                    setForm((current) => ({
+                      ...current,
+                      enabled: Boolean(checked),
+                    }))
                   }
                 />
                 Enabled
@@ -466,7 +530,10 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                   <Checkbox
                     checked={form.booleanValue}
                     onCheckedChange={(checked) =>
-                      setForm((current) => ({ ...current, booleanValue: Boolean(checked) }))
+                      setForm((current) => ({
+                        ...current,
+                        booleanValue: Boolean(checked),
+                      }))
                     }
                   />
                   Boolean value
@@ -476,23 +543,30 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                   <Input
                     value={form.defaultVariantKey}
                     onChange={(event) =>
-                      setForm((current) => ({ ...current, defaultVariantKey: event.target.value }))
+                      setForm((current) => ({
+                        ...current,
+                        defaultVariantKey: event.target.value,
+                      }))
                     }
                     placeholder="Default variant key"
                   />
                   <div className="space-y-2">
                     {form.variants.map((variant, index) => (
-                      <div key={`${variant.key}-${index}`} className="rounded-lg border p-3 space-y-2">
+                      <div
+                        key={`${variant.key}-${index}`}
+                        className="space-y-2 rounded-lg border p-3"
+                      >
                         <div className="grid gap-2 md:grid-cols-2">
                           <Input
                             value={variant.key}
                             onChange={(event) =>
                               setForm((current) => ({
                                 ...current,
-                                variants: current.variants.map((item, itemIndex) =>
-                                  itemIndex === index
-                                    ? { ...item, key: event.target.value }
-                                    : item,
+                                variants: current.variants.map(
+                                  (item, itemIndex) =>
+                                    itemIndex === index
+                                      ? { ...item, key: event.target.value }
+                                      : item,
                                 ),
                               }))
                             }
@@ -503,10 +577,14 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                             onValueChange={(value) =>
                               setForm((current) => ({
                                 ...current,
-                                variants: current.variants.map((item, itemIndex) =>
-                                  itemIndex === index
-                                    ? { ...item, valueType: value as 'string' | 'json' }
-                                    : item,
+                                variants: current.variants.map(
+                                  (item, itemIndex) =>
+                                    itemIndex === index
+                                      ? {
+                                          ...item,
+                                          valueType: value as 'string' | 'json',
+                                        }
+                                      : item,
                                 ),
                               }))
                             }
@@ -525,14 +603,19 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                           onChange={(event) =>
                             setForm((current) => ({
                               ...current,
-                              variants: current.variants.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? { ...item, value: event.target.value }
-                                  : item,
+                              variants: current.variants.map(
+                                (item, itemIndex) =>
+                                  itemIndex === index
+                                    ? { ...item, value: event.target.value }
+                                    : item,
                               ),
                             }))
                           }
-                          placeholder={variant.valueType === 'json' ? '{"key":"value"}' : 'Variant value'}
+                          placeholder={
+                            variant.valueType === 'json'
+                              ? '{"key":"value"}'
+                              : 'Variant value'
+                          }
                         />
                         <Button
                           variant="ghost"
@@ -540,7 +623,9 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                           onClick={() =>
                             setForm((current) => ({
                               ...current,
-                              variants: current.variants.filter((_, itemIndex) => itemIndex !== index),
+                              variants: current.variants.filter(
+                                (_, itemIndex) => itemIndex !== index,
+                              ),
                             }))
                           }
                         >
@@ -578,11 +663,18 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                   <Button
                     key={runtimeOption.value}
                     type="button"
-                    variant={form.runtime === runtimeOption.value ? 'default' : 'outline'}
+                    variant={
+                      form.runtime === runtimeOption.value
+                        ? 'default'
+                        : 'outline'
+                    }
                     onClick={() =>
                       setForm((current) => ({
                         ...current,
-                        runtime: runtimeOption.value as 'both' | 'client' | 'server',
+                        runtime: runtimeOption.value as
+                          | 'both'
+                          | 'client'
+                          | 'server',
                       }))
                     }
                   >
@@ -596,17 +688,38 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
               <p className="muted-label">Labels</p>
               <Input
                 value={form.labels}
-                onChange={(event) => setForm((current) => ({ ...current, labels: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    labels: event.target.value,
+                  }))
+                }
                 placeholder="payments, beta, checkout"
               />
-              <p className="text-muted-foreground text-xs">Comma-separated labels.</p>
+              <p className="text-muted-foreground text-xs">
+                Comma-separated labels.
+              </p>
             </section>
           </div>
 
-          <div className="bg-background absolute right-0 bottom-0 left-0 border-t p-4">
-            <Button className="w-full" onClick={saveFlag} disabled={saving}>
-              {saving ? 'Saving...' : editingFlagId ? 'Save changes' : 'Create flag'}
-            </Button>
+          <div className="border-border/70 bg-background/95 border-t px-6 py-4">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setSheetOpen(false)}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button className="flex-1" onClick={saveFlag} disabled={saving}>
+                {saving
+                  ? 'Saving...'
+                  : editingFlagId
+                    ? 'Save changes'
+                    : 'Create flag'}
+              </Button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>
@@ -616,12 +729,21 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
           <DialogHeader>
             <DialogTitle>Compare environments</DialogTitle>
             <DialogDescription>
-              Compare values for <span className="font-semibold">{diffFlag?.key ?? 'selected flag'}</span>.
+              Compare values for{' '}
+              <span className="font-semibold">
+                {diffFlag?.key ?? 'selected flag'}
+              </span>
+              .
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm">From: {selectedEnvironment?.name ?? environmentId}</p>
-            <Select value={diffToEnvironmentId} onValueChange={setDiffToEnvironmentId}>
+            <p className="text-sm">
+              From: {selectedEnvironment?.name ?? environmentId}
+            </p>
+            <Select
+              value={diffToEnvironmentId}
+              onValueChange={setDiffToEnvironmentId}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select target environment" />
               </SelectTrigger>
@@ -635,17 +757,31 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                   ))}
               </SelectContent>
             </Select>
-            <Button onClick={loadDiff} disabled={!diffToEnvironmentId || diffLoading}>
+            <Button
+              onClick={loadDiff}
+              disabled={!diffToEnvironmentId || diffLoading}
+            >
               {diffLoading ? 'Comparing...' : 'Compare'}
             </Button>
 
             {diffResult ? (
               <div className="rounded-xl border p-3 text-sm">
                 <div className="grid gap-1">
-                  <p>Enabled changed: {diffResult.differences.enabled ? 'Yes' : 'No'}</p>
-                  <p>Runtime changed: {diffResult.differences.runtime ? 'Yes' : 'No'}</p>
-                  <p>Labels changed: {diffResult.differences.labels ? 'Yes' : 'No'}</p>
-                  <p>Value changed: {diffResult.differences.value ? 'Yes' : 'No'}</p>
+                  <p>
+                    Enabled changed:{' '}
+                    {diffResult.differences.enabled ? 'Yes' : 'No'}
+                  </p>
+                  <p>
+                    Runtime changed:{' '}
+                    {diffResult.differences.runtime ? 'Yes' : 'No'}
+                  </p>
+                  <p>
+                    Labels changed:{' '}
+                    {diffResult.differences.labels ? 'Yes' : 'No'}
+                  </p>
+                  <p>
+                    Value changed: {diffResult.differences.value ? 'Yes' : 'No'}
+                  </p>
                 </div>
                 <pre className="bg-muted mt-3 max-h-56 overflow-auto rounded-md p-2 text-xs">
                   {JSON.stringify(diffResult, null, 2)}

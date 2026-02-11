@@ -214,9 +214,9 @@ export async function createAuthSigningKey(params: {
       kid: params.kid,
       algorithm: params.algorithm,
       publicKeyPem: params.publicKeyPem,
-      privateKeyCiphertext: params.privateKeyCiphertext,
-      privateKeyIv: params.privateKeyIv,
-      privateKeyTag: params.privateKeyTag,
+      privateKeyCiphertext: new Uint8Array(params.privateKeyCiphertext),
+      privateKeyIv: new Uint8Array(params.privateKeyIv),
+      privateKeyTag: new Uint8Array(params.privateKeyTag),
       keyVersion: params.keyVersion,
       active: params.active ?? false,
     },
@@ -237,8 +237,8 @@ export async function createAuthClient(params: {
       name: params.name,
       type: params.type,
       clientId: params.clientId,
-      clientSecretHash: params.clientSecretHash ?? null,
-      redirectUrisJson: params.redirectUris ?? null,
+      clientSecretHash: params.clientSecretHash ?? undefined,
+      redirectUrisJson: params.redirectUris ?? undefined,
     },
   });
 }
