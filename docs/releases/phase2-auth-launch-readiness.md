@@ -108,5 +108,5 @@ Scope: Native Auth launch (email/password + Google/GitHub, management + runtime 
 
 ## Sign-Off
 
-- Engineering lead: _Pending update in ticket `SRE-46` comments._
-- Product/Operations: _Pending update in ticket `SRE-46` comments._
+- Engineering lead: _Pending update in ticket `SRE-60` comments._
+- Product/Operations: _Pending update in ticket `SRE-60` comments._
