@@ -49,6 +49,7 @@ import {
   flagsPath,
 } from '../lib/paths'
 import { runMutationWithToast } from '../lib/mutationFeedback'
+import { invalidateQueryKeys } from '../lib/queryInvalidation'
 import { queryKeys } from '../lib/queryKeys'
 import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
@@ -184,7 +185,7 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
         name: payload.name,
         copyFromEnvironmentId: payload.copyFromEnvironmentId ?? undefined,
       })
-      await queryClient.invalidateQueries({ queryKey: queryKeys.environments(projectId) })
+      await invalidateQueryKeys(queryClient, queryKeys.environments(projectId))
       return true
     } catch {
       return false
@@ -292,9 +293,10 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
         } else {
           await api.createFlag(projectId, payload)
         }
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.flags(projectId, activeEnvironmentId),
-        })
+        await invalidateQueryKeys(
+          queryClient,
+          queryKeys.flags(projectId, activeEnvironmentId),
+        )
       },
       { successMessage: editingFlagId ? 'Flag updated.' : 'Flag created.' },
     )
@@ -309,9 +311,10 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
     await runMutationWithToast(
       async () => {
         await api.deleteFlag(flagId, activeEnvironmentId)
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.flags(projectId, activeEnvironmentId),
-        })
+        await invalidateQueryKeys(
+          queryClient,
+          queryKeys.flags(projectId, activeEnvironmentId),
+        )
       },
       { successMessage: 'Flag deleted.' },
     )

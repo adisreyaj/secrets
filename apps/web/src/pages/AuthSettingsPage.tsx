@@ -33,6 +33,7 @@ import {
 } from '../lib/paths'
 import { humanizeAction, humanizeResourceType } from '../features/audit/labels'
 import { runMutationWithToast } from '../lib/mutationFeedback'
+import { invalidateQueryKeys } from '../lib/queryInvalidation'
 import { queryKeys } from '../lib/queryKeys'
 import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
@@ -226,9 +227,7 @@ export const AuthSettingsPage = ({
         name: payload.name,
         copyFromEnvironmentId: payload.copyFromEnvironmentId ?? undefined,
       })
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.environments(projectId),
-      })
+      await invalidateQueryKeys(queryClient, queryKeys.environments(projectId))
       return true
     } catch {
       return false
@@ -258,7 +257,7 @@ export const AuthSettingsPage = ({
             accessTokenTtlMinutes,
             refreshTokenTtlDays,
           })
-          await queryClient.invalidateQueries({ queryKey: queryKeys.authConfig(projectId) })
+          await invalidateQueryKeys(queryClient, queryKeys.authConfig(projectId))
         },
         { successMessage: 'Auth settings updated.' },
       )
@@ -314,9 +313,7 @@ export const AuthSettingsPage = ({
               scopes,
             })
           }
-          await queryClient.invalidateQueries({
-            queryKey: queryKeys.authProviders(projectId),
-          })
+          await invalidateQueryKeys(queryClient, queryKeys.authProviders(projectId))
           resetProviderForm()
         },
         {
@@ -335,9 +332,7 @@ export const AuthSettingsPage = ({
     await runMutationWithToast(
       async () => {
         await api.rotateAuthProviderSecret(providerRotateId, providerRotateSecret.trim())
-        await queryClient.invalidateQueries({
-          queryKey: queryKeys.authProviders(projectId),
-        })
+        await invalidateQueryKeys(queryClient, queryKeys.authProviders(projectId))
       },
       { successMessage: 'Provider secret rotated.' },
     )
@@ -358,12 +353,11 @@ export const AuthSettingsPage = ({
               clientSecret: result.clientSecret,
             })
           }
-          await queryClient.invalidateQueries({
-            queryKey: queryKeys.authClients(projectId),
-          })
-          await queryClient.invalidateQueries({
-            queryKey: queryKeys.audit(projectId),
-          })
+          await invalidateQueryKeys(
+            queryClient,
+            queryKeys.authClients(projectId),
+            queryKeys.audit(projectId),
+          )
         },
         { successMessage: 'Client secret rotated.' },
       )
