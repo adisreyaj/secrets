@@ -28,7 +28,7 @@ import { logAudit } from '../services/audit.js';
 
 type OauthStatePayload = {
   projectId: string;
-  provider: 'google';
+  provider: 'google' | 'github';
   redirectUri?: string;
   expiresAt: number;
 };
@@ -581,8 +581,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/runtime/auth/oauth/:provider/start', async (request, reply) => {
     const { provider } = request.params as { provider: string };
-    if (provider !== 'google') {
-      reply.code(400).send({ error: 'Only google is currently supported' });
+    if (provider !== 'google' && provider !== 'github') {
+      reply.code(400).send({ error: 'provider must be google or github' });
       return;
     }
     const query = request.query as { projectId?: string; redirectUri?: string } | undefined;
@@ -604,37 +604,44 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const providerConfig = await prisma.authProviderConfig.findFirst({
       where: {
         projectId,
-        provider: AuthIdentityProvider.GOOGLE,
+        provider: provider === 'google' ? AuthIdentityProvider.GOOGLE : AuthIdentityProvider.GITHUB,
         enabled: true,
       },
     });
     if (!providerConfig) {
-      reply.code(404).send({ error: 'Google OAuth is not configured for this project' });
+      reply.code(404).send({ error: `${provider} OAuth is not configured for this project` });
       return;
     }
 
     const state = issueOauthState({
       projectId,
-      provider: 'google',
+      provider,
       redirectUri: query?.redirectUri?.trim() || undefined,
     });
-    const callbackUrl = `${config.authRuntimeBaseUrl}/runtime/auth/oauth/google/callback`;
-    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    const callbackUrl = `${config.authRuntimeBaseUrl}/runtime/auth/oauth/${provider}/callback`;
+    const authUrl =
+      provider === 'google'
+        ? new URL('https://accounts.google.com/o/oauth2/v2/auth')
+        : new URL('https://github.com/login/oauth/authorize');
     authUrl.searchParams.set('client_id', providerConfig.clientId);
     authUrl.searchParams.set('redirect_uri', callbackUrl);
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('scope', config.googleOauthScopes.join(' '));
+    if (provider === 'google') {
+      authUrl.searchParams.set('response_type', 'code');
+      authUrl.searchParams.set('scope', config.googleOauthScopes.join(' '));
+      authUrl.searchParams.set('access_type', 'offline');
+      authUrl.searchParams.set('prompt', 'consent');
+    } else {
+      authUrl.searchParams.set('scope', config.githubOauthScopes.join(' '));
+    }
     authUrl.searchParams.set('state', state);
-    authUrl.searchParams.set('access_type', 'offline');
-    authUrl.searchParams.set('prompt', 'consent');
 
-    reply.send({ provider: 'google', projectId, state, authUrl: authUrl.toString() });
+    reply.send({ provider, projectId, state, authUrl: authUrl.toString() });
   });
 
   app.get('/runtime/auth/oauth/:provider/callback', async (request, reply) => {
     const { provider } = request.params as { provider: string };
-    if (provider !== 'google') {
-      reply.code(400).send({ error: 'Only google is currently supported' });
+    if (provider !== 'google' && provider !== 'github') {
+      reply.code(400).send({ error: 'provider must be google or github' });
       return;
     }
     const query = request.query as
@@ -668,12 +675,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const providerConfig = await prisma.authProviderConfig.findFirst({
       where: {
         projectId: oauthState.projectId,
-        provider: AuthIdentityProvider.GOOGLE,
+        provider:
+          provider === 'google' ? AuthIdentityProvider.GOOGLE : AuthIdentityProvider.GITHUB,
         enabled: true,
       },
     });
     if (!providerConfig) {
-      reply.code(404).send({ error: 'Google OAuth is not configured for this project' });
+      reply.code(404).send({ error: `${provider} OAuth is not configured for this project` });
       return;
     }
 
@@ -686,20 +694,34 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         return;
       }
 
-      const callbackUrl = `${config.authRuntimeBaseUrl}/runtime/auth/oauth/google/callback`;
+      const callbackUrl = `${config.authRuntimeBaseUrl}/runtime/auth/oauth/${provider}/callback`;
       const secret = decryptProviderSecret(providerConfig);
-
-      const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: providerConfig.clientId,
-          client_secret: secret,
-          redirect_uri: callbackUrl,
-          grant_type: 'authorization_code',
-          code,
-        }),
-      });
+      const tokenResp =
+        provider === 'google'
+          ? await fetch('https://oauth2.googleapis.com/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                client_id: providerConfig.clientId,
+                client_secret: secret,
+                redirect_uri: callbackUrl,
+                grant_type: 'authorization_code',
+                code,
+              }),
+            })
+          : await fetch('https://github.com/login/oauth/access_token', {
+              method: 'POST',
+              headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                client_id: providerConfig.clientId,
+                client_secret: secret,
+                code,
+                redirect_uri: callbackUrl,
+              }),
+            });
       if (!tokenResp.ok) {
         reply.code(401).send({ error: 'OAuth token exchange failed' });
         return;
@@ -710,16 +732,51 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         return;
       }
 
-      const profileResp = await fetch(
-        `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${encodeURIComponent(tokenJson.access_token)}`,
-      );
-      if (!profileResp.ok) {
-        reply.code(401).send({ error: 'OAuth profile fetch failed' });
-        return;
+      if (provider === 'google') {
+        const profileResp = await fetch(
+          `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${encodeURIComponent(tokenJson.access_token)}`,
+        );
+        if (!profileResp.ok) {
+          reply.code(401).send({ error: 'OAuth profile fetch failed' });
+          return;
+        }
+        const profile = (await profileResp.json()) as { sub?: string; email?: string };
+        email = profile.email?.trim().toLowerCase();
+        providerSubject = profile.sub?.trim();
+      } else {
+        const userResp = await fetch('https://api.github.com/user', {
+          headers: {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${tokenJson.access_token}`,
+          },
+        });
+        if (!userResp.ok) {
+          reply.code(401).send({ error: 'OAuth profile fetch failed' });
+          return;
+        }
+        const userProfile = (await userResp.json()) as { id?: number; email?: string | null };
+        providerSubject = userProfile.id ? String(userProfile.id) : undefined;
+        email = userProfile.email?.trim().toLowerCase();
+        if (!email) {
+          const emailResp = await fetch('https://api.github.com/user/emails', {
+            headers: {
+              Accept: 'application/vnd.github+json',
+              Authorization: `Bearer ${tokenJson.access_token}`,
+            },
+          });
+          if (emailResp.ok) {
+            const emails = (await emailResp.json()) as Array<{
+              email?: string;
+              primary?: boolean;
+              verified?: boolean;
+            }>;
+            const preferred =
+              emails.find((item) => item.primary && item.verified)?.email ??
+              emails.find((item) => item.verified)?.email;
+            email = preferred?.trim().toLowerCase();
+          }
+        }
       }
-      const profile = (await profileResp.json()) as { sub?: string; email?: string };
-      email = profile.email?.trim().toLowerCase();
-      providerSubject = profile.sub?.trim();
     }
 
     if (!email || !providerSubject) {
@@ -730,7 +787,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     let identity = await prisma.authIdentity.findFirst({
       where: {
         projectId: oauthState.projectId,
-        provider: AuthIdentityProvider.GOOGLE,
+        provider:
+          provider === 'google' ? AuthIdentityProvider.GOOGLE : AuthIdentityProvider.GITHUB,
         providerSubject,
       },
       include: { endUser: true },
@@ -755,7 +813,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         data: {
           projectId: oauthState.projectId,
           endUserId: endUser.id,
-          provider: AuthIdentityProvider.GOOGLE,
+          provider:
+            provider === 'google' ? AuthIdentityProvider.GOOGLE : AuthIdentityProvider.GITHUB,
           providerSubject,
         },
         include: { endUser: true },
@@ -785,11 +844,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       action: 'auth.oauth.login',
       resourceType: 'auth_identity',
       resourceId: identity.id,
-      metadataJson: { module: 'auth', provider: 'google', endUserId: endUser.id },
+      metadataJson: { module: 'auth', provider, endUserId: endUser.id },
     });
 
     reply.send({
-      provider: 'google',
+      provider,
       endUser: {
         id: endUser.id,
         projectId: endUser.projectId,

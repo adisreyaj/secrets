@@ -791,6 +791,46 @@ describe('runtime auth routes', () => {
     await app.close();
   });
 
+  it('supports github oauth start and callback via mock profile in tests', async () => {
+    const app = await buildApp();
+    const headers = { origin: 'http://localhost:5173', authorization: 'Bearer mgmt-token' };
+
+    const providerCreate = await app.inject({
+      method: 'POST',
+      url: '/projects/project_1/auth/providers',
+      headers,
+      payload: {
+        provider: 'github',
+        enabled: true,
+        clientId: 'github-client-id',
+        clientSecret: 'github-client-secret',
+      },
+    });
+    expect(providerCreate.statusCode).toBe(201);
+
+    const start = await app.inject({
+      method: 'GET',
+      url: '/runtime/auth/oauth/github/start?projectId=project_1',
+      headers: { origin: 'http://localhost:5173' },
+    });
+    expect(start.statusCode).toBe(200);
+    const startBody = start.json() as { state: string; authUrl: string };
+    expect(startBody.state).toBeTruthy();
+    expect(startBody.authUrl).toContain('github.com');
+
+    const callback = await app.inject({
+      method: 'GET',
+      url: `/runtime/auth/oauth/github/callback?state=${encodeURIComponent(startBody.state)}&mockEmail=test-github@example.com&mockSub=sub_github_1`,
+      headers: { origin: 'http://localhost:5173' },
+    });
+    expect(callback.statusCode).toBe(200);
+    const callbackBody = callback.json() as { provider: string; accessToken?: string };
+    expect(callbackBody.provider).toBe('github');
+    expect(callbackBody.accessToken).toBeTruthy();
+
+    await app.close();
+  });
+
   it('locks repeated bad logins with 429 response', async () => {
     const app = await buildApp();
     const headers = { origin: 'http://localhost:5173' };
