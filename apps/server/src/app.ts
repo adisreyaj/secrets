@@ -23,11 +23,9 @@ import {
 } from './server/auth/guards.js';
 import { ROLE_RANK } from './server/auth/policies.js';
 import { toApprovalRequestDto } from './server/mappers/approvals.js';
-import { toEnvironmentDto } from './server/mappers/projects.js';
 import { toUserDto } from './server/mappers/users.js';
 import { findMatchingApprovalRules, findPendingApprovalRequest, createApprovalRequest } from './server/services/approvals.js';
 import { logAudit } from './server/services/audit.js';
-import { deleteEnvironmentWithGuards } from './server/services/deletions.js';
 import { registerCoreHttpMiddleware } from './server/http/middleware.js';
 import { forbidden } from './server/http/errors.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
@@ -35,6 +33,7 @@ import { registerRoutes as registerApiTokenRoutes } from './server/routes/apiTok
 import { registerRoutes as registerAuditRoutes } from './server/routes/audit.js';
 import { registerRoutes as registerApprovalRuleRoutes } from './server/routes/approvalRules.js';
 import { registerRoutes as registerExportRoutes } from './server/routes/exports.js';
+import { registerRoutes as registerEnvironmentRoutes } from './server/routes/environments.js';
 import { registerRoutes as registerFlagRoutes } from './server/routes/flags.js';
 import { registerRoutes as registerFlagRuntimeRoutes } from './server/routes/flagsRuntime.js';
 import { registerRoutes as registerRuntimeAuthRoutes } from './server/routes/runtimeAuth.js';
@@ -43,7 +42,6 @@ import { registerRoutes as registerProjectMemberRoutes } from './server/routes/p
 import { registerRoutes as registerProjectCoreRoutes } from './server/routes/projectCore.js';
 import { registerRoutes as registerOrganizationRoutes } from './server/routes/organizations.js';
 import { registerRoutes as registerServiceAccountRoutes } from './server/routes/serviceAccounts.js';
-import { ensureUniqueEnvironmentSlug } from './server/services/slugs.js';
 import { normalizeIdentifier } from './server/services/identifiers.js';
 import { isPrismaUniqueError } from './server/services/prismaErrors.js';
 import { createLogDispatcher } from './server/logging/dispatcher.js';
@@ -98,6 +96,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerApprovalRuleRoutes(app);
   await registerApiTokenRoutes(app);
   await registerAuditRoutes(app);
+  await registerEnvironmentRoutes(app);
   await registerExportRoutes(app);
   await registerFlagRoutes(app);
   await registerFlagRuntimeRoutes(app);
@@ -872,224 +871,6 @@ export async function buildApp(): Promise<FastifyInstance> {
       resourceId: approval.id,
       metadataJson: { requestedBy: approval.requestedBy, action: approval.action },
     });
-    reply.send({ ok: true });
-  });
-
-  app.post('/projects/:id/environments', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    if (request.auth?.tokenScopeType === 'service_account') {
-      reply.code(403).send({ error: 'Service account tokens cannot create environments' });
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.EDITOR);
-    if (!role) {
-      return;
-    }
-
-    const body = request.body as { name?: string; copyFromEnvironmentId?: string | null } | undefined;
-    if (!body?.name) {
-      reply.code(400).send({ error: 'Name is required' });
-      return;
-    }
-
-    const copyFromId = body.copyFromEnvironmentId?.trim();
-    let sourceEnv: { id: string; projectId: string } | null = null;
-    if (copyFromId) {
-      sourceEnv = await prisma.environment.findFirst({
-        where: { id: copyFromId, projectId },
-        select: { id: true, projectId: true },
-      });
-      if (!sourceEnv) {
-        reply.code(400).send({ error: 'Source environment not found' });
-        return;
-      }
-    }
-
-    const slug = await ensureUniqueEnvironmentSlug(projectId, body.name);
-    let env;
-    try {
-      env = await prisma.environment.create({
-        data: {
-          projectId,
-          name: body.name,
-          slug,
-        },
-      });
-    } catch (error) {
-      if (isPrismaUniqueError(error)) {
-        reply.code(409).send({ error: 'Environment name already exists in this project' });
-        return;
-      }
-      throw error;
-    }
-
-    let copiedCount = 0;
-    if (sourceEnv) {
-      const secrets = await prisma.secret.findMany({
-        where: { environmentId: sourceEnv.id, deletedAt: null },
-        include: {
-          versions: {
-            where: { isActive: true },
-            orderBy: { createdAt: 'desc' },
-            take: 1,
-          },
-        },
-        orderBy: { key: 'asc' },
-      });
-
-      if (secrets.length > 0) {
-        const operations: Prisma.PrismaPromise<unknown>[] = [];
-        for (const secret of secrets) {
-          const version = secret.versions[0];
-          if (!version) {
-            operations.push(
-              prisma.secret.create({
-                data: {
-                  environmentId: env.id,
-                  key: secret.key,
-                },
-              }),
-            );
-            continue;
-          }
-
-          const value = decryptSecret(
-            { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
-            masterKey,
-          );
-          const payload = encryptSecret(value, masterKey);
-          const keyVersion = masterKeyVersion();
-
-          operations.push(
-            prisma.secret.create({
-              data: {
-                environmentId: env.id,
-                key: secret.key,
-                versions: {
-                  create: {
-                    ciphertext: payload.ciphertext,
-                    iv: payload.iv,
-                    tag: payload.tag,
-                    keyVersion,
-                    createdBy: auth.user?.id,
-                    isActive: true,
-                  },
-                },
-              },
-            }),
-          );
-        }
-
-        await prisma.$transaction(operations);
-        copiedCount = secrets.length;
-      }
-    }
-
-    await logAudit({
-      projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'environment.create',
-      resourceType: 'environment',
-      resourceId: env.id,
-      metadataJson: sourceEnv
-        ? { copyFromEnvironmentId: sourceEnv.id, copiedSecrets: copiedCount }
-        : null,
-    });
-
-    reply.code(201).send(toEnvironmentDto(env));
-  });
-
-  app.get('/projects/:id/environments', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    const scopedEnvIds = request.auth?.scopeEnvironmentIds;
-    const envs = await prisma.environment.findMany({
-      where: {
-        projectId,
-        ...(request.auth?.viaToken && scopedEnvIds ? { id: { in: scopedEnvIds } } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    reply.send(envs.map(toEnvironmentDto));
-  });
-
-  app.get('/projects/:id/environments/slug/:slug', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId, slug } = request.params as { id: string; slug: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    const env = await prisma.environment.findFirst({
-      where: { projectId, slug },
-    });
-
-    if (!env) {
-      reply.code(404).send({ error: 'Environment not found' });
-      return;
-    }
-    if (!requireEnvironmentScope(request, reply, env.id)) {
-      return;
-    }
-
-    reply.send(toEnvironmentDto(env));
-  });
-
-  app.delete('/projects/:id/environments/:environmentId', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId, environmentId } = request.params as { id: string; environmentId: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-
-    const body = request.body as
-      | { confirmText?: string; forceLastEnvironment?: boolean }
-      | undefined;
-    if (!body?.confirmText?.trim()) {
-      reply.code(400).send({ error: 'confirmText is required' });
-      return;
-    }
-
-    const result = await deleteEnvironmentWithGuards({
-      projectId,
-      environmentId,
-      confirmText: body.confirmText,
-      forceLastEnvironment: body.forceLastEnvironment === true,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-    });
-
-    if (!result.ok) {
-      reply.code(result.status).send({ error: result.error });
-      return;
-    }
-
     reply.send({ ok: true });
   });
 
