@@ -34,4 +34,6 @@ export const config = {
   authEmailFrom: process.env.AUTH_EMAIL_FROM ?? 'auth@localhost.local',
   authEmailFromName: process.env.AUTH_EMAIL_FROM_NAME ?? 'Secrets Auth',
   resendApiKey: process.env.RESEND_API_KEY ?? '',
+  authLoginMaxAttempts: Number(process.env.AUTH_LOGIN_MAX_ATTEMPTS ?? 5),
+  authLoginLockMs: Number(process.env.AUTH_LOGIN_LOCK_MS ?? 5 * 60 * 1000),
 };

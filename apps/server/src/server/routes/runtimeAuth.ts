@@ -21,6 +21,8 @@ import {
   buildPasswordResetEmail,
   createAuthEmailProvider,
 } from '../services/auth/email.js';
+import { config } from '../../config.js';
+import { LoginAbuseProtector } from '../services/auth/abuseProtection.js';
 import {
   requireProjectAuthSession,
   requireProjectModuleEnabled,
@@ -36,8 +38,15 @@ function isPrismaUniqueError(
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const authEmailProvider = createAuthEmailProvider();
+  const loginProtector = new LoginAbuseProtector(
+    Math.max(1, config.authLoginMaxAttempts),
+    Math.max(1_000, config.authLoginLockMs),
+  );
 
-  app.post('/runtime/auth/signup', async (request, reply) => {
+  app.post(
+    '/runtime/auth/signup',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
     const body = request.body as
       | {
           projectId?: string;
@@ -114,9 +123,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       }
       throw error;
     }
-  });
+    },
+  );
 
-  app.post('/runtime/auth/login', async (request, reply) => {
+  app.post(
+    '/runtime/auth/login',
+    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
+    async (request, reply) => {
     const body = request.body as
       | {
           projectId?: string;
@@ -129,6 +142,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const password = body?.password;
     if (!projectId || !email || !password) {
       reply.code(400).send({ error: 'projectId, email, and password are required' });
+      return;
+    }
+    const loginKey = `${projectId}:${email.toLowerCase()}:${request.ip}`;
+    const lockState = loginProtector.isLocked(loginKey);
+    if (lockState.locked) {
+      const retryAfter = Math.ceil((lockState.retryAfterMs ?? 0) / 1000);
+      reply.code(429).send({ error: 'Too many login attempts', retryAfterSeconds: retryAfter });
       return;
     }
 
@@ -150,13 +170,23 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const verified = await verifyLocalCredentials({ projectId, email, password });
     if (verified.status === 'disabled') {
+      loginProtector.recordFailure(loginKey);
       reply.code(403).send({ error: 'Account is disabled' });
       return;
     }
     if (verified.status !== 'ok') {
+      const failure = loginProtector.recordFailure(loginKey);
+      if (failure.locked) {
+        reply.code(429).send({
+          error: 'Too many login attempts',
+          retryAfterSeconds: Math.ceil((failure.retryAfterMs ?? 0) / 1000),
+        });
+        return;
+      }
       reply.code(401).send({ error: 'Invalid credentials' });
       return;
     }
+    loginProtector.clear(loginKey);
 
     const issued = await issueAuthSessionWithRefresh({
       projectId,
@@ -182,9 +212,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       sessionExpiresAt: issued.sessionExpiresAt.toISOString(),
       refreshExpiresAt: issued.refreshExpiresAt.toISOString(),
     });
-  });
+    },
+  );
 
-  app.post('/runtime/auth/logout', async (request, reply) => {
+  app.post(
+    '/runtime/auth/logout',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (request, reply) => {
     const body = request.body as { projectId?: string } | undefined;
     const projectId = body?.projectId?.trim();
     if (!projectId) {
@@ -209,9 +243,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     await revokeAuthSession(session.sessionId);
     reply.send({ ok: true });
-  });
+    },
+  );
 
-  app.post('/runtime/auth/token/refresh', async (request, reply) => {
+  app.post(
+    '/runtime/auth/token/refresh',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (request, reply) => {
     const body = request.body as
       | {
           projectId?: string;
@@ -261,9 +299,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       sessionExpiresAt: rotated.sessionExpiresAt.toISOString(),
       refreshExpiresAt: rotated.refresh.expiresAt.toISOString(),
     });
-  });
+    },
+  );
 
-  app.post('/runtime/auth/password/forgot', async (request, reply) => {
+  app.post(
+    '/runtime/auth/password/forgot',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
     const body = request.body as { projectId?: string; email?: string } | undefined;
     const projectId = body?.projectId?.trim();
     const email = body?.email?.trim().toLowerCase();
@@ -317,9 +359,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     reply.send({ ok: true, resetToken: issued.token });
-  });
+    },
+  );
 
-  app.post('/runtime/auth/password/reset', async (request, reply) => {
+  app.post(
+    '/runtime/auth/password/reset',
+    { config: { rateLimit: { max: 15, timeWindow: '1 minute' } } },
+    async (request, reply) => {
     const body = request.body as
       | { projectId?: string; token?: string; password?: string }
       | undefined;
@@ -366,9 +412,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
 
     reply.send({ ok: true });
-  });
+    },
+  );
 
-  app.post('/runtime/auth/email/verify/request', async (request, reply) => {
+  app.post(
+    '/runtime/auth/email/verify/request',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
     const body = request.body as { projectId?: string; email?: string } | undefined;
     const projectId = body?.projectId?.trim();
     const email = body?.email?.trim().toLowerCase();
@@ -423,9 +473,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       );
     }
     reply.send({ ok: true, verificationToken: issued.token });
-  });
+    },
+  );
 
-  app.post('/runtime/auth/email/verify/confirm', async (request, reply) => {
+  app.post(
+    '/runtime/auth/email/verify/confirm',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    async (request, reply) => {
     const body = request.body as { projectId?: string; token?: string } | undefined;
     const projectId = body?.projectId?.trim();
     const token = body?.token?.trim();
@@ -468,7 +522,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
 
     reply.send({ ok: true });
-  });
+    },
+  );
 
   app.get('/runtime/auth/jwks', async (request, reply) => {
     const query = request.query as { projectId?: string } | undefined;

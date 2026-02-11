@@ -643,4 +643,50 @@ describe('runtime auth routes', () => {
 
     await app.close();
   });
+
+  it('locks repeated bad logins with 429 response', async () => {
+    const app = await buildApp();
+    const headers = { origin: 'http://localhost:5173' };
+
+    const signup = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/signup',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        email: 'lockout@example.com',
+        password: 'StrongPass123!',
+      },
+    });
+    expect(signup.statusCode).toBe(201);
+
+    for (let index = 0; index < 4; index += 1) {
+      const attempt = await app.inject({
+        method: 'POST',
+        url: '/runtime/auth/login',
+        headers,
+        payload: {
+          projectId: 'project_1',
+          email: 'lockout@example.com',
+          password: 'wrong-password',
+        },
+      });
+      expect(attempt.statusCode).toBe(401);
+    }
+
+    const lockedAttempt = await app.inject({
+      method: 'POST',
+      url: '/runtime/auth/login',
+      headers,
+      payload: {
+        projectId: 'project_1',
+        email: 'lockout@example.com',
+        password: 'wrong-password',
+      },
+    });
+    expect(lockedAttempt.statusCode).toBe(429);
+    expect((lockedAttempt.json() as { retryAfterSeconds?: number }).retryAfterSeconds).toBeGreaterThan(0);
+
+    await app.close();
+  });
 });
