@@ -146,6 +146,7 @@ model Project {
   authPasswordResetTokens AuthPasswordResetToken[]
   authEmailVerificationTokens AuthEmailVerificationToken[]
   authClients AuthClient[]
+  authProviderConfigs AuthProviderConfig[]
 
   @@index([organizationId])
   @@map("projects")
@@ -542,6 +543,27 @@ model AuthClient {
 
   @@index([projectId, deletedAt])
   @@map("auth_clients")
+}
+
+model AuthProviderConfig {
+  id                     String               @id @default(cuid())
+  projectId              String               @map("project_id")
+  provider               AuthIdentityProvider
+  enabled                Boolean              @default(true)
+  clientId               String               @map("client_id")
+  clientSecretCiphertext Bytes                @map("client_secret_ciphertext")
+  clientSecretIv         Bytes                @map("client_secret_iv")
+  clientSecretTag        Bytes                @map("client_secret_tag")
+  keyVersion             String               @map("key_version")
+  scopesJson             Json?                @map("scopes_json")
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, provider])
+  @@index([projectId, enabled])
+  @@map("auth_provider_configs")
 }
 
 model Secret {

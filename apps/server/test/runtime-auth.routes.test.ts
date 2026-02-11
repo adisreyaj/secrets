@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { hashToken } from '../src/auth.js';
 
 type EndUser = {
   id: string;
@@ -72,7 +73,30 @@ type EmailVerificationToken = {
   consumedAt: Date | null;
 };
 
+type AuthProviderConfig = {
+  id: string;
+  projectId: string;
+  provider: 'GOOGLE' | 'GITHUB';
+  enabled: boolean;
+  clientId: string;
+  clientSecretCiphertext: Buffer;
+  clientSecretIv: Buffer;
+  clientSecretTag: Buffer;
+  keyVersion: string;
+  scopesJson: string[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 const state = {
+  apiToken: {
+    id: 'token_1',
+    tokenHash: hashToken('mgmt-token'),
+    projectId: 'project_1',
+    createdBy: 'user_1',
+    readOnly: false,
+    creator: { id: 'user_1', email: 'owner@example.com', name: 'Owner' },
+  },
   modules: [{ projectId: 'project_1', module: 'AUTH', enabled: true }],
   config: {
     projectId: 'project_1',
@@ -88,6 +112,7 @@ const state = {
   signingKeys: [] as SigningKey[],
   passwordResetTokens: [] as PasswordResetToken[],
   emailVerificationTokens: [] as EmailVerificationToken[],
+  providerConfigs: [] as AuthProviderConfig[],
 };
 
 function nextId(prefix: string, size: number): string {
@@ -97,9 +122,15 @@ function nextId(prefix: string, size: number): string {
 vi.mock('../src/db.js', () => ({
   prisma: {
     userSession: { findFirst: async () => null },
-    apiToken: { findFirst: async () => null, update: async () => ({ id: 'token_1' }) },
+    apiToken: {
+      findFirst: async ({ where }: any) =>
+        where?.tokenHash === state.apiToken.tokenHash ? state.apiToken : null,
+      update: async () => ({ id: state.apiToken.id }),
+    },
     serviceAccountToken: { findFirst: async () => null },
     globalCliToken: { findFirst: async () => null },
+    auditLog: { create: async () => ({ id: 'audit_1' }) },
+    projectMember: { findUnique: async () => ({ role: 'ADMIN' }) },
     projectModule: {
       findUnique: async ({ where }: any) =>
         state.modules.find(
@@ -434,6 +465,81 @@ vi.mock('../src/db.js', () => ({
         return created;
       },
     },
+    authProviderConfig: {
+      findFirst: async ({ where }: any) =>
+        state.providerConfigs.find((candidate) => {
+          if (where.projectId && candidate.projectId !== where.projectId) return false;
+          if (where.provider && candidate.provider !== where.provider) return false;
+          if (typeof where.enabled === 'boolean' && candidate.enabled !== where.enabled) return false;
+          return true;
+        }) ?? null,
+      findMany: async ({ where }: any) =>
+        state.providerConfigs.filter((candidate) => candidate.projectId === where.projectId),
+      upsert: async ({ where, create, update }: any) => {
+        const existing = state.providerConfigs.find(
+          (candidate) =>
+            candidate.projectId === where.projectId_provider.projectId &&
+            candidate.provider === where.projectId_provider.provider,
+        );
+        if (existing) {
+          existing.enabled = typeof update.enabled === 'boolean' ? update.enabled : existing.enabled;
+          existing.clientId = update.clientId ?? existing.clientId;
+          existing.clientSecretCiphertext =
+            update.clientSecretCiphertext ?? existing.clientSecretCiphertext;
+          existing.clientSecretIv = update.clientSecretIv ?? existing.clientSecretIv;
+          existing.clientSecretTag = update.clientSecretTag ?? existing.clientSecretTag;
+          existing.keyVersion = update.keyVersion ?? existing.keyVersion;
+          existing.scopesJson = update.scopesJson ?? existing.scopesJson;
+          existing.updatedAt = new Date();
+          return existing;
+        }
+        const created: AuthProviderConfig = {
+          id: nextId('provider', state.providerConfigs.length),
+          projectId: create.projectId,
+          provider: create.provider,
+          enabled: create.enabled,
+          clientId: create.clientId,
+          clientSecretCiphertext: Buffer.from(create.clientSecretCiphertext),
+          clientSecretIv: Buffer.from(create.clientSecretIv),
+          clientSecretTag: Buffer.from(create.clientSecretTag),
+          keyVersion: create.keyVersion,
+          scopesJson: create.scopesJson ?? [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        state.providerConfigs.push(created);
+        return created;
+      },
+      findUnique: async ({ where }: any) =>
+        state.providerConfigs.find((candidate) => candidate.id === where.id) ?? null,
+      update: async ({ where, data }: any) => {
+        const found = state.providerConfigs.find((candidate) => candidate.id === where.id);
+        if (!found) throw new Error('Provider config not found');
+        if (Object.prototype.hasOwnProperty.call(data, 'enabled')) {
+          found.enabled = data.enabled;
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'clientId')) {
+          found.clientId = data.clientId;
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'clientSecretCiphertext')) {
+          found.clientSecretCiphertext = data.clientSecretCiphertext;
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'clientSecretIv')) {
+          found.clientSecretIv = data.clientSecretIv;
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'clientSecretTag')) {
+          found.clientSecretTag = data.clientSecretTag;
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'keyVersion')) {
+          found.keyVersion = data.keyVersion;
+        }
+        if (Object.prototype.hasOwnProperty.call(data, 'scopesJson')) {
+          found.scopesJson = data.scopesJson;
+        }
+        found.updatedAt = new Date();
+        return found;
+      },
+    },
   },
 }));
 
@@ -452,6 +558,7 @@ describe('runtime auth routes', () => {
     state.signingKeys = [];
     state.passwordResetTokens = [];
     state.emailVerificationTokens = [];
+    state.providerConfigs = [];
     state.config = {
       projectId: 'project_1',
       nativeAuthEnabled: true,
@@ -640,6 +747,46 @@ describe('runtime auth routes', () => {
       state.endUsers.find((candidate) => candidate.email === 'verify@example.com')
         ?.emailVerifiedAt,
     ).toBeTruthy();
+
+    await app.close();
+  });
+
+  it('supports google oauth start and callback via mock profile in tests', async () => {
+    const app = await buildApp();
+    const headers = { origin: 'http://localhost:5173', authorization: 'Bearer mgmt-token' };
+
+    const providerCreate = await app.inject({
+      method: 'POST',
+      url: '/projects/project_1/auth/providers',
+      headers,
+      payload: {
+        provider: 'google',
+        enabled: true,
+        clientId: 'google-client-id',
+        clientSecret: 'google-client-secret',
+      },
+    });
+    expect(providerCreate.statusCode).toBe(201);
+
+    const start = await app.inject({
+      method: 'GET',
+      url: '/runtime/auth/oauth/google/start?projectId=project_1',
+      headers: { origin: 'http://localhost:5173' },
+    });
+    expect(start.statusCode).toBe(200);
+    const startBody = start.json() as { state: string; authUrl: string };
+    expect(startBody.state).toBeTruthy();
+    expect(startBody.authUrl).toContain('accounts.google.com');
+
+    const callback = await app.inject({
+      method: 'GET',
+      url: `/runtime/auth/oauth/google/callback?state=${encodeURIComponent(startBody.state)}&mockEmail=test-google@example.com&mockSub=sub_google_1`,
+      headers: { origin: 'http://localhost:5173' },
+    });
+    expect(callback.statusCode).toBe(200);
+    const callbackBody = callback.json() as { provider: string; accessToken?: string };
+    expect(callbackBody.provider).toBe('google');
+    expect(callbackBody.accessToken).toBeTruthy();
 
     await app.close();
   });

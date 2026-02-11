@@ -1,4 +1,4 @@
-import { Prisma, ProjectModuleKey } from '@prisma/client';
+import { AuthIdentityProvider, Prisma, ProjectModuleKey } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import {
   ensureAuthProjectConfig,
@@ -23,6 +23,38 @@ import {
 } from '../services/auth/email.js';
 import { config } from '../../config.js';
 import { LoginAbuseProtector } from '../services/auth/abuseProtection.js';
+import { decryptProviderSecret } from '../services/auth/providerConfigs.js';
+import { logAudit } from '../services/audit.js';
+
+type OauthStatePayload = {
+  projectId: string;
+  provider: 'google';
+  redirectUri?: string;
+  expiresAt: number;
+};
+
+const oauthStateStore = new Map<string, OauthStatePayload>();
+
+function issueOauthState(payload: Omit<OauthStatePayload, 'expiresAt'>): string {
+  const token = `oas_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  oauthStateStore.set(token, {
+    ...payload,
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  });
+  return token;
+}
+
+function consumeOauthState(state: string): OauthStatePayload | null {
+  const value = oauthStateStore.get(state);
+  if (!value) {
+    return null;
+  }
+  oauthStateStore.delete(state);
+  if (value.expiresAt <= Date.now()) {
+    return null;
+  }
+  return value;
+}
 import {
   requireProjectAuthSession,
   requireProjectModuleEnabled,
@@ -545,5 +577,231 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const jwks = await buildProjectJwks(projectId);
     reply.send(jwks);
+  });
+
+  app.get('/runtime/auth/oauth/:provider/start', async (request, reply) => {
+    const { provider } = request.params as { provider: string };
+    if (provider !== 'google') {
+      reply.code(400).send({ error: 'Only google is currently supported' });
+      return;
+    }
+    const query = request.query as { projectId?: string; redirectUri?: string } | undefined;
+    const projectId = query?.projectId?.trim();
+    if (!projectId) {
+      reply.code(400).send({ error: 'projectId is required' });
+      return;
+    }
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+
+    const providerConfig = await prisma.authProviderConfig.findFirst({
+      where: {
+        projectId,
+        provider: AuthIdentityProvider.GOOGLE,
+        enabled: true,
+      },
+    });
+    if (!providerConfig) {
+      reply.code(404).send({ error: 'Google OAuth is not configured for this project' });
+      return;
+    }
+
+    const state = issueOauthState({
+      projectId,
+      provider: 'google',
+      redirectUri: query?.redirectUri?.trim() || undefined,
+    });
+    const callbackUrl = `${config.authRuntimeBaseUrl}/runtime/auth/oauth/google/callback`;
+    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    authUrl.searchParams.set('client_id', providerConfig.clientId);
+    authUrl.searchParams.set('redirect_uri', callbackUrl);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('scope', config.googleOauthScopes.join(' '));
+    authUrl.searchParams.set('state', state);
+    authUrl.searchParams.set('access_type', 'offline');
+    authUrl.searchParams.set('prompt', 'consent');
+
+    reply.send({ provider: 'google', projectId, state, authUrl: authUrl.toString() });
+  });
+
+  app.get('/runtime/auth/oauth/:provider/callback', async (request, reply) => {
+    const { provider } = request.params as { provider: string };
+    if (provider !== 'google') {
+      reply.code(400).send({ error: 'Only google is currently supported' });
+      return;
+    }
+    const query = request.query as
+      | {
+          state?: string;
+          code?: string;
+          mockEmail?: string;
+          mockSub?: string;
+        }
+      | undefined;
+    const stateValue = query?.state?.trim();
+    if (!stateValue) {
+      reply.code(400).send({ error: 'state is required' });
+      return;
+    }
+    const oauthState = consumeOauthState(stateValue);
+    if (!oauthState) {
+      reply.code(401).send({ error: 'Invalid or expired state' });
+      return;
+    }
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      oauthState.projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+
+    const providerConfig = await prisma.authProviderConfig.findFirst({
+      where: {
+        projectId: oauthState.projectId,
+        provider: AuthIdentityProvider.GOOGLE,
+        enabled: true,
+      },
+    });
+    if (!providerConfig) {
+      reply.code(404).send({ error: 'Google OAuth is not configured for this project' });
+      return;
+    }
+
+    let email = query?.mockEmail?.trim().toLowerCase();
+    let providerSubject = query?.mockSub?.trim();
+    if (!email || !providerSubject) {
+      const code = query?.code?.trim();
+      if (!code) {
+        reply.code(400).send({ error: 'code is required' });
+        return;
+      }
+
+      const callbackUrl = `${config.authRuntimeBaseUrl}/runtime/auth/oauth/google/callback`;
+      const secret = decryptProviderSecret(providerConfig);
+
+      const tokenResp = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: providerConfig.clientId,
+          client_secret: secret,
+          redirect_uri: callbackUrl,
+          grant_type: 'authorization_code',
+          code,
+        }),
+      });
+      if (!tokenResp.ok) {
+        reply.code(401).send({ error: 'OAuth token exchange failed' });
+        return;
+      }
+      const tokenJson = (await tokenResp.json()) as { access_token?: string };
+      if (!tokenJson.access_token) {
+        reply.code(401).send({ error: 'OAuth token exchange failed' });
+        return;
+      }
+
+      const profileResp = await fetch(
+        `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${encodeURIComponent(tokenJson.access_token)}`,
+      );
+      if (!profileResp.ok) {
+        reply.code(401).send({ error: 'OAuth profile fetch failed' });
+        return;
+      }
+      const profile = (await profileResp.json()) as { sub?: string; email?: string };
+      email = profile.email?.trim().toLowerCase();
+      providerSubject = profile.sub?.trim();
+    }
+
+    if (!email || !providerSubject) {
+      reply.code(401).send({ error: 'OAuth profile is missing required identity fields' });
+      return;
+    }
+
+    let identity = await prisma.authIdentity.findFirst({
+      where: {
+        projectId: oauthState.projectId,
+        provider: AuthIdentityProvider.GOOGLE,
+        providerSubject,
+      },
+      include: { endUser: true },
+    });
+
+    let endUser = identity?.endUser ?? null;
+    if (!endUser) {
+      endUser = await prisma.authEndUser.findFirst({
+        where: { projectId: oauthState.projectId, email },
+      });
+      if (!endUser) {
+        endUser = await prisma.authEndUser.create({
+          data: {
+            projectId: oauthState.projectId,
+            email,
+            emailVerifiedAt: new Date(),
+          },
+        });
+      }
+
+      identity = await prisma.authIdentity.create({
+        data: {
+          projectId: oauthState.projectId,
+          endUserId: endUser.id,
+          provider: AuthIdentityProvider.GOOGLE,
+          providerSubject,
+        },
+        include: { endUser: true },
+      });
+    }
+
+    const authConfig = await ensureAuthProjectConfig(oauthState.projectId);
+    const issued = await issueAuthSessionWithRefresh({
+      projectId: oauthState.projectId,
+      endUserId: endUser.id,
+      userAgent: request.headers['user-agent'],
+      ipAddress: request.ip,
+      accessTokenTtlMinutes: authConfig.accessTokenTtlMinutes,
+      refreshTokenTtlDays: authConfig.refreshTokenTtlDays,
+    });
+    const access = await signProjectAccessToken({
+      projectId: oauthState.projectId,
+      endUserId: endUser.id,
+      sessionId: issued.session.id,
+      expiresInMinutes: authConfig.accessTokenTtlMinutes,
+    });
+
+    await logAudit({
+      projectId: oauthState.projectId,
+      actorUserId: null,
+      actorServiceAccountId: null,
+      action: 'auth.oauth.login',
+      resourceType: 'auth_identity',
+      resourceId: identity.id,
+      metadataJson: { module: 'auth', provider: 'google', endUserId: endUser.id },
+    });
+
+    reply.send({
+      provider: 'google',
+      endUser: {
+        id: endUser.id,
+        projectId: endUser.projectId,
+        email: endUser.email,
+      },
+      accessToken: access.token,
+      accessTokenExpiresAt: access.expiresAt.toISOString(),
+      sessionToken: issued.sessionToken,
+      refreshToken: issued.refreshToken,
+      sessionExpiresAt: issued.sessionExpiresAt.toISOString(),
+      refreshExpiresAt: issued.refreshExpiresAt.toISOString(),
+      redirectUri: oauthState.redirectUri ?? null,
+    });
   });
 }

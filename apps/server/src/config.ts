@@ -36,4 +36,11 @@ export const config = {
   resendApiKey: process.env.RESEND_API_KEY ?? '',
   authLoginMaxAttempts: Number(process.env.AUTH_LOGIN_MAX_ATTEMPTS ?? 5),
   authLoginLockMs: Number(process.env.AUTH_LOGIN_LOCK_MS ?? 5 * 60 * 1000),
+  authRuntimeBaseUrl: process.env.AUTH_RUNTIME_BASE_URL ?? 'http://localhost:3001',
+  googleOauthScopes:
+    process.env.GOOGLE_OAUTH_SCOPES?.split(',').map((item) => item.trim()).filter(Boolean) ??
+    ['openid', 'email', 'profile'],
+  githubOauthScopes:
+    process.env.GITHUB_OAUTH_SCOPES?.split(',').map((item) => item.trim()).filter(Boolean) ??
+    ['read:user', 'user:email'],
 };

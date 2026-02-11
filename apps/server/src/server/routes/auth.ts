@@ -12,6 +12,11 @@ import {
 import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME } from '../auth/session.js';
 import { logAudit } from '../services/audit.js';
 import { buildCliLoginUrl } from '../services/format.js';
+import { ensureAuthProjectConfig, updateAuthProjectConfig } from '../services/auth/core.js';
+import {
+  rotateAuthProviderSecret,
+  upsertAuthProviderConfig,
+} from '../services/auth/providerConfigs.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const toAuthClientDto = (client: {
@@ -36,6 +41,27 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     createdAt: client.createdAt.toISOString(),
     updatedAt: client.updatedAt.toISOString(),
     deletedAt: client.deletedAt?.toISOString() ?? null,
+  });
+  const toAuthProviderDto = (provider: {
+    id: string;
+    projectId: string;
+    provider: 'LOCAL' | 'GOOGLE' | 'GITHUB';
+    enabled: boolean;
+    clientId: string;
+    scopesJson: unknown;
+    createdAt: Date;
+    updatedAt: Date;
+  }) => ({
+    id: provider.id,
+    projectId: provider.projectId,
+    provider: provider.provider.toLowerCase() as 'google' | 'github' | 'local',
+    enabled: provider.enabled,
+    clientId: provider.clientId,
+    scopes: Array.isArray(provider.scopesJson)
+      ? provider.scopesJson.filter((value): value is string => typeof value === 'string')
+      : [],
+    createdAt: provider.createdAt.toISOString(),
+    updatedAt: provider.updatedAt.toISOString(),
   });
 
   app.post(
@@ -374,6 +400,303 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     reply.send({ ok: true });
   });
 
+  app.get('/projects/:projectId/auth/config', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { projectId } = request.params as { projectId: string };
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const configRow = await ensureAuthProjectConfig(projectId);
+    reply.send({
+      projectId: configRow.projectId,
+      nativeAuthEnabled: configRow.nativeAuthEnabled,
+      emailPasswordEnabled: configRow.emailPasswordEnabled,
+      accessTokenTtlMinutes: configRow.accessTokenTtlMinutes,
+      refreshTokenTtlDays: configRow.refreshTokenTtlDays,
+      createdAt: configRow.createdAt.toISOString(),
+      updatedAt: configRow.updatedAt.toISOString(),
+    });
+  });
+
+  app.put('/projects/:projectId/auth/config', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    if (!auth.user) {
+      reply.code(403).send({ error: 'User session required' });
+      return;
+    }
+    const { projectId } = request.params as { projectId: string };
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const body = request.body as
+      | {
+          nativeAuthEnabled?: boolean;
+          emailPasswordEnabled?: boolean;
+          accessTokenTtlMinutes?: number;
+          refreshTokenTtlDays?: number;
+        }
+      | undefined;
+    if (!body) {
+      reply.code(400).send({ error: 'Request body is required' });
+      return;
+    }
+
+    const updated = await updateAuthProjectConfig(projectId, {
+      nativeAuthEnabled: body.nativeAuthEnabled,
+      emailPasswordEnabled: body.emailPasswordEnabled,
+      accessTokenTtlMinutes: body.accessTokenTtlMinutes,
+      refreshTokenTtlDays: body.refreshTokenTtlDays,
+    });
+    await logAudit({
+      projectId,
+      actorUserId: auth.user.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'auth.config.update',
+      resourceType: 'auth_config',
+      resourceId: updated.id,
+      metadataJson: { module: 'auth' },
+    });
+
+    reply.send({
+      projectId: updated.projectId,
+      nativeAuthEnabled: updated.nativeAuthEnabled,
+      emailPasswordEnabled: updated.emailPasswordEnabled,
+      accessTokenTtlMinutes: updated.accessTokenTtlMinutes,
+      refreshTokenTtlDays: updated.refreshTokenTtlDays,
+      createdAt: updated.createdAt.toISOString(),
+      updatedAt: updated.updatedAt.toISOString(),
+    });
+  });
+
+  app.get('/projects/:projectId/auth/providers', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { projectId } = request.params as { projectId: string };
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const providers = await prisma.authProviderConfig.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+    });
+    reply.send(providers.map(toAuthProviderDto));
+  });
+
+  app.post('/projects/:projectId/auth/providers', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    if (!auth.user) {
+      reply.code(403).send({ error: 'User session required' });
+      return;
+    }
+    const { projectId } = request.params as { projectId: string };
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const body = request.body as
+      | {
+          provider?: 'google' | 'github';
+          enabled?: boolean;
+          clientId?: string;
+          clientSecret?: string;
+          scopes?: string[];
+        }
+      | undefined;
+    const provider = body?.provider?.toUpperCase();
+    const clientId = body?.clientId?.trim();
+    const clientSecret = body?.clientSecret?.trim();
+    if (!provider || !clientId || !clientSecret) {
+      reply.code(400).send({ error: 'provider, clientId, and clientSecret are required' });
+      return;
+    }
+    if (provider !== 'GOOGLE' && provider !== 'GITHUB') {
+      reply.code(400).send({ error: 'provider must be google or github' });
+      return;
+    }
+
+    const saved = await upsertAuthProviderConfig({
+      projectId,
+      provider,
+      clientId,
+      clientSecret,
+      enabled: typeof body?.enabled === 'boolean' ? body.enabled : true,
+      scopes: body?.scopes,
+    });
+    await logAudit({
+      projectId,
+      actorUserId: auth.user.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'auth.provider.upsert',
+      resourceType: 'auth_provider_config',
+      resourceId: saved.id,
+      metadataJson: { module: 'auth', provider: saved.provider.toLowerCase() },
+    });
+
+    reply.code(201).send(toAuthProviderDto(saved as any));
+  });
+
+  app.patch('/auth/providers/:providerId', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    if (!auth.user) {
+      reply.code(403).send({ error: 'User session required' });
+      return;
+    }
+    const { providerId } = request.params as { providerId: string };
+    const current = await prisma.authProviderConfig.findUnique({
+      where: { id: providerId },
+    });
+    if (!current) {
+      reply.code(404).send({ error: 'Provider config not found' });
+      return;
+    }
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      current.projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+    const role = await requireProjectRole(request, reply, current.projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const body = request.body as
+      | { enabled?: boolean; clientId?: string; scopes?: string[] }
+      | undefined;
+    const updated = await prisma.authProviderConfig.update({
+      where: { id: current.id },
+      data: {
+        enabled: typeof body?.enabled === 'boolean' ? body.enabled : undefined,
+        clientId: body?.clientId?.trim() ?? undefined,
+        scopesJson: Array.isArray(body?.scopes) ? body.scopes : undefined,
+      },
+    });
+    await logAudit({
+      projectId: updated.projectId,
+      actorUserId: auth.user.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'auth.provider.update',
+      resourceType: 'auth_provider_config',
+      resourceId: updated.id,
+      metadataJson: { module: 'auth', provider: updated.provider.toLowerCase() },
+    });
+    reply.send(toAuthProviderDto(updated as any));
+  });
+
+  app.post('/auth/providers/:providerId/rotate-secret', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    if (!auth.user) {
+      reply.code(403).send({ error: 'User session required' });
+      return;
+    }
+    const { providerId } = request.params as { providerId: string };
+    const current = await prisma.authProviderConfig.findUnique({
+      where: { id: providerId },
+    });
+    if (!current) {
+      reply.code(404).send({ error: 'Provider config not found' });
+      return;
+    }
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      current.projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+    const role = await requireProjectRole(request, reply, current.projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+    const body = request.body as { clientSecret?: string } | undefined;
+    const clientSecret = body?.clientSecret?.trim();
+    if (!clientSecret) {
+      reply.code(400).send({ error: 'clientSecret is required' });
+      return;
+    }
+
+    const rotated = await rotateAuthProviderSecret({
+      projectId: current.projectId,
+      provider: current.provider,
+      clientSecret,
+    });
+    await logAudit({
+      projectId: rotated.projectId,
+      actorUserId: auth.user.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'auth.provider.rotate_secret',
+      resourceType: 'auth_provider_config',
+      resourceId: rotated.id,
+      metadataJson: { module: 'auth', provider: rotated.provider.toLowerCase() },
+    });
+    reply.send(toAuthProviderDto(rotated as any));
+  });
+
   app.get('/me', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
@@ -494,7 +817,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/projects/:projectId/auth/clients', async (request, reply) => {
     const auth = requireAuth(request, reply);
-    if (!auth?.user) {
+    if (!auth) {
+      return;
+    }
+    if (!auth.user) {
       reply.code(403).send({ error: 'User session required' });
       return;
     }
@@ -558,7 +884,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch('/auth/clients/:clientId', async (request, reply) => {
     const auth = requireAuth(request, reply);
-    if (!auth?.user) {
+    if (!auth) {
+      return;
+    }
+    if (!auth.user) {
       reply.code(403).send({ error: 'User session required' });
       return;
     }
@@ -633,7 +962,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete('/auth/clients/:clientId', async (request, reply) => {
     const auth = requireAuth(request, reply);
-    if (!auth?.user) {
+    if (!auth) {
+      return;
+    }
+    if (!auth.user) {
       reply.code(403).send({ error: 'User session required' });
       return;
     }
