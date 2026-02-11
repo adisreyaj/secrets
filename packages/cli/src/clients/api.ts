@@ -26,9 +26,9 @@ async function parseResponseBody<T>(response: Response) {
   return (await response.text()) as T
 }
 
-async function requestWithAuth<T>(
+async function requestWithToken<T>(
   baseUrl: string,
-  token: string,
+  token: string | null,
   route: string,
   options: RequestInit,
   debug: DebugLogger,
@@ -38,7 +38,9 @@ async function requestWithAuth<T>(
   debug('http.request', { method, url })
 
   const headers = new Headers(options.headers)
-  headers.set('Authorization', `Bearer ${token}`)
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
   if (options.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
@@ -69,7 +71,7 @@ export async function apiFetch<T>(
   route: string,
   debug: DebugLogger,
 ): Promise<T> {
-  return requestWithAuth<T>(baseUrl, token, route, {}, debug)
+  return requestWithToken<T>(baseUrl, token, route, {}, debug)
 }
 
 export async function apiRequest<T>(
@@ -79,7 +81,16 @@ export async function apiRequest<T>(
   options: RequestInit,
   debug: DebugLogger,
 ): Promise<T> {
-  return requestWithAuth<T>(baseUrl, token, route, options, debug)
+  return requestWithToken<T>(baseUrl, token, route, options, debug)
+}
+
+export async function apiPublicRequest<T>(
+  baseUrl: string,
+  route: string,
+  options: RequestInit,
+  debug: DebugLogger,
+): Promise<T> {
+  return requestWithToken<T>(baseUrl, null, route, options, debug)
 }
 
 export async function createEnvironment(
