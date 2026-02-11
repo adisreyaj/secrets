@@ -17,6 +17,11 @@ export const resetCsrfToken = () => {
   csrfTokenCache = null
 }
 
+export type ApiFetchFn = <T>(
+  path: string,
+  options?: RequestInit,
+) => Promise<T>
+
 const getCookie = (name: string) => {
   if (typeof document === 'undefined') {
     return undefined
@@ -66,10 +71,10 @@ const ensureCsrfHeader = async (headers: Headers, method: string) => {
   }
 }
 
-export async function apiFetch<T>(
+export const apiFetch: ApiFetchFn = async <T>(
   path: string,
   options: RequestInit = {},
-): Promise<T> {
+): Promise<T> => {
   const headers = new Headers(options.headers)
   const method = options.method ?? 'GET'
   if (!headers.has('Content-Type') && options.body) {
