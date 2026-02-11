@@ -11,6 +11,7 @@ const globalShortcuts: ShortcutItem[] = [
   { keys: 'g c', label: 'Secrets' },
   { keys: 'g a', label: 'Approvals' },
   { keys: 'g l', label: 'Audit log' },
+  { keys: 'g h', label: 'Auth settings' },
   { keys: 'g m', label: 'Team' },
   { keys: 'g t', label: 'API tokens' },
   { keys: 'g s', label: 'Service accounts' },
@@ -25,6 +26,7 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
     { keys: 'e', label: 'Environments' },
     { keys: 'l', label: 'Audit log' },
     { keys: 'a', label: 'Approvals' },
+    { keys: 'h', label: 'Auth settings' },
     { keys: 'm', label: 'Team' },
     { keys: 't', label: 'API tokens' },
     { keys: 's', label: 'Service accounts' },
@@ -46,6 +48,9 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
   audit: [{ keys: 'b', label: 'Back to overview' }],
   approvals: [{ keys: 'b', label: 'Back to overview' }],
   'approval-rules': [{ keys: 'b', label: 'Back to overview' }],
+  flags: [{ keys: 'b', label: 'Back to overview' }],
+  'flag-sdk-keys': [{ keys: 'b', label: 'Back to flags' }],
+  auth: [{ keys: 'b', label: 'Back to overview' }],
   team: [{ keys: 'b', label: 'Back to overview' }],
   tokens: [
     { keys: 'n', label: 'Focus token name' },
@@ -80,7 +85,7 @@ export const ShortcutsHelpDialog = ({
   onOpenChange: (open: boolean) => void
   match: RouteMatch
 }) => {
-  const currentShortcuts = pageShortcuts[match.name]
+  const currentShortcuts = pageShortcuts[match.name] ?? []
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

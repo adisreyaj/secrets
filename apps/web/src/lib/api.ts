@@ -53,6 +53,9 @@ import type {
   FeatureFlagVariantDto,
   FeatureFlagRuleDto,
   FeatureFlagSdkKeyDto,
+  AuthProjectConfigDto,
+  AuthProviderDto,
+  AuthClientDto,
 } from '@secrets/shared'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
@@ -305,6 +308,30 @@ export const api = {
     ),
   revokeFlagSdkKey: (keyId: string) =>
     apiFetch<{ ok: true }>(`/flag-sdk-keys/${keyId}`, { method: 'DELETE' }),
+  getAuthConfig: (projectId: string) =>
+    apiFetch<AuthProjectConfigDto & { accessTokenTtlMinutes: number; refreshTokenTtlDays: number }>(
+      `/projects/${projectId}/auth/config`,
+    ),
+  updateAuthConfig: (
+    projectId: string,
+    payload: {
+      nativeAuthEnabled?: boolean
+      emailPasswordEnabled?: boolean
+      accessTokenTtlMinutes?: number
+      refreshTokenTtlDays?: number
+    },
+  ) =>
+    apiFetch<AuthProjectConfigDto & { accessTokenTtlMinutes: number; refreshTokenTtlDays: number }>(
+      `/projects/${projectId}/auth/config`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+    ),
+  listAuthProviders: (projectId: string) =>
+    apiFetch<AuthProviderDto[]>(`/projects/${projectId}/auth/providers`),
+  listAuthClients: (projectId: string) =>
+    apiFetch<AuthClientDto[]>(`/projects/${projectId}/auth/clients`),
 
   listEnvironments: (projectId: string) =>
     apiFetch<EnvironmentDto[]>(`/projects/${projectId}/environments`),

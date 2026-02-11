@@ -21,6 +21,7 @@ const navItems: {
     | 'audit'
     | 'approvals'
     | 'approval-rules'
+    | 'auth'
     | 'tokens'
     | 'service-accounts'
     | 'team'
@@ -70,6 +71,13 @@ const navItems: {
       projectPath(id, slug, 'approval-rules'),
   },
   {
+    key: 'auth',
+    label: 'Auth',
+    icon: ShieldCheck,
+    path: (id: string, slug?: string | null) =>
+      projectPath(id, slug, 'auth'),
+  },
+  {
     key: 'team',
     label: 'Team',
     icon: Users,
@@ -110,6 +118,7 @@ export const Sidebar = ({
     | 'audit'
     | 'approvals'
     | 'approval-rules'
+    | 'auth'
     | 'tokens'
     | 'service-accounts'
     | 'secrets'

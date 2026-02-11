@@ -155,7 +155,7 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
   const saveFlag = async () => {
     if (!form.key.trim() || !form.name.trim() || saving) return
     setSaving(true)
-    const result = await runMutationWithToast(
+    await runMutationWithToast(
       async () => {
         if (selectedFlagId) {
           await api.updateFlag(selectedFlagId, {
@@ -178,7 +178,7 @@ export const FlagsPage = ({ projectId, navigate }: FlagsPageProps) => {
       },
       { successMessage: selectedFlagId ? 'Flag updated.' : 'Flag created.' },
     )
-    if (result !== false && !selectedFlagId) {
+    if (!selectedFlagId) {
       resetForm()
     }
     setSaving(false)

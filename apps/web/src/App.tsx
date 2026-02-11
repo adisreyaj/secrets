@@ -55,6 +55,11 @@ const FlagSdkKeysPage = lazy(() =>
     default: m.FlagSdkKeysPage,
   })),
 )
+const AuthSettingsPage = lazy(() =>
+  import('./pages/AuthSettingsPage').then((m) => ({
+    default: m.AuthSettingsPage,
+  })),
+)
 const EnvironmentsPage = lazy(() =>
   import('./pages/EnvironmentsPage').then((m) => ({
     default: m.EnvironmentsPage,
@@ -181,6 +186,13 @@ const FlagSdkKeysRoute = () => {
   const params = useParams()
   if (!params.projectId) return <Navigate to="/projects" replace />
   return <FlagSdkKeysPage projectId={params.projectId} navigate={navigate} />
+}
+
+const AuthSettingsRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId) return <Navigate to="/projects" replace />
+  return <AuthSettingsPage projectId={params.projectId} navigate={navigate} />
 }
 
 const TokensRoute = () => {
@@ -357,6 +369,17 @@ const AppShell = () => {
   )
 
   useRegisterShortcut(
+    'g h',
+    () => {
+      const projectId = resolveProjectId()
+      navigate(
+        projectId ? projectPath(projectId, undefined, 'auth') : '/projects',
+      )
+    },
+    { enabled: shortcutsEnabled },
+  )
+
+  useRegisterShortcut(
     'g t',
     () => {
       const projectId = resolveProjectId()
@@ -471,6 +494,10 @@ const AppShell = () => {
                 <Route
                   path="/projects/:projectId/flag-sdk-keys"
                   element={<FlagSdkKeysRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/auth"
+                  element={<AuthSettingsRoute />}
                 />
                 <Route
                   path="/projects/:projectId/team"

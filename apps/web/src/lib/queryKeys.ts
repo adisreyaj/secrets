@@ -33,6 +33,12 @@ export const queryKeys = {
   flagRules: (flagId: string) => ['flags', flagId, 'rules'] as const,
   flagSdkKeys: (projectId: string) =>
     ['projects', projectId, 'flag-sdk-keys'] as const,
+  authConfig: (projectId: string) =>
+    ['projects', projectId, 'auth', 'config'] as const,
+  authProviders: (projectId: string) =>
+    ['projects', projectId, 'auth', 'providers'] as const,
+  authClients: (projectId: string) =>
+    ['projects', projectId, 'auth', 'clients'] as const,
   serviceAccounts: (projectId: string) =>
     ['projects', projectId, 'service-accounts'] as const,
   serviceAccountTokens: (accountId: string) =>

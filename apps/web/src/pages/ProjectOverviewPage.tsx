@@ -109,6 +109,11 @@ export const ProjectOverviewPage = ({
     { enabled: modules.flags },
   )
   useRegisterShortcut(
+    'h',
+    () => navigate(projectPath(projectId, selectedProject?.slug, 'auth')),
+    { enabled: modules.auth },
+  )
+  useRegisterShortcut(
     'm',
     () => navigate(projectPath(projectId, selectedProject?.slug, 'team')),
     { enabled: teamEnabled },
@@ -399,6 +404,11 @@ export const ProjectOverviewPage = ({
           <Button
             variant="outline"
             disabled={!modules.auth}
+            onClick={() => {
+              if (modules.auth) {
+                navigate(projectPath(projectId, selectedProject?.slug, 'auth'))
+              }
+            }}
             className="border-border bg-card shadow-soft h-auto w-full flex-col items-start justify-start rounded-2xl p-5 text-left whitespace-normal disabled:cursor-not-allowed disabled:opacity-70"
           >
             <div className="flex w-full items-start justify-between gap-3">
@@ -408,9 +418,10 @@ export const ProjectOverviewPage = ({
                   Auth Management
                 </div>
                 <p className="text-muted-foreground mt-1 text-xs">
-                  {modules.auth ? 'Module enabled (UI coming soon)' : 'Module disabled'}
+                  {modules.auth ? 'Settings, providers, clients' : 'Module disabled'}
                 </p>
               </div>
+              {modules.auth ? <ShortcutHint keys="h" /> : null}
             </div>
           </Button>
         </li>

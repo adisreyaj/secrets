@@ -14,6 +14,7 @@ export type RouteMatch =
   | { name: 'approval-rules'; projectId: string }
   | { name: 'flags'; projectId: string }
   | { name: 'flag-sdk-keys'; projectId: string }
+  | { name: 'auth'; projectId: string }
   | { name: 'team'; projectId: string }
   | { name: 'tokens'; projectId: string }
   | { name: 'service-accounts'; projectId: string }
@@ -44,6 +45,7 @@ export const appRoutes: RouteObject[] = [
     path: '/projects/:projectId/flag-sdk-keys',
     handle: { name: 'flag-sdk-keys' },
   },
+  { path: '/projects/:projectId/auth', handle: { name: 'auth' } },
   { path: '/projects/:projectId/team', handle: { name: 'team' } },
   { path: '/projects/:projectId/tokens', handle: { name: 'tokens' } },
   {
@@ -96,6 +98,9 @@ export const getRouteMatch = (pathname: string, search: string): RouteMatch => {
   if (name === 'flag-sdk-keys' && params.projectId) {
     return { name: 'flag-sdk-keys', projectId: params.projectId }
   }
+  if (name === 'auth' && params.projectId) {
+    return { name: 'auth', projectId: params.projectId }
+  }
   if (name === 'team' && params.projectId) {
     return { name: 'team', projectId: params.projectId }
   }
@@ -118,6 +123,7 @@ export const isProjectScopedRoute = (match: RouteMatch) =>
   match.name === 'approval-rules' ||
   match.name === 'flags' ||
   match.name === 'flag-sdk-keys' ||
+  match.name === 'auth' ||
   match.name === 'team' ||
   match.name === 'tokens' ||
   match.name === 'service-accounts'
