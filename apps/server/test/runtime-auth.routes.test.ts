@@ -241,9 +241,11 @@ vi.mock('../src/db.js', () => ({
       findFirst: async ({ where }: any) => {
         const identity = state.identities.find(
           (candidate) =>
-            candidate.projectId === where.projectId &&
-            candidate.provider === where.provider &&
-            candidate.providerSubject === where.providerSubject,
+            (!where?.id || candidate.id === where.id) &&
+            (!where?.projectId || candidate.projectId === where.projectId) &&
+            (!where?.provider || candidate.provider === where.provider) &&
+            (!where?.providerSubject || candidate.providerSubject === where.providerSubject) &&
+            (!where?.endUserId || candidate.endUserId === where.endUserId),
         );
         if (!identity) {
           return null;
@@ -827,6 +829,53 @@ describe('runtime auth routes', () => {
     const callbackBody = callback.json() as { provider: string; accessToken?: string };
     expect(callbackBody.provider).toBe('github');
     expect(callbackBody.accessToken).toBeTruthy();
+
+    await app.close();
+  });
+
+  it('enforces oauth account-link conflict rules', async () => {
+    const app = await buildApp();
+    const mgmtHeaders = { origin: 'http://localhost:5173', authorization: 'Bearer mgmt-token' };
+    const runtimeHeaders = { origin: 'http://localhost:5173' };
+
+    await app.inject({
+      method: 'POST',
+      url: '/projects/project_1/auth/providers',
+      headers: mgmtHeaders,
+      payload: {
+        provider: 'google',
+        enabled: true,
+        clientId: 'google-client-id',
+        clientSecret: 'google-client-secret',
+      },
+    });
+
+    const start1 = await app.inject({
+      method: 'GET',
+      url: '/runtime/auth/oauth/google/start?projectId=project_1',
+      headers: runtimeHeaders,
+    });
+    const state1 = (start1.json() as { state: string }).state;
+    const firstLogin = await app.inject({
+      method: 'GET',
+      url: `/runtime/auth/oauth/google/callback?state=${encodeURIComponent(state1)}&mockEmail=conflict@example.com&mockSub=sub_google_old`,
+      headers: runtimeHeaders,
+    });
+    expect(firstLogin.statusCode).toBe(200);
+
+    const start2 = await app.inject({
+      method: 'GET',
+      url: '/runtime/auth/oauth/google/start?projectId=project_1',
+      headers: runtimeHeaders,
+    });
+    const state2 = (start2.json() as { state: string }).state;
+    const conflictingLogin = await app.inject({
+      method: 'GET',
+      url: `/runtime/auth/oauth/google/callback?state=${encodeURIComponent(state2)}&mockEmail=conflict@example.com&mockSub=sub_google_new`,
+      headers: runtimeHeaders,
+    });
+    expect(conflictingLogin.statusCode).toBe(409);
+    expect((conflictingLogin.json() as { error: string }).error).toContain('different subject');
 
     await app.close();
   });

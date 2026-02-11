@@ -794,11 +794,18 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       include: { endUser: true },
     });
 
-    let endUser = identity?.endUser ?? null;
-    if (!endUser) {
-      endUser = await prisma.authEndUser.findFirst({
-        where: { projectId: oauthState.projectId, email },
-      });
+    let endUser = await prisma.authEndUser.findFirst({
+      where: { projectId: oauthState.projectId, email },
+    });
+
+    if (identity?.endUser && endUser && identity.endUser.id !== endUser.id) {
+      reply
+        .code(409)
+        .send({ error: 'OAuth identity conflicts with an existing account email' });
+      return;
+    }
+
+    if (!identity) {
       if (!endUser) {
         endUser = await prisma.authEndUser.create({
           data: {
@@ -809,16 +816,45 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      identity = await prisma.authIdentity.create({
-        data: {
+      const existingProviderIdentity = await prisma.authIdentity.findFirst({
+        where: {
           projectId: oauthState.projectId,
           endUserId: endUser.id,
           provider:
             provider === 'google' ? AuthIdentityProvider.GOOGLE : AuthIdentityProvider.GITHUB,
-          providerSubject,
         },
-        include: { endUser: true },
       });
+      if (existingProviderIdentity && existingProviderIdentity.providerSubject !== providerSubject) {
+        reply
+          .code(409)
+          .send({ error: 'OAuth provider account is already linked with a different subject' });
+        return;
+      }
+
+      if (existingProviderIdentity) {
+        identity = await prisma.authIdentity.findFirst({
+          where: { id: existingProviderIdentity.id },
+          include: { endUser: true },
+        });
+      } else {
+        identity = await prisma.authIdentity.create({
+          data: {
+            projectId: oauthState.projectId,
+            endUserId: endUser.id,
+            provider:
+              provider === 'google' ? AuthIdentityProvider.GOOGLE : AuthIdentityProvider.GITHUB,
+            providerSubject,
+          },
+          include: { endUser: true },
+        });
+      }
+    } else {
+      endUser = identity.endUser;
+    }
+
+    if (!endUser) {
+      reply.code(500).send({ error: 'OAuth login failed to resolve end user' });
+      return;
     }
 
     const authConfig = await ensureAuthProjectConfig(oauthState.projectId);
