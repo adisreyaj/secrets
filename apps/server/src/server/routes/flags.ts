@@ -4,6 +4,7 @@ import { generateToken, hashToken } from '../../auth.js';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
+import { sendError } from '../http/replies.js';
 import { logAudit } from '../services/audit.js';
 import { isFeatureFlagValueType, toFeatureFlagDto } from '../mappers/flags.js';
 import { normalizeIdentifier } from '../services/identifiers.js';
@@ -213,7 +214,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const query = request.query as { environmentId?: string } | undefined;
     const environmentId = query?.environmentId?.trim();
     if (!environmentId) {
-      reply.code(400).send({ error: 'environmentId is required' });
+      sendError(reply, 400, 'environmentId is required');
       return;
     }
 
@@ -222,7 +223,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true, projectId: true },
     });
     if (!environment || environment.projectId !== projectId) {
-      reply.code(404).send({ error: 'Environment not found' });
+      sendError(reply, 404, 'Environment not found');
       return;
     }
 
@@ -277,11 +278,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const name = body?.name?.trim();
 
     if (!environmentId || !key || !name) {
-      reply.code(400).send({ error: 'environmentId, key and name are required' });
+      sendError(reply, 400, 'environmentId, key and name are required');
       return;
     }
     if (!body?.valueType || !isFeatureFlagValueType(body.valueType)) {
-      reply.code(400).send({ error: 'valueType must be BOOLEAN or MULTIVARIATE' });
+      sendError(reply, 400, 'valueType must be BOOLEAN or MULTIVARIATE');
       return;
     }
 
@@ -290,7 +291,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true, projectId: true },
     });
     if (!environment || environment.projectId !== projectId) {
-      reply.code(404).send({ error: 'Environment not found' });
+      sendError(reply, 404, 'Environment not found');
       return;
     }
 
@@ -302,7 +303,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       (item) => normalizeIdentifier(item.key) === normalizeIdentifier(key),
     );
     if (hasConflict) {
-      reply.code(409).send({ error: 'Flag key already exists' });
+      sendError(reply, 409, 'Flag key already exists');
       return;
     }
 
@@ -357,7 +358,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     } catch (error) {
       if (isPrismaUniqueError(error)) {
-        reply.code(409).send({ error: 'Flag key already exists' });
+        sendError(reply, 409, 'Flag key already exists');
         return;
       }
       throw error;
@@ -372,7 +373,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const query = request.query as { environmentId?: string } | undefined;
     const environmentId = query?.environmentId?.trim();
     if (!environmentId) {
-      reply.code(400).send({ error: 'environmentId is required' });
+      sendError(reply, 400, 'environmentId is required');
       return;
     }
 
@@ -388,7 +389,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
 
     if (!flag) {
-      reply.code(404).send({ error: 'Flag not found' });
+      sendError(reply, 404, 'Flag not found');
       return;
     }
     const role = await requireProjectRole(request, reply, flag.projectId, Role.VIEWER);
@@ -396,7 +397,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const cfg = flag.environmentConfigs[0];
     if (!cfg) {
-      reply.code(404).send({ error: 'Environment config not found' });
+      sendError(reply, 404, 'Environment config not found');
       return;
     }
 
@@ -412,7 +413,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       where: { id: flagId, deletedAt: null },
     });
     if (!current) {
-      reply.code(404).send({ error: 'Flag not found' });
+      sendError(reply, 404, 'Flag not found');
       return;
     }
     const role = await requireProjectRole(request, reply, current.projectId, Role.EDITOR);
@@ -435,7 +436,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const environmentId = body?.environmentId?.trim();
     if (!environmentId) {
-      reply.code(400).send({ error: 'environmentId is required' });
+      sendError(reply, 400, 'environmentId is required');
       return;
     }
 
@@ -444,7 +445,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true, projectId: true },
     });
     if (!environment || environment.projectId !== current.projectId) {
-      reply.code(404).send({ error: 'Environment not found' });
+      sendError(reply, 404, 'Environment not found');
       return;
     }
 
@@ -458,7 +459,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         (item) => normalizeIdentifier(item.key) === normalizeIdentifier(nextKey),
       );
       if (hasConflict) {
-        reply.code(409).send({ error: 'Flag key already exists' });
+        sendError(reply, 409, 'Flag key already exists');
         return;
       }
     }
@@ -472,7 +473,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const resolvedValueType = body?.valueType ?? existingConfig?.valueType ?? current.valueType;
     if (!isFeatureFlagValueType(resolvedValueType)) {
-      reply.code(400).send({ error: 'valueType must be BOOLEAN or MULTIVARIATE' });
+      sendError(reply, 400, 'valueType must be BOOLEAN or MULTIVARIATE');
       return;
     }
 
@@ -568,7 +569,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const toEnvironmentId = query.toEnvironmentId?.trim();
 
     if (!fromEnvironmentId || !toEnvironmentId) {
-      reply.code(400).send({ error: 'fromEnvironmentId and toEnvironmentId are required' });
+      sendError(reply, 400, 'fromEnvironmentId and toEnvironmentId are required');
       return;
     }
 
@@ -576,7 +577,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       where: { id: flagId, deletedAt: null },
     });
     if (!flag) {
-      reply.code(404).send({ error: 'Flag not found' });
+      sendError(reply, 404, 'Flag not found');
       return;
     }
 
@@ -595,7 +596,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     ]);
 
     if (!fromConfig || !toConfig) {
-      reply.code(404).send({ error: 'Flag config not found for one or both environments' });
+      sendError(reply, 404, 'Flag config not found for one or both environments');
       return;
     }
 
@@ -654,7 +655,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       where: { id: flagId, deletedAt: null },
     });
     if (!flag) {
-      reply.code(404).send({ error: 'Flag not found' });
+      sendError(reply, 404, 'Flag not found');
       return;
     }
     const role = await requireProjectRole(request, reply, flag.projectId, Role.EDITOR);
@@ -695,7 +696,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post('/projects/:projectId/flag-sdk-keys', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth?.user) {
-      reply.code(403).send({ error: 'User session required' });
+      sendError(reply, 403, 'User session required');
       return;
     }
     const { projectId } = request.params as { projectId: string };
@@ -707,12 +708,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const body = request.body as { name?: string; expiresAt?: string | null } | undefined;
     const name = body?.name?.trim();
     if (!name) {
-      reply.code(400).send({ error: 'name is required' });
+      sendError(reply, 400, 'name is required');
       return;
     }
     const expiresAt = body?.expiresAt ? new Date(body.expiresAt) : null;
     if (body?.expiresAt && Number.isNaN(expiresAt?.getTime())) {
-      reply.code(400).send({ error: 'expiresAt must be a valid ISO date' });
+      sendError(reply, 400, 'expiresAt must be a valid ISO date');
       return;
     }
 
@@ -749,7 +750,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post('/flag-sdk-keys/:keyId/rotate', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth?.user) {
-      reply.code(403).send({ error: 'User session required' });
+      sendError(reply, 403, 'User session required');
       return;
     }
     const { keyId } = request.params as { keyId: string };
@@ -757,7 +758,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       where: { id: keyId },
     });
     if (!existing || existing.revokedAt) {
-      reply.code(404).send({ error: 'SDK key not found' });
+      sendError(reply, 404, 'SDK key not found');
       return;
     }
     const role = await requireProjectRole(request, reply, existing.projectId, Role.ADMIN);
@@ -793,13 +794,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/flag-sdk-keys/:keyId', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth?.user) {
-      reply.code(403).send({ error: 'User session required' });
+      sendError(reply, 403, 'User session required');
       return;
     }
     const { keyId } = request.params as { keyId: string };
     const key = await prisma.featureFlagSdkKey.findUnique({ where: { id: keyId } });
     if (!key || key.revokedAt) {
-      reply.code(404).send({ error: 'SDK key not found' });
+      sendError(reply, 404, 'SDK key not found');
       return;
     }
     const role = await requireProjectRole(request, reply, key.projectId, Role.ADMIN);

@@ -16,6 +16,7 @@ import {
 import { buildProjectJwks, signProjectAccessToken } from '../services/auth/jwt.js';
 import { hashToken } from '../../auth.js';
 import { prisma } from '../../db.js';
+import { sendError } from '../http/replies.js';
 import {
   buildEmailVerificationEmail,
   buildPasswordResetEmail,
@@ -101,7 +102,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const email = body?.email?.trim();
     const password = body?.password;
     if (!projectId || !email || !password) {
-      reply.code(400).send({ error: 'projectId, email, and password are required' });
+      sendError(reply, 400, 'projectId, email, and password are required');
       return;
     }
 
@@ -117,7 +118,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const config = await ensureAuthProjectConfig(projectId);
     if (!config.nativeAuthEnabled || !config.emailPasswordEnabled) {
-      reply.code(403).send({ error: 'Email/password signup is disabled for this project' });
+      sendError(reply, 403, 'Email/password signup is disabled for this project');
       return;
     }
 
@@ -163,7 +164,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     } catch (error) {
       if (isPrismaUniqueError(error)) {
-        reply.code(409).send({ error: 'Email already exists for this project' });
+        sendError(reply, 409, 'Email already exists for this project');
         return;
       }
       throw error;
@@ -186,7 +187,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const email = body?.email?.trim();
     const password = body?.password;
     if (!projectId || !email || !password) {
-      reply.code(400).send({ error: 'projectId, email, and password are required' });
+      sendError(reply, 400, 'projectId, email, and password are required');
       return;
     }
     const loginKey = `${projectId}:${email.toLowerCase()}:${request.ip}`;
@@ -214,7 +215,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const config = await ensureAuthProjectConfig(projectId);
     if (!config.nativeAuthEnabled || !config.emailPasswordEnabled) {
-      reply.code(403).send({ error: 'Email/password login is disabled for this project' });
+      sendError(reply, 403, 'Email/password login is disabled for this project');
       return;
     }
 
@@ -225,7 +226,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         email,
         reason: 'disabled',
       });
-      reply.code(403).send({ error: 'Account is disabled' });
+      sendError(reply, 403, 'Account is disabled');
       return;
     }
     if (verified.status !== 'ok') {
@@ -245,7 +246,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await logRuntimeAuth(projectId, 'auth.login.failed', 'auth_end_user', null, {
         email,
       });
-      reply.code(401).send({ error: 'Invalid credentials' });
+      sendError(reply, 401, 'Invalid credentials');
       return;
     }
     loginProtector.clear(loginKey);
@@ -287,7 +288,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const body = request.body as { projectId?: string } | undefined;
     const projectId = body?.projectId?.trim();
     if (!projectId) {
-      reply.code(400).send({ error: 'projectId is required' });
+      sendError(reply, 400, 'projectId is required');
       return;
     }
 
@@ -327,7 +328,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const projectId = body?.projectId?.trim();
     const refreshToken = body?.refreshToken?.trim();
     if (!projectId || !refreshToken) {
-      reply.code(400).send({ error: 'projectId and refreshToken are required' });
+      sendError(reply, 400, 'projectId and refreshToken are required');
       return;
     }
 
@@ -349,7 +350,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       refreshTokenTtlDays: config.refreshTokenTtlDays,
     });
     if (!rotated) {
-      reply.code(401).send({ error: 'Invalid refresh token' });
+      sendError(reply, 401, 'Invalid refresh token');
       return;
     }
     const access = await signProjectAccessToken({
@@ -382,7 +383,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const projectId = body?.projectId?.trim();
     const email = body?.email?.trim().toLowerCase();
     if (!projectId || !email) {
-      reply.code(400).send({ error: 'projectId and email are required' });
+      sendError(reply, 400, 'projectId and email are required');
       return;
     }
 
@@ -453,7 +454,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const token = body?.token?.trim();
     const password = body?.password;
     if (!projectId || !token || !password) {
-      reply.code(400).send({ error: 'projectId, token, and password are required' });
+      sendError(reply, 400, 'projectId, token, and password are required');
       return;
     }
 
@@ -477,7 +478,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true, endUserId: true },
     });
     if (!record) {
-      reply.code(401).send({ error: 'Invalid or expired token' });
+      sendError(reply, 401, 'Invalid or expired token');
       return;
     }
 
@@ -506,7 +507,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const projectId = body?.projectId?.trim();
     const email = body?.email?.trim().toLowerCase();
     if (!projectId || !email) {
-      reply.code(400).send({ error: 'projectId and email are required' });
+      sendError(reply, 400, 'projectId and email are required');
       return;
     }
 
@@ -581,7 +582,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const projectId = body?.projectId?.trim();
     const token = body?.token?.trim();
     if (!projectId || !token) {
-      reply.code(400).send({ error: 'projectId and token are required' });
+      sendError(reply, 400, 'projectId and token are required');
       return;
     }
 
@@ -605,7 +606,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true, endUserId: true },
     });
     if (!record) {
-      reply.code(401).send({ error: 'Invalid or expired token' });
+      sendError(reply, 401, 'Invalid or expired token');
       return;
     }
 
@@ -629,7 +630,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const query = request.query as { projectId?: string } | undefined;
     const projectId = query?.projectId?.trim();
     if (!projectId) {
-      reply.code(400).send({ error: 'projectId is required' });
+      sendError(reply, 400, 'projectId is required');
       return;
     }
 
@@ -650,13 +651,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/runtime/auth/oauth/:provider/start', async (request, reply) => {
     const { provider } = request.params as { provider: string };
     if (provider !== 'google' && provider !== 'github') {
-      reply.code(400).send({ error: 'provider must be google or github' });
+      sendError(reply, 400, 'provider must be google or github');
       return;
     }
     const query = request.query as { projectId?: string; redirectUri?: string } | undefined;
     const projectId = query?.projectId?.trim();
     if (!projectId) {
-      reply.code(400).send({ error: 'projectId is required' });
+      sendError(reply, 400, 'projectId is required');
       return;
     }
     const moduleEnabled = await requireProjectModuleEnabled(
@@ -712,7 +713,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/runtime/auth/oauth/:provider/callback', async (request, reply) => {
     const { provider } = request.params as { provider: string };
     if (provider !== 'google' && provider !== 'github') {
-      reply.code(400).send({ error: 'provider must be google or github' });
+      sendError(reply, 400, 'provider must be google or github');
       return;
     }
     const query = request.query as
@@ -725,12 +726,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       | undefined;
     const stateValue = query?.state?.trim();
     if (!stateValue) {
-      reply.code(400).send({ error: 'state is required' });
+      sendError(reply, 400, 'state is required');
       return;
     }
     const oauthState = consumeOauthState(stateValue);
     if (!oauthState) {
-      reply.code(401).send({ error: 'Invalid or expired state' });
+      sendError(reply, 401, 'Invalid or expired state');
       return;
     }
     const moduleEnabled = await requireProjectModuleEnabled(
@@ -761,7 +762,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (!email || !providerSubject) {
       const code = query?.code?.trim();
       if (!code) {
-        reply.code(400).send({ error: 'code is required' });
+        sendError(reply, 400, 'code is required');
         return;
       }
 
@@ -794,12 +795,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
               }),
             });
       if (!tokenResp.ok) {
-        reply.code(401).send({ error: 'OAuth token exchange failed' });
+        sendError(reply, 401, 'OAuth token exchange failed');
         return;
       }
       const tokenJson = (await tokenResp.json()) as { access_token?: string };
       if (!tokenJson.access_token) {
-        reply.code(401).send({ error: 'OAuth token exchange failed' });
+        sendError(reply, 401, 'OAuth token exchange failed');
         return;
       }
 
@@ -808,7 +809,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${encodeURIComponent(tokenJson.access_token)}`,
         );
         if (!profileResp.ok) {
-          reply.code(401).send({ error: 'OAuth profile fetch failed' });
+          sendError(reply, 401, 'OAuth profile fetch failed');
           return;
         }
         const profile = (await profileResp.json()) as { sub?: string; email?: string };
@@ -822,7 +823,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           },
         });
         if (!userResp.ok) {
-          reply.code(401).send({ error: 'OAuth profile fetch failed' });
+          sendError(reply, 401, 'OAuth profile fetch failed');
           return;
         }
         const userProfile = (await userResp.json()) as { id?: number; email?: string | null };
@@ -851,7 +852,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (!email || !providerSubject) {
-      reply.code(401).send({ error: 'OAuth profile is missing required identity fields' });
+      sendError(reply, 401, 'OAuth profile is missing required identity fields');
       return;
     }
 
@@ -924,7 +925,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (!endUser) {
-      reply.code(500).send({ error: 'OAuth login failed to resolve end user' });
+      sendError(reply, 500, 'OAuth login failed to resolve end user');
       return;
     }
 

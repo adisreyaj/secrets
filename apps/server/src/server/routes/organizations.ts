@@ -2,6 +2,7 @@ import { Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../db.js';
 import { requireAuth } from '../auth/guards.js';
+import { sendError } from '../http/replies.js';
 import {
   toOrganizationDto,
   toOrganizationMemberDto,
@@ -19,7 +20,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const body = request.body as { name?: string } | undefined;
     const name = body?.name?.trim();
     if (!name) {
-      reply.code(400).send({ error: 'Name is required' });
+      sendError(reply, 400, 'Name is required');
       return;
     }
 
@@ -42,7 +43,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     } catch (error) {
       if (isPrismaUniqueError(error)) {
-        reply.code(409).send({ error: 'Organization name already exists' });
+        sendError(reply, 409, 'Organization name already exists');
         return;
       }
       throw error;
@@ -86,7 +87,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
 
     if (!membership) {
-      reply.code(404).send({ error: 'Organization not found' });
+      sendError(reply, 404, 'Organization not found');
       return;
     }
 
@@ -110,7 +111,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true },
     });
     if (!membership) {
-      reply.code(404).send({ error: 'Organization not found' });
+      sendError(reply, 404, 'Organization not found');
       return;
     }
 
@@ -139,11 +140,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     if (!actorMembership) {
-      reply.code(404).send({ error: 'Organization not found' });
+      sendError(reply, 404, 'Organization not found');
       return;
     }
     if (actorMembership.role !== Role.ADMIN) {
-      reply.code(403).send({ error: 'Insufficient role' });
+      sendError(reply, 403, 'Insufficient role');
       return;
     }
 
@@ -151,11 +152,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const email = body?.email?.trim().toLowerCase();
     const role = body?.role;
     if (!email || !role) {
-      reply.code(400).send({ error: 'Email and role are required' });
+      sendError(reply, 400, 'Email and role are required');
       return;
     }
     if (!['ADMIN', 'EDITOR', 'VIEWER'].includes(role)) {
-      reply.code(400).send({ error: 'Invalid role' });
+      sendError(reply, 400, 'Invalid role');
       return;
     }
 
@@ -164,7 +165,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true },
     });
     if (!user) {
-      reply.code(404).send({ error: 'User not found' });
+      sendError(reply, 404, 'User not found');
       return;
     }
 
@@ -181,7 +182,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     } catch (error) {
       if (isPrismaUniqueError(error)) {
-        reply.code(409).send({ error: 'User already belongs to organization' });
+        sendError(reply, 409, 'User already belongs to organization');
         return;
       }
       throw error;
