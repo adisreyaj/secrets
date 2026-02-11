@@ -190,3 +190,40 @@ Status: Complete (runtime workflow coverage validated at route and test level).
 
 - `rg -n "runtime/auth/signup|runtime/auth/login|runtime/auth/logout|runtime/auth/token/refresh|runtime/auth/password/forgot|runtime/auth/password/reset|runtime/auth/email/verify/request|runtime/auth/email/verify/confirm|runtime/auth/oauth|runtime/auth/jwks" apps/server/src/server/routes/runtimeAuth.ts -S`
 - `rg -n "supports signup, login, refresh, and logout flows|password reset and email verification|oauth|jwks|locks repeated bad logins|429" apps/server/test/runtime-auth.routes.test.ts -S`
+
+## SRE-57 — Observability and alert readiness verification
+
+Status: Complete (implementation coverage verified; deployment alert wiring remains explicit launch action).
+
+### Observability Coverage
+
+1. Runtime error visibility
+- Request-level error logging emits structured events (`request.failed`, `request.denied`) with method/url/route/status and auth context:
+  - `apps/server/src/server/http/logging.ts`
+- Runtime auth flows emit domain-level security/error telemetry (e.g., `auth.email.send_failed`) in route handlers:
+  - `apps/server/src/server/routes/runtimeAuth.ts`
+
+2. Auth audit event emission + queryability
+- Runtime auth actions emit audit events through `logRuntimeAuth`/`logAudit` with `metadataJson.module = "auth"`:
+  - `apps/server/src/server/routes/runtimeAuth.ts`
+  - `docs/security/auth-security-pass.md`
+- Query surface for audit review:
+  - `GET /audit` in `apps/server/src/app.ts`
+- Module filter guidance:
+  - `docs/integration/web-api-launch-scope.md` (`metadata_json.module = "auth"`)
+
+3. Audit retention controls
+- Per-project retention settings:
+  - `GET /projects/:id/audit-retention`
+  - `PUT /projects/:id/audit-retention`
+- Scheduled cleanup:
+  - `runAuditRetentionCleanup` in `apps/server/src/app.ts`
+
+4. Minimum launch alert expectations (to wire in deployed environment)
+- Alert on sustained `5xx` for `/runtime/auth/*` and `/projects/:id/auth/*`
+- Alert on repeated `401`/`429` spikes on login and token routes
+- Alert on auth callback failures and email send failure spikes
+
+### Command Evidence
+
+- `rg -n "auth\\.login|auth\\.signup|auth\\.oauth|auth\\.password|auth\\.email|auth\\.token\\.refresh|auth\\.logout|logRuntimeAuth|audit|cleanup|/audit|request.denied" apps/server/src/server/routes/runtimeAuth.ts apps/server/src/app.ts apps/server/src/server/http/logging.ts docs/security/auth-security-pass.md docs/integration/web-api-launch-scope.md -S`

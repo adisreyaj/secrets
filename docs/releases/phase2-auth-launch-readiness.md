@@ -65,6 +65,7 @@ Scope: Native Auth launch (email/password + Google/GitHub, management + runtime 
    - auth runtime error rate
    - auth route latency
    - auth audit events emitted and queryable
+   - Evidence logged in `docs/releases/phase2-auth-verification-log.md` (`SRE-57`)
 6. Execute smoke tests on one pilot project before full cohort enablement.
 
 ## Post-Launch Verification
