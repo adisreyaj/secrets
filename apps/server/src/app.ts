@@ -37,17 +37,11 @@ import { registerRoutes as registerFlagRuntimeRoutes } from './server/routes/fla
 import { registerRoutes as registerRuntimeAuthRoutes } from './server/routes/runtimeAuth.js';
 import { registerRoutes as registerOrganizationRoutes } from './server/routes/organizations.js';
 import { ensureUniqueEnvironmentSlug, ensureUniqueProjectSlug } from './server/services/slugs.js';
+import { normalizeIdentifier } from './server/services/identifiers.js';
+import { isPrismaUniqueError } from './server/services/prismaErrors.js';
 import { createLogDispatcher } from './server/logging/dispatcher.js';
 import { isRole, parseDateInput } from './server/http/validators.js';
 import './types.js';
-
-function isPrismaUniqueError(error: unknown): error is Prisma.PrismaClientKnownRequestError {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
-}
-
-function normalizeIdentifier(value: string): string {
-  return value.trim().toLowerCase();
-}
 
 function toProjectModuleDto(module: {
   projectId: string;

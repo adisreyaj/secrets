@@ -1,4 +1,4 @@
-import { Prisma, Role } from '@prisma/client';
+import { Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../db.js';
 import { requireAuth } from '../auth/guards.js';
@@ -6,15 +6,8 @@ import {
   toOrganizationDto,
   toOrganizationMemberDto,
 } from '../mappers/organizations.js';
+import { isPrismaUniqueError } from '../services/prismaErrors.js';
 import { ensureUniqueOrganizationSlug } from '../services/slugs.js';
-
-function isPrismaUniqueError(
-  error: unknown,
-): error is Prisma.PrismaClientKnownRequestError {
-  return (
-    error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
-  );
-}
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post('/organizations', async (request, reply) => {

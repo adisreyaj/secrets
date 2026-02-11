@@ -6,18 +6,8 @@ import { prisma } from '../../db.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { logAudit } from '../services/audit.js';
 import { isFeatureFlagValueType, toFeatureFlagDto } from '../mappers/flags.js';
-
-function isPrismaUniqueError(
-  error: unknown,
-): error is Prisma.PrismaClientKnownRequestError {
-  return (
-    error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
-  );
-}
-
-function normalizeIdentifier(value: string): string {
-  return value.trim().toLowerCase();
-}
+import { normalizeIdentifier } from '../services/identifiers.js';
+import { isPrismaUniqueError } from '../services/prismaErrors.js';
 
 function parseRuntime(value: unknown): 'BOTH' | 'CLIENT' | 'SERVER' {
   if (typeof value !== 'string') return 'BOTH';

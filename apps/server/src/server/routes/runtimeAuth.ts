@@ -1,4 +1,4 @@
-import { AuthIdentityProvider, Prisma, ProjectModuleKey } from '@prisma/client';
+import { AuthIdentityProvider, ProjectModuleKey } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import {
   ensureAuthProjectConfig,
@@ -25,6 +25,7 @@ import { config } from '../../config.js';
 import { LoginAbuseProtector } from '../services/auth/abuseProtection.js';
 import { decryptProviderSecret } from '../services/auth/providerConfigs.js';
 import { logAudit } from '../services/audit.js';
+import { isPrismaUniqueError } from '../services/prismaErrors.js';
 
 type OauthStatePayload = {
   projectId: string;
@@ -59,14 +60,6 @@ import {
   requireProjectAuthSession,
   requireProjectModuleEnabled,
 } from '../auth/guards.js';
-
-function isPrismaUniqueError(
-  error: unknown,
-): error is Prisma.PrismaClientKnownRequestError {
-  return (
-    error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
-  );
-}
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const authEmailProvider = createAuthEmailProvider();
