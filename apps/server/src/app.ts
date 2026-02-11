@@ -30,12 +30,12 @@ import { toUserDto } from './server/mappers/users.js';
 import { findMatchingApprovalRules, findPendingApprovalRequest, createApprovalRequest } from './server/services/approvals.js';
 import { logAudit } from './server/services/audit.js';
 import { deleteEnvironmentWithGuards, deleteProjectWithGuards } from './server/services/deletions.js';
-import { formatDotenvValue } from './server/services/format.js';
 import { registerCoreHttpMiddleware } from './server/http/middleware.js';
 import { forbidden } from './server/http/errors.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
 import { registerRoutes as registerApiTokenRoutes } from './server/routes/apiTokens.js';
 import { registerRoutes as registerAuditRoutes } from './server/routes/audit.js';
+import { registerRoutes as registerExportRoutes } from './server/routes/exports.js';
 import { registerRoutes as registerFlagRoutes } from './server/routes/flags.js';
 import { registerRoutes as registerFlagRuntimeRoutes } from './server/routes/flagsRuntime.js';
 import { registerRoutes as registerRuntimeAuthRoutes } from './server/routes/runtimeAuth.js';
@@ -96,6 +96,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerAuthRoutes(app);
   await registerApiTokenRoutes(app);
   await registerAuditRoutes(app);
+  await registerExportRoutes(app);
   await registerFlagRoutes(app);
   await registerFlagRuntimeRoutes(app);
   await registerRuntimeAuthRoutes(app);
@@ -3410,59 +3411,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.send({ ok: true });
-  });
-
-  app.get('/environments/:id/export', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: envId } = request.params as { id: string };
-    const format = request.query && (request.query as { format?: string }).format;
-    if (format && format !== 'dotenv') {
-      reply.code(400).send({ error: 'Unsupported format' });
-      return;
-    }
-
-    const env = await prisma.environment.findUnique({ where: { id: envId } });
-    if (!env) {
-      reply.code(404).send({ error: 'Environment not found' });
-      return;
-    }
-
-    const role = await requireProjectRole(request, reply, env.projectId, Role.EDITOR);
-    if (!role) {
-      return;
-    }
-
-    const secrets = await prisma.secret.findMany({
-      where: { environmentId: envId, deletedAt: null },
-      include: {
-        versions: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-      },
-      orderBy: { key: 'asc' },
-    });
-
-    const lines: string[] = [];
-    for (const secret of secrets) {
-      const version = secret.versions[0];
-      if (!version) {
-        continue;
-      }
-      const value = decryptSecret(
-        { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
-        masterKey,
-      );
-      lines.push(`${secret.key}=${formatDotenvValue(value)}`);
-    }
-
-    const output = `${lines.join('\n')}\n`;
-    reply.type('text/plain').send(output);
   });
 
   let auditCleanupRunning = false;
