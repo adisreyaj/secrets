@@ -99,3 +99,46 @@ Status: Complete (all required commands passed on 2026-02-11 local execution).
 - Result: PASS
 - Summary: TypeScript + Vite production build completed.
 - Notes: bundle size warning for a chunk above `500 kB` (non-failing warning).
+
+## SRE-55 — Management workflow launch validation
+
+Status: Complete (management workflow coverage validated at route and test level).
+
+### Scope Validated
+
+1. Auth config read/write
+- Route evidence (`apps/server/src/server/routes/auth.ts`):
+  - `GET /projects/:projectId/auth/config`
+  - `PUT /projects/:projectId/auth/config`
+- Behavior evidence:
+  - Project module gate (`AUTH`) + role gate (`VIEWER`/`ADMIN`)
+  - Approval path (`maybeQueueAuthApproval`) for config updates
+  - Audit event `auth.config.update` with `metadataJson.module = "auth"`
+
+2. Provider CRUD + secret rotation
+- Route evidence:
+  - `GET /projects/:projectId/auth/providers`
+  - `POST /projects/:projectId/auth/providers`
+  - `PATCH /auth/providers/:providerId`
+  - `POST /auth/providers/:providerId/rotate-secret`
+- Security/approval evidence:
+  - Provider secret encryption prior to approval queueing
+  - Encrypted approval payload flow for provider secrets (also documented in `docs/security/auth-security-pass.md`)
+
+3. Client CRUD + secret rotation
+- Route evidence:
+  - `GET /projects/:projectId/auth/clients`
+  - `POST /projects/:projectId/auth/clients`
+  - `PATCH /auth/clients/:clientId` (includes `rotateSecret`)
+  - `DELETE /auth/clients/:clientId`
+- Test evidence:
+  - `apps/server/test/auth.clients.routes.test.ts` covers create, rotate, list, and delete flow.
+
+4. Approval-gated management writes
+- Test evidence:
+  - `apps/server/test/auth.approvals.routes.test.ts` validates approval queue/apply behavior for auth config/provider flows and ensures provider secrets are not in approval metadata.
+
+### Command Evidence
+
+- `rg -n "GET /projects/:projectId/auth/config|PATCH /projects/:projectId/auth/config|/projects/:projectId/auth/providers|/auth/providers/:providerId|rotate-secret|/projects/:projectId/auth/clients|/auth/clients/:clientId|/rotate-secret" apps/server/src/server/routes/auth.ts -S`
+- `rg -n "auth config|providers|rotate|clients" apps/server/test/auth.*.test.ts apps/server/test/runtime-auth.routes.test.ts -S`

@@ -54,6 +54,7 @@ Scope: Native Auth launch (email/password + Google/GitHub, management + runtime 
    - auth config read/write
    - provider CRUD/rotation
    - client CRUD/rotation
+   - Evidence logged in `docs/releases/phase2-auth-verification-log.md` (`SRE-55`)
 4. Validate runtime workflows:
    - signup/login/logout/refresh
    - password reset and email verification
