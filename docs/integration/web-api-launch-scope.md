@@ -14,34 +14,51 @@ Scope: Launch-ready integration contracts for the web portal and management/runt
   - Management API: operator/admin workflows from the portal.
   - Runtime API: app-consumed endpoints for auth and flag evaluation.
 
-## Module Overview
+## Module Contract Matrix
 
 ### Secrets
 
 - Purpose: secure environment-scoped key/value management.
-- Primary management endpoints:
+- Management API endpoints:
   - `GET /environments/:id/secrets`
   - `POST /environments/:id/secrets`
   - `PATCH /secrets/:id`
   - `DELETE /secrets/:id`
   - `POST /secrets/:id/copy`
+- Runtime API endpoints:
+  - Not exposed directly for client-side runtime usage.
+  - Secrets are consumed through trusted service-side integrations.
 
 ### Flags
 
 - Purpose: runtime feature delivery (boolean and multivariate).
-- Primary management endpoints:
+- Management API endpoints:
   - `GET /projects/:projectId/flags`
   - `POST /projects/:projectId/flags`
+  - `GET /flags/:flagId`
+  - `PATCH /flags/:flagId`
+  - `DELETE /flags/:flagId`
+  - `POST /flags/:flagId/variants`
+  - `GET /flags/:flagId/variants`
+  - `PATCH /flag-variants/:variantId`
+  - `DELETE /flag-variants/:variantId`
   - `POST /flags/:flagId/rules`
+  - `GET /flags/:flagId/rules`
+  - `PATCH /flag-rules/:ruleId`
+  - `DELETE /flag-rules/:ruleId`
+  - `PUT /flags/:flagId/environments/:environmentId/override`
+  - `GET /projects/:projectId/flag-sdk-keys`
   - `POST /projects/:projectId/flag-sdk-keys`
-- Primary runtime endpoints:
+  - `POST /flag-sdk-keys/:keyId/rotate`
+  - `DELETE /flag-sdk-keys/:keyId`
+- Runtime API endpoints:
   - `POST /runtime/flags/evaluate`
   - `POST /runtime/flags/evaluate/batch`
 
 ### Auth
 
 - Purpose: native auth management and runtime identity/token flows.
-- Primary management endpoints:
+- Management API endpoints:
   - `GET /projects/:projectId/auth/config`
   - `PUT /projects/:projectId/auth/config`
   - `GET /projects/:projectId/auth/providers`
@@ -52,7 +69,7 @@ Scope: Launch-ready integration contracts for the web portal and management/runt
   - `POST /projects/:projectId/auth/clients`
   - `PATCH /auth/clients/:clientId`
   - `DELETE /auth/clients/:clientId`
-- Primary runtime endpoints:
+- Runtime API endpoints:
   - `POST /runtime/auth/signup`
   - `POST /runtime/auth/login`
   - `POST /runtime/auth/logout`
