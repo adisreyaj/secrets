@@ -18,32 +18,7 @@ async function parsePayload(response: Response) {
   }
 }
 
-export async function apiFetch<T>(
-  baseUrl: string,
-  token: string,
-  route: string,
-  debug: DebugLogger,
-): Promise<T> {
-  const method = 'GET'
-  const url = `${baseUrl}${route}`
-  debug('http.request', { method, url })
-
-  let response: Response
-  try {
-    response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-  } catch (error) {
-    debug('http.network_error', { method, url, error: error instanceof Error ? error.message : String(error) })
-    throw new CliError('NETWORK_ERROR', 'fetch failed')
-  }
-
-  if (!response.ok) {
-    const payload = await parsePayload(response)
-    const message = parseMessage(payload, response.statusText)
-    throw new ApiError(response.status, message, route, method)
-  }
-
+async function parseResponseBody<T>(response: Response) {
   const contentType = response.headers.get('content-type') ?? ''
   if (contentType.includes('application/json')) {
     return (await response.json()) as T
@@ -51,7 +26,7 @@ export async function apiFetch<T>(
   return (await response.text()) as T
 }
 
-export async function apiRequest<T>(
+async function requestWithAuth<T>(
   baseUrl: string,
   token: string,
   route: string,
@@ -85,11 +60,26 @@ export async function apiRequest<T>(
     throw new ApiError(response.status, message, route, method)
   }
 
-  const contentType = response.headers.get('content-type') ?? ''
-  if (contentType.includes('application/json')) {
-    return (await response.json()) as T
-  }
-  return (await response.text()) as T
+  return parseResponseBody<T>(response)
+}
+
+export async function apiFetch<T>(
+  baseUrl: string,
+  token: string,
+  route: string,
+  debug: DebugLogger,
+): Promise<T> {
+  return requestWithAuth<T>(baseUrl, token, route, {}, debug)
+}
+
+export async function apiRequest<T>(
+  baseUrl: string,
+  token: string,
+  route: string,
+  options: RequestInit,
+  debug: DebugLogger,
+): Promise<T> {
+  return requestWithAuth<T>(baseUrl, token, route, options, debug)
 }
 
 export async function createEnvironment(
