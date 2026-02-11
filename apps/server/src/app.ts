@@ -24,7 +24,6 @@ import {
 import { ROLE_RANK } from './server/auth/policies.js';
 import { toApprovalRequestDto, toApprovalRuleDto } from './server/mappers/approvals.js';
 import { toInviteDto } from './server/mappers/invites.js';
-import { toProjectModuleDto } from './server/mappers/projectModules.js';
 import { toEnvironmentDto, toProjectDto } from './server/mappers/projects.js';
 import { toUserDto } from './server/mappers/users.js';
 import { findMatchingApprovalRules, findPendingApprovalRequest, createApprovalRequest } from './server/services/approvals.js';
@@ -39,6 +38,7 @@ import { registerRoutes as registerExportRoutes } from './server/routes/exports.
 import { registerRoutes as registerFlagRoutes } from './server/routes/flags.js';
 import { registerRoutes as registerFlagRuntimeRoutes } from './server/routes/flagsRuntime.js';
 import { registerRoutes as registerRuntimeAuthRoutes } from './server/routes/runtimeAuth.js';
+import { registerRoutes as registerProjectSettingsRoutes } from './server/routes/projectSettings.js';
 import { registerRoutes as registerOrganizationRoutes } from './server/routes/organizations.js';
 import { registerRoutes as registerServiceAccountRoutes } from './server/routes/serviceAccounts.js';
 import { ensureUniqueEnvironmentSlug, ensureUniqueProjectSlug } from './server/services/slugs.js';
@@ -100,6 +100,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerFlagRoutes(app);
   await registerFlagRuntimeRoutes(app);
   await registerRuntimeAuthRoutes(app);
+  await registerProjectSettingsRoutes(app);
   await registerOrganizationRoutes(app);
   await registerServiceAccountRoutes(app);
 
@@ -254,77 +255,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     reply.send(toProjectDto(project, projectRole));
   });
 
-  app.get('/projects/:id/modules', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    const modules = await prisma.projectModule.findMany({
-      where: { projectId },
-      orderBy: { module: 'asc' },
-    });
-
-    reply.send(modules.map(toProjectModuleDto));
-  });
-
-  app.put('/projects/:id/modules/:module', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId, module } = request.params as {
-      id: string;
-      module: string;
-    };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-
-    const normalizedModule = module.trim().toUpperCase();
-    if (
-      normalizedModule !== 'SECRETS' &&
-      normalizedModule !== 'FLAGS' &&
-      normalizedModule !== 'AUTH'
-    ) {
-      reply.code(400).send({ error: 'Invalid module' });
-      return;
-    }
-
-    const body = request.body as { enabled?: boolean } | undefined;
-    if (!body || typeof body.enabled !== 'boolean') {
-      reply.code(400).send({ error: 'enabled must be a boolean' });
-      return;
-    }
-
-    const updated = await prisma.projectModule.upsert({
-      where: {
-        projectId_module: {
-          projectId,
-          module: normalizedModule,
-        },
-      },
-      create: {
-        projectId,
-        module: normalizedModule,
-        enabled: body.enabled,
-      },
-      update: {
-        enabled: body.enabled,
-      },
-    });
-
-    reply.send(toProjectModuleDto(updated));
-  });
-
   app.delete('/projects/:id', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
@@ -356,76 +286,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
 
     reply.send({ ok: true });
-  });
-
-  app.get('/projects/:id/audit-retention', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      select: { id: true, auditRetentionDays: true },
-    });
-
-    if (!project) {
-      reply.code(404).send({ error: 'Project not found' });
-      return;
-    }
-
-    reply.send({ projectId: project.id, auditRetentionDays: project.auditRetentionDays });
-  });
-
-  app.put('/projects/:id/audit-retention', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-
-    const body = request.body as { auditRetentionDays?: number | null } | undefined;
-    if (!body || !('auditRetentionDays' in body)) {
-      reply.code(400).send({ error: 'auditRetentionDays is required' });
-      return;
-    }
-
-    if (body.auditRetentionDays !== null) {
-      const value = Number(body.auditRetentionDays);
-      if (!Number.isFinite(value) || value < 1) {
-        reply.code(400).send({ error: 'auditRetentionDays must be >= 1 or null' });
-        return;
-      }
-    }
-
-    const project = await prisma.project.update({
-      where: { id: projectId },
-      data: { auditRetentionDays: body.auditRetentionDays },
-      select: { id: true, auditRetentionDays: true },
-    });
-
-    await logAudit({
-      projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'project.audit_retention.update',
-      resourceType: 'project',
-      resourceId: projectId,
-      metadataJson: { auditRetentionDays: body.auditRetentionDays },
-    });
-
-    reply.send({ projectId: project.id, auditRetentionDays: project.auditRetentionDays });
   });
 
   app.get('/projects/slug/:slug', async (request, reply) => {
