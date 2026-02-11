@@ -3,20 +3,8 @@ import type {
   AuditLogFilters,
   AuditLogDto,
   AuditRetentionDto,
-  CreateInviteRequest,
-  CreateInviteResponse,
-  CreateEnvironmentRequest,
-  DeleteEnvironmentRequest,
-  DeleteProjectRequest,
-  CreateProjectRequest,
   CreateTokenRequest,
   CreateTokenResponse,
-  EnvironmentDto,
-  ProjectDto,
-  ProjectMemberDto,
-  ProjectInviteDto,
-  AcceptInviteRequest,
-  AcceptInviteResponse,
   ApprovalRuleDto,
   ApprovalRequestDto,
   CreateApprovalRuleRequest,
@@ -28,65 +16,18 @@ import type {
   CreateServiceAccountRequest,
   CreateServiceAccountTokenRequest,
   CreateServiceAccountTokenResponse,
-  ProjectModuleDto,
-  UpdateProjectModuleRequest,
 } from '@secrets/shared'
 import { apiFetch, resetCsrfToken } from './apiBase'
 import { createAuthClient } from './api/authClient'
 import { createFlagsClient } from './api/flagsClient'
+import { createProjectsClient } from './api/projectsClient'
 import { createSecretsClient } from './api/secretsClient'
 export { ApiError } from './apiBase'
 
 export const api = {
   ...createAuthClient(apiFetch, resetCsrfToken),
-
-  listProjects: () => apiFetch<ProjectDto[]>('/projects'),
-  createProject: (payload: CreateProjectRequest) =>
-    apiFetch<ProjectDto>('/projects', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  deleteProject: (projectId: string, payload: DeleteProjectRequest) =>
-    apiFetch<{ ok: true }>(`/projects/${projectId}`, {
-      method: 'DELETE',
-      body: JSON.stringify(payload),
-    }),
-  getProjectBySlug: (slug: string) =>
-    apiFetch<ProjectDto>(`/projects/slug/${slug}`),
-  listProjectModules: (projectId: string) =>
-    apiFetch<ProjectModuleDto[]>(`/projects/${projectId}/modules`),
-  updateProjectModule: (
-    projectId: string,
-    module: 'secrets' | 'flags' | 'auth',
-    payload: UpdateProjectModuleRequest,
-  ) =>
-    apiFetch<ProjectModuleDto>(`/projects/${projectId}/modules/${module}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
-    }),
+  ...createProjectsClient(apiFetch),
   ...createFlagsClient(apiFetch),
-
-  listEnvironments: (projectId: string) =>
-    apiFetch<EnvironmentDto[]>(`/projects/${projectId}/environments`),
-  createEnvironment: (projectId: string, payload: CreateEnvironmentRequest) =>
-    apiFetch<EnvironmentDto>(`/projects/${projectId}/environments`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  deleteEnvironment: (
-    projectId: string,
-    environmentId: string,
-    payload: DeleteEnvironmentRequest,
-  ) =>
-    apiFetch<{ ok: true }>(
-      `/projects/${projectId}/environments/${environmentId}`,
-      {
-        method: 'DELETE',
-        body: JSON.stringify(payload),
-      },
-    ),
-  getEnvironmentBySlug: (projectId: string, slug: string) =>
-    apiFetch<EnvironmentDto>(`/projects/${projectId}/environments/slug/${slug}`),
   ...createSecretsClient(apiFetch),
 
   listTokens: (projectId: string) =>
@@ -136,25 +77,6 @@ export const api = {
       `/service-accounts/${serviceAccountId}/tokens/${tokenId}`,
       { method: 'DELETE' },
     ),
-
-  listInvites: (projectId: string) =>
-    apiFetch<ProjectInviteDto[]>(`/projects/${projectId}/invites`),
-  listMembers: (projectId: string) =>
-    apiFetch<ProjectMemberDto[]>(`/projects/${projectId}/members`),
-  createInvite: (projectId: string, payload: CreateInviteRequest) =>
-    apiFetch<CreateInviteResponse>(`/projects/${projectId}/invites`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  revokeInvite: (projectId: string, inviteId: string) =>
-    apiFetch<{ ok: true }>(`/projects/${projectId}/invites/${inviteId}`, {
-      method: 'DELETE',
-    }),
-  acceptInvite: (payload: AcceptInviteRequest) =>
-    apiFetch<AcceptInviteResponse>('/invites/accept', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
 
   listApprovalRules: (projectId: string) =>
     apiFetch<ApprovalRuleDto[]>(`/projects/${projectId}/approval-rules`),
