@@ -85,13 +85,18 @@ Scope: Launch-ready integration contracts for the web portal and management/runt
 ## Cross-Module Integration Patterns
 
 1. Portal operator flow:
-   - Configure auth settings/providers.
-   - Manage runtime flags and SDK keys.
-   - Maintain environment secrets.
+   - Configure auth core settings (`/projects/:projectId/auth/config`) and provider/client credentials.
+   - Manage flags, variants, rules, and environment overrides.
+   - Issue and rotate runtime flag SDK keys.
+   - Maintain environment-scoped secrets and secret copy workflows.
 2. Runtime app flow:
-   - End user authenticates via auth runtime endpoints.
-   - App evaluates runtime flags with SDK key.
-   - App consumes secrets through service-side integration.
+   - End user authenticates via runtime auth endpoints and receives access/refresh tokens.
+   - App/server evaluates flags through runtime endpoints using SDK key auth.
+   - Trusted backend services fetch/use secrets for downstream integrations.
+3. Runtime identity + config dependency flow:
+   - Auth runtime identity establishes subject context (`subjectKey`) for flag evaluation.
+   - Flag results drive runtime behavior while secrets remain server-side only.
+   - Audit and approval controls remain management-plane concerns.
 
 ## Approval and Audit Model
 
@@ -148,6 +153,12 @@ Content-Type: application/json
 }
 ```
 
+Equivalent auth header:
+
+```http
+x-flag-sdk-key: <flag-sdk-key>
+```
+
 ### Runtime auth login
 
 ```http
@@ -158,6 +169,19 @@ Content-Type: application/json
   "projectId": "project_1",
   "email": "user@example.com",
   "password": "StrongPass123!"
+}
+```
+
+Expected success shape (representative):
+
+```json
+{
+  "user": {
+    "id": "user_123",
+    "email": "user@example.com"
+  },
+  "accessToken": "<jwt-access-token>",
+  "refreshToken": "<opaque-or-jwt-refresh-token>"
 }
 ```
 
