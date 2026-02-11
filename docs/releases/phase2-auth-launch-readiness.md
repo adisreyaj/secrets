@@ -92,6 +92,7 @@ Scope: Native Auth launch (email/password + Google/GitHub, management + runtime 
 4. Invalidate newly issued auth sessions if compromise is suspected.
 5. Revoke/rotate provider secrets and auth client secrets as needed.
 6. Preserve audit logs and incident artifacts for investigation.
+7. Use rollback drill checklist in `docs/releases/phase2-auth-verification-log.md` (`SRE-59`) during incident execution.
 
 ## Dependencies and Data Implications
 

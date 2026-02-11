@@ -265,3 +265,46 @@ No-go if any rollback trigger in `phase2-auth-launch-readiness.md` is met.
 - Automated cross-module smoke baseline exists:
   - `apps/server/test/cross-module.e2e.test.ts` (`covers auth + secrets + flags paths in one project context`)
   - Reference doc: `docs/testing/cross-module-e2e.md`
+
+## SRE-59 — Rollback drill and comms protocol verification
+
+Status: Complete (tabletop checklist and validation criteria documented).
+
+### Rollback Drill Checklist
+
+1. Trigger interpretation
+- Confirm at least one rollback trigger is met:
+  - sustained auth runtime `5xx` over threshold
+  - JWKS/token verification failure affecting clients
+  - provider callback failures across cohort
+  - security issue involving auth secrets/tokens
+
+2. Execution order validation
+- Validate operational order remains:
+  - disable auth module for affected projects
+  - hide/revert web auth management surface if needed
+  - roll back server to known-good release
+  - invalidate incident-window sessions when compromise suspected
+  - rotate/revoke provider and client secrets
+  - preserve audit logs and incident artifacts
+
+3. Data-handling constraints
+- Confirm rollback does not drop auth domain data tables.
+- Confirm incident-window session/token revocation strategy is documented and executable.
+- Confirm approval and audit data are preserved as evidence.
+
+4. Communication cadence validation
+- Start notification includes impact scope and affected cohort/projects.
+- Status updates every 15 minutes until mitigation complete.
+- Incident summary captures root cause and corrective actions.
+
+### Drill Outcome Template (for launch-day use)
+
+- Trigger observed:
+- Rollback started at:
+- Module toggle actions completed at:
+- Deployment rollback completed at:
+- Secret/client rotations completed at:
+- Audit artifact preservation confirmed:
+- Stakeholder updates sent (timestamps):
+- Mitigation complete at:
