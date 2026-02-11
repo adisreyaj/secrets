@@ -36,14 +36,12 @@ import type {
   CreateServiceAccountTokenResponse,
   ProjectModuleDto,
   UpdateProjectModuleRequest,
-  FeatureFlagDto,
-  FeatureFlagEnvironmentDiffDto,
-  FeatureFlagSdkKeyDto,
   AuthProjectConfigDto,
   AuthProviderDto,
   AuthClientDto,
 } from '@secrets/shared'
 import { apiFetch, resetCsrfToken } from './apiBase'
+import { createFlagsClient } from './api/flagsClient'
 import { createSecretsClient } from './api/secretsClient'
 export { ApiError } from './apiBase'
 
@@ -98,127 +96,7 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
-  listFlags: (projectId: string, environmentId?: string | null) => {
-    const params = new URLSearchParams()
-    if (environmentId) params.set('environmentId', environmentId)
-    return apiFetch<FeatureFlagDto[]>(
-      `/projects/${projectId}/flags${params.size ? `?${params.toString()}` : ''}`,
-    )
-  },
-  createFlag: (
-    projectId: string,
-    payload: {
-      environmentId: string
-      key: string
-      name: string
-      description?: string | null
-      valueType: 'BOOLEAN' | 'MULTIVARIATE'
-      enabled: boolean
-      runtime: 'both' | 'client' | 'server'
-      labels: string[]
-      booleanValue?: boolean | null
-      multivariate?: {
-        defaultVariantKey: string
-        variants: {
-          key: string
-          valueType: 'string' | 'json'
-          value: string
-        }[]
-      } | null
-    },
-  ) =>
-    apiFetch<FeatureFlagDto>(`/projects/${projectId}/flags`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
-  getFlag: (flagId: string, environmentId?: string | null) => {
-    const params = new URLSearchParams()
-    if (environmentId) params.set('environmentId', environmentId)
-    return apiFetch<FeatureFlagDto>(
-      `/flags/${flagId}${params.size ? `?${params.toString()}` : ''}`,
-    )
-  },
-  updateFlag: (
-    flagId: string,
-    payload: {
-      environmentId: string
-      key?: string
-      name?: string
-      description?: string | null
-      valueType?: 'BOOLEAN' | 'MULTIVARIATE'
-      enabled?: boolean
-      runtime?: 'both' | 'client' | 'server'
-      labels?: string[]
-      booleanValue?: boolean | null
-      multivariate?: {
-        defaultVariantKey: string
-        variants: {
-          key: string
-          valueType: 'string' | 'json'
-          value: string
-        }[]
-      } | null
-    },
-  ) =>
-    apiFetch<FeatureFlagDto>(`/flags/${flagId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    }),
-  deleteFlag: (flagId: string, environmentId: string) =>
-    apiFetch<{ ok: true }>(`/flags/${flagId}`, {
-      method: 'DELETE',
-      body: JSON.stringify({ environmentId }),
-    }),
-  getFlagDiff: (
-    flagId: string,
-    fromEnvironmentId: string,
-    toEnvironmentId: string,
-  ) =>
-    apiFetch<FeatureFlagEnvironmentDiffDto>(
-      `/flags/${flagId}/diff?fromEnvironmentId=${encodeURIComponent(fromEnvironmentId)}&toEnvironmentId=${encodeURIComponent(toEnvironmentId)}`,
-    ),
-  listFlagSdkKeys: (projectId: string, environmentId?: string | null) => {
-    const params = new URLSearchParams()
-    if (environmentId) params.set('environmentId', environmentId)
-    return apiFetch<FeatureFlagSdkKeyDto[]>(
-      `/projects/${projectId}/flag-sdk-keys${params.size ? `?${params.toString()}` : ''}`,
-    )
-  },
-  createFlagSdkKey: (
-    projectId: string,
-    payload: {
-      name: string
-      environmentIds?: string[]
-      expiresAt?: string | null
-    },
-  ) =>
-    apiFetch<{ key: string; keyMeta: FeatureFlagSdkKeyDto }>(
-      `/projects/${projectId}/flag-sdk-keys`,
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      },
-    ),
-  rotateFlagSdkKey: (keyId: string, environmentIds?: string[]) =>
-    apiFetch<{ key: string; keyMeta: FeatureFlagSdkKeyDto }>(
-      `/flag-sdk-keys/${keyId}/rotate`,
-      {
-        method: 'POST',
-        body: JSON.stringify(
-          environmentIds ? { environmentIds } : {},
-        ),
-      },
-    ),
-  updateFlagSdkKey: (
-    keyId: string,
-    payload: { name?: string; environmentIds?: string[] },
-  ) =>
-    apiFetch<FeatureFlagSdkKeyDto>(`/flag-sdk-keys/${keyId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    }),
-  revokeFlagSdkKey: (keyId: string) =>
-    apiFetch<{ ok: true }>(`/flag-sdk-keys/${keyId}`, { method: 'DELETE' }),
+  ...createFlagsClient(apiFetch),
   getAuthConfig: (projectId: string) =>
     apiFetch<AuthProjectConfigDto & { accessTokenTtlMinutes: number; refreshTokenTtlDays: number }>(
       `/projects/${projectId}/auth/config`,
