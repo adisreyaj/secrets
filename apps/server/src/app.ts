@@ -35,6 +35,7 @@ import { registerCoreHttpMiddleware } from './server/http/middleware.js';
 import { forbidden } from './server/http/errors.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
 import { registerRoutes as registerApiTokenRoutes } from './server/routes/apiTokens.js';
+import { registerRoutes as registerAuditRoutes } from './server/routes/audit.js';
 import { registerRoutes as registerFlagRoutes } from './server/routes/flags.js';
 import { registerRoutes as registerFlagRuntimeRoutes } from './server/routes/flagsRuntime.js';
 import { registerRoutes as registerRuntimeAuthRoutes } from './server/routes/runtimeAuth.js';
@@ -44,7 +45,7 @@ import { ensureUniqueEnvironmentSlug, ensureUniqueProjectSlug } from './server/s
 import { normalizeIdentifier } from './server/services/identifiers.js';
 import { isPrismaUniqueError } from './server/services/prismaErrors.js';
 import { createLogDispatcher } from './server/logging/dispatcher.js';
-import { isRole, parseDateInput } from './server/http/validators.js';
+import { isRole } from './server/http/validators.js';
 import './types.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -94,6 +95,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await registerAuthRoutes(app);
   await registerApiTokenRoutes(app);
+  await registerAuditRoutes(app);
   await registerFlagRoutes(app);
   await registerFlagRuntimeRoutes(app);
   await registerRuntimeAuthRoutes(app);
@@ -3461,88 +3463,6 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     const output = `${lines.join('\n')}\n`;
     reply.type('text/plain').send(output);
-  });
-
-  app.get('/audit', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const query = request.query as
-      | {
-          projectId?: string;
-          start?: string;
-          end?: string;
-          action?: string;
-          resourceType?: string;
-          resourceId?: string;
-          actorUserId?: string;
-          actorServiceAccountId?: string;
-          limit?: string;
-        }
-      | undefined;
-    const projectId = query?.projectId;
-    if (!projectId) {
-      reply.code(400).send({ error: 'projectId is required' });
-      return;
-    }
-
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    const startDate = parseDateInput(query?.start);
-    const endDate = parseDateInput(query?.end);
-    if ((query?.start && !startDate) || (query?.end && !endDate)) {
-      reply.code(400).send({ error: 'Invalid start or end date' });
-      return;
-    }
-
-    if (startDate && endDate && startDate > endDate) {
-      reply.code(400).send({ error: 'start must be before end' });
-      return;
-    }
-
-    const limitRaw = query?.limit ? Number(query.limit) : 200;
-    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-
-    const where: Prisma.AuditLogWhereInput = {
-      projectId,
-      action: query?.action ?? undefined,
-      resourceType: query?.resourceType ?? undefined,
-      resourceId: query?.resourceId ?? undefined,
-      actorUserId: query?.actorUserId ?? undefined,
-      actorServiceAccountId: query?.actorServiceAccountId ?? undefined,
-      createdAt:
-        startDate || endDate
-          ? {
-              gte: startDate ?? undefined,
-              lte: endDate ?? undefined,
-            }
-          : undefined,
-    };
-
-    const logs = await prisma.auditLog.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
-
-    reply.send(
-      logs.map((log) => ({
-        id: log.id,
-        projectId: log.projectId,
-        actorUserId: log.actorUserId,
-        actorServiceAccountId: log.actorServiceAccountId,
-        action: log.action,
-        resourceType: log.resourceType,
-        resourceId: log.resourceId,
-        metadataJson: (log.metadataJson as Record<string, unknown> | null) ?? null,
-        createdAt: log.createdAt.toISOString(),
-      })),
-    );
   });
 
   let auditCleanupRunning = false;
