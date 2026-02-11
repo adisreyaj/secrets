@@ -500,9 +500,12 @@ export interface AuthClientDto {
   id: string;
   projectId: string;
   name: string;
+  clientId: string;
   type: 'public' | 'confidential';
+  redirectUris: string[];
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
 }
 
 export const managementQueryKeys = {

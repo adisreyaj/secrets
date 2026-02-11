@@ -1,15 +1,43 @@
-import { Role } from '@prisma/client';
+import { AuthClientType, ProjectModuleKey, Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { generateToken, hashPassword, hashToken, verifyPassword } from '../../auth.js';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
 import { toUserDto } from '../mappers/users.js';
-import { requireAuth, requireProjectRole } from '../auth/guards.js';
+import {
+  requireAuth,
+  requireProjectModuleEnabled,
+  requireProjectRole,
+} from '../auth/guards.js';
 import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME } from '../auth/session.js';
 import { logAudit } from '../services/audit.js';
 import { buildCliLoginUrl } from '../services/format.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
+  const toAuthClientDto = (client: {
+    id: string;
+    projectId: string;
+    name: string;
+    clientId: string;
+    type: AuthClientType;
+    redirectUrisJson: unknown;
+    createdAt: Date;
+    updatedAt: Date;
+    deletedAt: Date | null;
+  }) => ({
+    id: client.id,
+    projectId: client.projectId,
+    name: client.name,
+    clientId: client.clientId,
+    type: client.type.toLowerCase() as 'public' | 'confidential',
+    redirectUris: Array.isArray(client.redirectUrisJson)
+      ? client.redirectUrisJson.filter((value): value is string => typeof value === 'string')
+      : [],
+    createdAt: client.createdAt.toISOString(),
+    updatedAt: client.updatedAt.toISOString(),
+    deletedAt: client.deletedAt?.toISOString() ?? null,
+  });
+
   app.post(
     '/auth/register',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
@@ -435,5 +463,216 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
 
     reply.send({ user: toUserDto(updated) });
+  });
+
+  app.get('/projects/:projectId/auth/clients', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
+    const { projectId } = request.params as { projectId: string };
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const clients = await prisma.authClient.findMany({
+      where: { projectId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    reply.send(clients.map(toAuthClientDto));
+  });
+
+  app.post('/projects/:projectId/auth/clients', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth?.user) {
+      reply.code(403).send({ error: 'User session required' });
+      return;
+    }
+
+    const { projectId } = request.params as { projectId: string };
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const body = request.body as
+      | { name?: string; type?: 'public' | 'confidential'; redirectUris?: string[] }
+      | undefined;
+    const name = body?.name?.trim();
+    if (!name) {
+      reply.code(400).send({ error: 'name is required' });
+      return;
+    }
+    const type = body?.type?.toLowerCase() === 'confidential' ? 'CONFIDENTIAL' : 'PUBLIC';
+    const redirectUris = (body?.redirectUris ?? [])
+      .map((uri) => uri?.trim())
+      .filter((uri): uri is string => Boolean(uri));
+
+    const clientId = `ac_${generateToken().slice(0, 24)}`;
+    const rawSecret = type === 'CONFIDENTIAL' ? `acs_${generateToken()}` : null;
+    const client = await prisma.authClient.create({
+      data: {
+        projectId,
+        name,
+        type: type as AuthClientType,
+        clientId,
+        clientSecretHash: rawSecret ? hashToken(rawSecret) : null,
+        redirectUrisJson: redirectUris,
+      },
+    });
+
+    await logAudit({
+      projectId,
+      actorUserId: auth.user.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'auth.client.create',
+      resourceType: 'auth_client',
+      resourceId: client.id,
+      metadataJson: { module: 'auth', type: client.type, clientId: client.clientId },
+    });
+
+    reply.code(201).send({
+      client: toAuthClientDto(client),
+      ...(rawSecret ? { clientSecret: rawSecret } : {}),
+    });
+  });
+
+  app.patch('/auth/clients/:clientId', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth?.user) {
+      reply.code(403).send({ error: 'User session required' });
+      return;
+    }
+
+    const { clientId } = request.params as { clientId: string };
+    const current = await prisma.authClient.findFirst({
+      where: { id: clientId, deletedAt: null },
+    });
+    if (!current) {
+      reply.code(404).send({ error: 'Auth client not found' });
+      return;
+    }
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      current.projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+    const role = await requireProjectRole(request, reply, current.projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const body = request.body as
+      | {
+          name?: string;
+          redirectUris?: string[];
+          rotateSecret?: boolean;
+        }
+      | undefined;
+
+    const redirectUris = Array.isArray(body?.redirectUris)
+      ? body.redirectUris
+          .map((uri) => uri?.trim())
+          .filter((uri): uri is string => Boolean(uri))
+      : undefined;
+
+    const shouldRotate = body?.rotateSecret === true && current.type === 'CONFIDENTIAL';
+    const rawSecret = shouldRotate ? `acs_${generateToken()}` : null;
+
+    const updated = await prisma.authClient.update({
+      where: { id: current.id },
+      data: {
+        name: body?.name?.trim() ?? undefined,
+        redirectUrisJson: redirectUris ?? undefined,
+        clientSecretHash: rawSecret ? hashToken(rawSecret) : undefined,
+      },
+    });
+
+    await logAudit({
+      projectId: updated.projectId,
+      actorUserId: auth.user.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: shouldRotate ? 'auth.client.rotate_secret' : 'auth.client.update',
+      resourceType: 'auth_client',
+      resourceId: updated.id,
+      metadataJson: {
+        module: 'auth',
+        clientId: updated.clientId,
+        rotated: shouldRotate,
+      },
+    });
+
+    reply.send({
+      client: toAuthClientDto(updated),
+      ...(rawSecret ? { clientSecret: rawSecret } : {}),
+    });
+  });
+
+  app.delete('/auth/clients/:clientId', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth?.user) {
+      reply.code(403).send({ error: 'User session required' });
+      return;
+    }
+
+    const { clientId } = request.params as { clientId: string };
+    const current = await prisma.authClient.findFirst({
+      where: { id: clientId, deletedAt: null },
+    });
+    if (!current) {
+      reply.code(404).send({ error: 'Auth client not found' });
+      return;
+    }
+    const moduleEnabled = await requireProjectModuleEnabled(
+      request,
+      reply,
+      current.projectId,
+      ProjectModuleKey.AUTH,
+    );
+    if (!moduleEnabled) {
+      return;
+    }
+    const role = await requireProjectRole(request, reply, current.projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    await prisma.authClient.update({
+      where: { id: current.id },
+      data: { deletedAt: new Date() },
+    });
+    await logAudit({
+      projectId: current.projectId,
+      actorUserId: auth.user.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'auth.client.delete',
+      resourceType: 'auth_client',
+      resourceId: current.id,
+      metadataJson: { module: 'auth', clientId: current.clientId },
+    });
+    reply.send({ ok: true });
   });
 }
