@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '../components/ui/select'
 import { api } from '../lib/api'
+import { createEnvironmentAndRefresh } from '../lib/environmentMutations'
 import { getErrorMessage } from '../lib/errors'
 import { formatDate } from '../lib/format'
 import { getProjectModuleState } from '../lib/modules'
@@ -221,18 +222,7 @@ export const AuthSettingsPage = ({
   const handleCreateEnvironment = async (payload: {
     name: string
     copyFromEnvironmentId?: string | null
-  }) => {
-    try {
-      await api.createEnvironment(projectId, {
-        name: payload.name,
-        copyFromEnvironmentId: payload.copyFromEnvironmentId ?? undefined,
-      })
-      await invalidateQueryKeys(queryClient, queryKeys.environments(projectId))
-      return true
-    } catch {
-      return false
-    }
-  }
+  }) => createEnvironmentAndRefresh(queryClient, projectId, payload)
 
   const saveConfig = async () => {
     if (!form || saving) return
