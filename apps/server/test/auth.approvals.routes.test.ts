@@ -37,6 +37,13 @@ const state = {
   },
   projectRole: 'ADMIN',
   approvals: [] as ApprovalRecord[],
+  approvalRules: [
+    {
+      id: 'rule_1',
+      keyPattern: 'auth.config',
+      actionsJson: [ApprovalAction.UPDATE],
+    },
+  ] as Array<{ id: string; keyPattern: string; actionsJson: ApprovalAction[] }>,
   authProjectConfig: {
     id: 'cfg_1',
     projectId: 'project_1',
@@ -66,13 +73,7 @@ vi.mock('../src/db.js', () => ({
     projectModule: { findUnique: async () => ({ enabled: true }) },
     auditLog: { create: async () => ({ id: 'audit_1' }) },
     approvalRule: {
-      findMany: async () => [
-        {
-          id: 'rule_1',
-          keyPattern: 'auth.config',
-          actionsJson: [ApprovalAction.UPDATE],
-        },
-      ],
+      findMany: async () => state.approvalRules,
     },
     environment: {
       findFirst: async () => ({ id: 'env_1' }),
@@ -204,6 +205,13 @@ describe('auth approvals routes', () => {
   beforeEach(() => {
     state.approvals = [];
     state.projectRole = 'ADMIN';
+    state.approvalRules = [
+      {
+        id: 'rule_1',
+        keyPattern: 'auth.config',
+        actionsJson: [ApprovalAction.UPDATE],
+      },
+    ];
     state.authProjectConfig = {
       id: 'cfg_1',
       projectId: 'project_1',
@@ -245,6 +253,43 @@ describe('auth approvals routes', () => {
     expect(state.authProjectConfig.emailPasswordEnabled).toBe(false);
     expect(state.authProjectConfig.accessTokenTtlMinutes).toBe(20);
     expect(state.authProjectConfig.refreshTokenTtlDays).toBe(7);
+
+    await app.close();
+  });
+
+  it('stores provider secrets in encrypted approval payloads, not metadata', async () => {
+    state.approvalRules = [
+      {
+        id: 'rule_2',
+        keyPattern: 'auth.provider.*',
+        actionsJson: [ApprovalAction.CREATE],
+      },
+    ];
+
+    const app = await buildApp();
+    const headers = { authorization: 'Bearer mgmt-token' };
+
+    const providerCreate = await app.inject({
+      method: 'POST',
+      url: '/projects/project_1/auth/providers',
+      headers,
+      payload: {
+        provider: 'google',
+        enabled: true,
+        clientId: 'google-client-id',
+        clientSecret: 'super-secret-value',
+      },
+    });
+    expect(providerCreate.statusCode).toBe(202);
+    expect(state.approvals).toHaveLength(1);
+
+    const queued = state.approvals[0]!;
+    expect(queued.metadataJson?.approvalKind).toBe('provider.upsert');
+    expect(queued.metadataJson).not.toHaveProperty('clientSecret');
+    expect(queued.payloadCiphertext).toBeTruthy();
+    expect(queued.payloadIv).toBeTruthy();
+    expect(queued.payloadTag).toBeTruthy();
+    expect(queued.payloadKeyVersion).toBeTruthy();
 
     await app.close();
   });

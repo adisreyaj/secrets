@@ -1143,15 +1143,18 @@ export async function buildApp(): Promise<FastifyInstance> {
         if (approvalKind === 'provider.upsert') {
           const provider = asString(metadata.provider).toUpperCase();
           const clientId = asString(metadata.clientId);
-          const clientSecret = asString(metadata.clientSecret);
+          const payloadCiphertext = approval.payloadCiphertext;
+          const payloadIv = approval.payloadIv;
+          const payloadTag = approval.payloadTag;
           if (
             (provider !== 'GOOGLE' && provider !== 'GITHUB') ||
             !clientId ||
-            !clientSecret
+            !payloadCiphertext ||
+            !payloadIv ||
+            !payloadTag
           ) {
             throw new Error('Invalid auth provider approval payload');
           }
-          const encrypted = encryptSecret(clientSecret, masterKey);
           const providerConfig = await tx.authProviderConfig.upsert({
             where: {
               projectId_provider: {
@@ -1164,19 +1167,19 @@ export async function buildApp(): Promise<FastifyInstance> {
               provider: provider as AuthIdentityProvider,
               enabled: asBoolean(metadata.enabled) ?? true,
               clientId,
-              clientSecretCiphertext: Buffer.from(encrypted.ciphertext),
-              clientSecretIv: Buffer.from(encrypted.iv),
-              clientSecretTag: Buffer.from(encrypted.tag),
-              keyVersion: masterKeyVersion(),
+              clientSecretCiphertext: payloadCiphertext,
+              clientSecretIv: payloadIv,
+              clientSecretTag: payloadTag,
+              keyVersion: approval.payloadKeyVersion ?? masterKeyVersion(),
               scopesJson: asStringArray(metadata.scopes) ?? [],
             },
             update: {
               enabled: asBoolean(metadata.enabled) ?? undefined,
               clientId,
-              clientSecretCiphertext: Buffer.from(encrypted.ciphertext),
-              clientSecretIv: Buffer.from(encrypted.iv),
-              clientSecretTag: Buffer.from(encrypted.tag),
-              keyVersion: masterKeyVersion(),
+              clientSecretCiphertext: payloadCiphertext,
+              clientSecretIv: payloadIv,
+              clientSecretTag: payloadTag,
+              keyVersion: approval.payloadKeyVersion ?? masterKeyVersion(),
               scopesJson: asStringArray(metadata.scopes) ?? undefined,
             },
           });
@@ -1213,8 +1216,10 @@ export async function buildApp(): Promise<FastifyInstance> {
 
         if (approvalKind === 'provider.rotate_secret') {
           const providerId = asString(metadata.providerId);
-          const clientSecret = asString(metadata.clientSecret);
-          if (!providerId || !clientSecret) {
+          const payloadCiphertext = approval.payloadCiphertext;
+          const payloadIv = approval.payloadIv;
+          const payloadTag = approval.payloadTag;
+          if (!providerId || !payloadCiphertext || !payloadIv || !payloadTag) {
             throw new Error('Missing provider rotate payload');
           }
           const currentProvider = await tx.authProviderConfig.findUnique({
@@ -1223,14 +1228,13 @@ export async function buildApp(): Promise<FastifyInstance> {
           if (!currentProvider || currentProvider.projectId !== approval.projectId) {
             throw new Error('Provider config not found');
           }
-          const encrypted = encryptSecret(clientSecret, masterKey);
           const updated = await tx.authProviderConfig.update({
             where: { id: currentProvider.id },
             data: {
-              clientSecretCiphertext: Buffer.from(encrypted.ciphertext),
-              clientSecretIv: Buffer.from(encrypted.iv),
-              clientSecretTag: Buffer.from(encrypted.tag),
-              keyVersion: masterKeyVersion(),
+              clientSecretCiphertext: payloadCiphertext,
+              clientSecretIv: payloadIv,
+              clientSecretTag: payloadTag,
+              keyVersion: approval.payloadKeyVersion ?? masterKeyVersion(),
             },
           });
           resourceId = updated.id;

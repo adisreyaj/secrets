@@ -2,6 +2,7 @@ import { ApprovalAction, AuthClientType, ProjectModuleKey, Role } from '@prisma/
 import type { FastifyInstance } from 'fastify';
 import { generateToken, hashPassword, hashToken, verifyPassword } from '../../auth.js';
 import { config } from '../../config.js';
+import { encryptSecret, loadMasterKey, masterKeyVersion } from '../../crypto.js';
 import { prisma } from '../../db.js';
 import { toUserDto } from '../mappers/users.js';
 import {
@@ -85,6 +86,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     requestedBy: string;
     metadataJson: Record<string, unknown>;
     actorServiceAccountId?: string | null;
+    payload?: {
+      ciphertext: Uint8Array<ArrayBuffer>;
+      iv: Uint8Array<ArrayBuffer>;
+      tag: Uint8Array<ArrayBuffer>;
+      keyVersion: string;
+    } | null;
   }): Promise<string | null> => {
     const approvalRuleModel = (prisma as unknown as {
       approvalRule?: {
@@ -146,6 +153,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       action: params.action,
       key: params.key,
       requestedBy: params.requestedBy,
+      payload: params.payload ?? null,
       metadataJson: {
         module: 'auth',
         ...params.metadataJson,
@@ -690,18 +698,22 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
+    const encryptedSecret = encryptSecret(clientSecret, loadMasterKey());
     const providerApprovalId = await maybeQueueAuthApproval({
       projectId,
       action: ApprovalAction.CREATE,
       key: `auth.provider.${provider.toLowerCase()}`,
       requestedBy: auth.user.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
+      payload: {
+        ...encryptedSecret,
+        keyVersion: masterKeyVersion(),
+      },
       metadataJson: {
         approvalKind: 'provider.upsert',
         provider,
         enabled: typeof body?.enabled === 'boolean' ? body.enabled : true,
         clientId,
-        clientSecret,
         scopes: body?.scopes ?? [],
       },
     });
@@ -841,16 +853,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
+    const encryptedSecret = encryptSecret(clientSecret, loadMasterKey());
     const rotateApprovalId = await maybeQueueAuthApproval({
       projectId: current.projectId,
       action: ApprovalAction.UPDATE,
       key: `auth.provider.${current.provider.toLowerCase()}`,
       requestedBy: auth.user.id,
       actorServiceAccountId: auth.serviceAccountId ?? null,
+      payload: {
+        ...encryptedSecret,
+        keyVersion: masterKeyVersion(),
+      },
       metadataJson: {
         approvalKind: 'provider.rotate_secret',
         providerId: current.id,
-        clientSecret,
       },
     });
     if (rotateApprovalId) {
