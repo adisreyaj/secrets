@@ -74,6 +74,23 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     Math.max(1, config.authLoginMaxAttempts),
     Math.max(1_000, config.authLoginLockMs),
   );
+  const logRuntimeAuth = async (
+    projectId: string,
+    action: string,
+    resourceType: string,
+    resourceId?: string | null,
+    metadataJson?: Record<string, unknown> | null,
+  ) => {
+    await logAudit({
+      projectId,
+      actorUserId: null,
+      actorServiceAccountId: null,
+      action,
+      resourceType,
+      resourceId: resourceId ?? null,
+      metadataJson: { module: 'auth', ...(metadataJson ?? {}) },
+    });
+  };
 
   app.post(
     '/runtime/auth/signup',
@@ -132,6 +149,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         sessionId: issued.session.id,
         expiresInMinutes: config.accessTokenTtlMinutes,
       });
+      await logRuntimeAuth(projectId, 'auth.signup', 'auth_end_user', endUser.id, {
+        method: 'password',
+      });
 
       reply.code(201).send({
         endUser: {
@@ -180,6 +200,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const lockState = loginProtector.isLocked(loginKey);
     if (lockState.locked) {
       const retryAfter = Math.ceil((lockState.retryAfterMs ?? 0) / 1000);
+      await logRuntimeAuth(projectId, 'auth.login.locked', 'auth_end_user', null, {
+        email,
+        ipAddress: request.ip,
+        retryAfterSeconds: retryAfter,
+      });
       reply.code(429).send({ error: 'Too many login attempts', retryAfterSeconds: retryAfter });
       return;
     }
@@ -203,18 +228,30 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const verified = await verifyLocalCredentials({ projectId, email, password });
     if (verified.status === 'disabled') {
       loginProtector.recordFailure(loginKey);
+      await logRuntimeAuth(projectId, 'auth.login.blocked', 'auth_end_user', null, {
+        email,
+        reason: 'disabled',
+      });
       reply.code(403).send({ error: 'Account is disabled' });
       return;
     }
     if (verified.status !== 'ok') {
       const failure = loginProtector.recordFailure(loginKey);
       if (failure.locked) {
+        await logRuntimeAuth(projectId, 'auth.login.locked', 'auth_end_user', null, {
+          email,
+          ipAddress: request.ip,
+          retryAfterSeconds: Math.ceil((failure.retryAfterMs ?? 0) / 1000),
+        });
         reply.code(429).send({
           error: 'Too many login attempts',
           retryAfterSeconds: Math.ceil((failure.retryAfterMs ?? 0) / 1000),
         });
         return;
       }
+      await logRuntimeAuth(projectId, 'auth.login.failed', 'auth_end_user', null, {
+        email,
+      });
       reply.code(401).send({ error: 'Invalid credentials' });
       return;
     }
@@ -233,6 +270,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       endUserId: verified.endUser.id,
       sessionId: issued.session.id,
       expiresInMinutes: config.accessTokenTtlMinutes,
+    });
+    await logRuntimeAuth(projectId, 'auth.login', 'auth_end_user', verified.endUser.id, {
+      method: 'password',
     });
 
     reply.send({
@@ -274,6 +314,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     await revokeAuthSession(session.sessionId);
+    await logRuntimeAuth(projectId, 'auth.logout', 'auth_session', session.sessionId, {
+      endUserId: session.endUserId,
+    });
     reply.send({ ok: true });
     },
   );
@@ -322,6 +365,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       sessionId: rotated.refresh.sessionId,
       expiresInMinutes: config.accessTokenTtlMinutes,
     });
+    await logRuntimeAuth(projectId, 'auth.token.refresh', 'auth_refresh_token', rotated.refresh.id, {
+      endUserId: rotated.refresh.endUserId,
+      sessionId: rotated.refresh.sessionId,
+    });
 
     reply.send({
       accessToken: access.token,
@@ -361,6 +408,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true },
     });
     if (!endUser) {
+      await logRuntimeAuth(projectId, 'auth.password.forgot', 'auth_end_user', null, {
+        email,
+        userFound: false,
+      });
       reply.send({ ok: true });
       return;
     }
@@ -389,6 +440,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         'failed to send password reset email',
       );
     }
+    await logRuntimeAuth(projectId, 'auth.password.forgot', 'auth_password_reset_token', issued.record.id, {
+      email,
+      endUserId: endUser.id,
+    });
 
     reply.send({ ok: true, resetToken: issued.token });
     },
@@ -442,6 +497,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       where: { id: record.id },
       data: { consumedAt: new Date() },
     });
+    await logRuntimeAuth(projectId, 'auth.password.reset', 'auth_end_user', record.endUserId, {
+      resetTokenId: record.id,
+    });
 
     reply.send({ ok: true });
     },
@@ -474,6 +532,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       select: { id: true },
     });
     if (!endUser) {
+      await logRuntimeAuth(projectId, 'auth.email.verify.request', 'auth_end_user', null, {
+        email,
+        userFound: false,
+      });
       reply.send({ ok: true });
       return;
     }
@@ -504,6 +566,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         'failed to send email verification email',
       );
     }
+    await logRuntimeAuth(
+      projectId,
+      'auth.email.verify.request',
+      'auth_email_verification_token',
+      issued.record.id,
+      {
+        email,
+        endUserId: endUser.id,
+      },
+    );
     reply.send({ ok: true, verificationToken: issued.token });
     },
   );
@@ -551,6 +623,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     await prisma.authEndUser.update({
       where: { id: record.endUserId },
       data: { emailVerifiedAt: new Date() },
+    });
+    await logRuntimeAuth(projectId, 'auth.email.verify.confirm', 'auth_end_user', record.endUserId, {
+      verificationTokenId: record.id,
     });
 
     reply.send({ ok: true });
@@ -634,6 +709,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       authUrl.searchParams.set('scope', config.githubOauthScopes.join(' '));
     }
     authUrl.searchParams.set('state', state);
+    await logRuntimeAuth(projectId, 'auth.oauth.start', 'auth_provider_config', providerConfig.id, {
+      provider,
+    });
 
     reply.send({ provider, projectId, state, authUrl: authUrl.toString() });
   });
@@ -873,14 +951,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       expiresInMinutes: authConfig.accessTokenTtlMinutes,
     });
 
-    await logAudit({
-      projectId: oauthState.projectId,
-      actorUserId: null,
-      actorServiceAccountId: null,
-      action: 'auth.oauth.login',
-      resourceType: 'auth_identity',
-      resourceId: identity.id,
-      metadataJson: { module: 'auth', provider, endUserId: endUser.id },
+    await logRuntimeAuth(oauthState.projectId, 'auth.oauth.login', 'auth_identity', identity.id, {
+      provider,
+      endUserId: endUser.id,
     });
 
     reply.send({

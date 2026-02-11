@@ -88,6 +88,14 @@ type AuthProviderConfig = {
   updatedAt: Date;
 };
 
+type AuditLogEntry = {
+  action: string;
+  projectId: string;
+  resourceType: string;
+  resourceId: string | null;
+  metadataJson: Record<string, unknown> | null;
+};
+
 const state = {
   apiToken: {
     id: 'token_1',
@@ -113,6 +121,7 @@ const state = {
   passwordResetTokens: [] as PasswordResetToken[],
   emailVerificationTokens: [] as EmailVerificationToken[],
   providerConfigs: [] as AuthProviderConfig[],
+  auditLogs: [] as AuditLogEntry[],
 };
 
 function nextId(prefix: string, size: number): string {
@@ -129,7 +138,18 @@ vi.mock('../src/db.js', () => ({
     },
     serviceAccountToken: { findFirst: async () => null },
     globalCliToken: { findFirst: async () => null },
-    auditLog: { create: async () => ({ id: 'audit_1' }) },
+    auditLog: {
+      create: async ({ data }: any) => {
+        state.auditLogs.push({
+          action: data.action,
+          projectId: data.projectId,
+          resourceType: data.resourceType,
+          resourceId: data.resourceId ?? null,
+          metadataJson: data.metadataJson ?? null,
+        });
+        return { id: `audit_${state.auditLogs.length}` };
+      },
+    },
     projectMember: { findUnique: async () => ({ role: 'ADMIN' }) },
     projectModule: {
       findUnique: async ({ where }: any) =>
@@ -561,6 +581,7 @@ describe('runtime auth routes', () => {
     state.passwordResetTokens = [];
     state.emailVerificationTokens = [];
     state.providerConfigs = [];
+    state.auditLogs = [];
     state.config = {
       projectId: 'project_1',
       nativeAuthEnabled: true,
@@ -665,6 +686,15 @@ describe('runtime auth routes', () => {
       payload: { projectId: 'project_1' },
     });
     expect(logoutAgain.statusCode).toBe(401);
+    expect(state.auditLogs.map((entry) => entry.action)).toEqual(
+      expect.arrayContaining([
+        'auth.signup',
+        'auth.login.failed',
+        'auth.login',
+        'auth.token.refresh',
+        'auth.logout',
+      ]),
+    );
 
     await app.close();
   });
@@ -749,6 +779,14 @@ describe('runtime auth routes', () => {
       state.endUsers.find((candidate) => candidate.email === 'verify@example.com')
         ?.emailVerifiedAt,
     ).toBeTruthy();
+    expect(state.auditLogs.map((entry) => entry.action)).toEqual(
+      expect.arrayContaining([
+        'auth.password.forgot',
+        'auth.password.reset',
+        'auth.email.verify.request',
+        'auth.email.verify.confirm',
+      ]),
+    );
 
     await app.close();
   });
@@ -789,6 +827,9 @@ describe('runtime auth routes', () => {
     const callbackBody = callback.json() as { provider: string; accessToken?: string };
     expect(callbackBody.provider).toBe('google');
     expect(callbackBody.accessToken).toBeTruthy();
+    expect(state.auditLogs.map((entry) => entry.action)).toEqual(
+      expect.arrayContaining(['auth.oauth.start', 'auth.oauth.login']),
+    );
 
     await app.close();
   });
