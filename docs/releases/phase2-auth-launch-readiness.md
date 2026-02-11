@@ -3,6 +3,20 @@
 Date: 2026-02-11  
 Scope: Native Auth launch (email/password + Google/GitHub, management + runtime APIs).
 
+## Execution Tracking
+
+- Execution parent: `SRE-52` (`REL-AUTH-OPS-000`)
+- Execution subtasks:
+  - `SRE-53` infra/config verification evidence
+  - `SRE-54` release-branch test/build verification evidence
+  - `SRE-55` management workflow launch validation
+  - `SRE-56` runtime workflow launch validation
+  - `SRE-57` observability and alert readiness verification
+  - `SRE-58` pilot smoke test and cohort enablement gate
+  - `SRE-59` rollback drill and comms protocol verification
+  - `SRE-60` sign-off capture and readiness doc finalization
+- Detailed evidence log: `docs/releases/phase2-auth-verification-log.md`
+
 ## Pre-Launch Checklist
 
 - [ ] Confirm migrations are applied in target environment:
