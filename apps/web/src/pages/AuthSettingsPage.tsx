@@ -40,6 +40,12 @@ import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { getLastEnvironmentId } from '../lib/shortcuts.utils'
 import { useRequireAuth } from '../lib/useRequireAuth'
+import {
+  createProviderFormFromProvider,
+  defaultProviderFormState,
+  parseProviderScopes,
+  type ProviderFormState,
+} from './AuthSettingsPage.providerForm'
 import { EnvironmentTabsCard } from './environment/EnvironmentTabsCard'
 
 type AuthSettingsPageProps = {
@@ -65,22 +71,6 @@ type FormState = {
   refreshTokenTtlDays: string
 }
 
-type ProviderFormState = {
-  provider: 'google' | 'github'
-  enabled: boolean
-  clientId: string
-  clientSecret: string
-  scopes: string
-}
-
-const DEFAULT_PROVIDER_FORM: ProviderFormState = {
-  provider: 'google',
-  enabled: true,
-  clientId: '',
-  clientSecret: '',
-  scopes: 'openid,email,profile',
-}
-
 export const AuthSettingsPage = ({
   projectId,
   environmentId,
@@ -92,7 +82,7 @@ export const AuthSettingsPage = ({
   const [form, setForm] = useState<FormState | null>(null)
   const [providerSaving, setProviderSaving] = useState(false)
   const [providerForm, setProviderForm] = useState<ProviderFormState>(
-    DEFAULT_PROVIDER_FORM,
+    defaultProviderFormState,
   )
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null)
   const [providerRotateId, setProviderRotateId] = useState<string | null>(null)
@@ -257,29 +247,20 @@ export const AuthSettingsPage = ({
   }
 
   const resetProviderForm = () => {
-    setProviderForm(DEFAULT_PROVIDER_FORM)
+    setProviderForm(defaultProviderFormState)
     setEditingProviderId(null)
   }
 
   const startEditProvider = (provider: AuthProviderDto) => {
     setEditingProviderId(provider.id)
-    setProviderForm({
-      provider: provider.provider,
-      enabled: provider.enabled,
-      clientId: provider.clientId,
-      clientSecret: '',
-      scopes: provider.scopes.join(','),
-    })
+    setProviderForm(createProviderFormFromProvider(provider))
   }
 
   const saveProvider = async () => {
     if (!isAdmin || providerSaving) return
     const clientId = providerForm.clientId.trim()
     if (!clientId) return
-    const scopes = providerForm.scopes
-      .split(',')
-      .map((scope) => scope.trim())
-      .filter((scope) => scope.length > 0)
+    const scopes = parseProviderScopes(providerForm.scopes)
     setProviderSaving(true)
     try {
       await runMutationWithToast(
