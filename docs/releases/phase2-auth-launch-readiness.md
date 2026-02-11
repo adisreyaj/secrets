@@ -39,9 +39,9 @@ Scope: Native Auth launch (email/password + Google/GitHub, management + runtime 
 - [ ] Verify provider credentials are configured per pilot project.
 - [ ] Verify auth approval rules for gated changes are configured as required.
 - [ ] Verify audit retention policy and auth audit filtering.
-- [ ] Run server test suite in release branch:
+- [x] Run server test suite in release branch:
   - `pnpm -C apps/server test`
-- [ ] Run web build/test in release branch:
+- [x] Run web build/test in release branch:
   - `pnpm -C apps/web test --run`
   - `pnpm -C apps/web build`
 

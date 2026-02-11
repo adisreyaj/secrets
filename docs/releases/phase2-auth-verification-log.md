@@ -79,3 +79,23 @@ Status: Complete (repository-level evidence captured; target environment checks 
 - Confirm target deployment env values and callback URLs.
 - Confirm pilot project `auth` module enablement and provider credentials in production.
 - Confirm approval rule records and audit retention settings in the target database.
+
+## SRE-54 — Release-branch test/build verification evidence
+
+Status: Complete (all required commands passed on 2026-02-11 local execution).
+
+### Command Results
+
+1. `pnpm -C apps/server test`
+- Result: PASS
+- Summary: `22` test files passed, `74` tests passed, duration `5.63s`.
+- Notes: expected negative-path warnings (`401`, `403`, `409`, `429`) surfaced during auth and guard tests.
+
+2. `pnpm -C apps/web test --run`
+- Result: PASS
+- Summary: `10` test files passed, `28` tests passed, duration `3.57s`.
+
+3. `pnpm -C apps/web build`
+- Result: PASS
+- Summary: TypeScript + Vite production build completed.
+- Notes: bundle size warning for a chunk above `500 kB` (non-failing warning).
