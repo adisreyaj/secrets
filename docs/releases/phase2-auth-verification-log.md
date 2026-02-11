@@ -227,3 +227,41 @@ Status: Complete (implementation coverage verified; deployment alert wiring rema
 ### Command Evidence
 
 - `rg -n "auth\\.login|auth\\.signup|auth\\.oauth|auth\\.password|auth\\.email|auth\\.token\\.refresh|auth\\.logout|logRuntimeAuth|audit|cleanup|/audit|request.denied" apps/server/src/server/routes/runtimeAuth.ts apps/server/src/app.ts apps/server/src/server/http/logging.ts docs/security/auth-security-pass.md docs/integration/web-api-launch-scope.md -S`
+
+## SRE-58 — Pilot smoke test and cohort enablement gate
+
+Status: Complete (pilot smoke protocol and cohort gate defined; production execution to be recorded during launch window).
+
+### Pilot Smoke Test Protocol (single pilot project)
+
+1. Confirm pilot project has `auth` module enabled.
+2. Validate management-path changes:
+- `GET/PUT /projects/:projectId/auth/config`
+- provider create/update/rotate
+- client create/update/rotate/delete
+3. Validate runtime-path behavior:
+- signup/login/logout/refresh
+- password forgot/reset + email verification request/confirm
+- OAuth start/callback for enabled providers
+- JWKS fetch and key presence
+4. Validate observability signals:
+- audit events visible with `metadata_json.module = "auth"`
+- no sustained auth `5xx` during pilot window
+- lockout path emits expected `429` behavior under repeated bad credentials
+
+### Go/No-Go Gate for Full Cohort Enablement
+
+Go only if all conditions are true for pilot window:
+- No sustained `5xx` spike on auth management/runtime routes
+- No OAuth callback failure pattern across pilot traffic
+- Approval-gated writes behave as expected
+- No plaintext provider secrets in approval metadata
+- Rollback operators and comms contacts acknowledged and available
+
+No-go if any rollback trigger in `phase2-auth-launch-readiness.md` is met.
+
+### Pre-launch Dry-Run Evidence
+
+- Automated cross-module smoke baseline exists:
+  - `apps/server/test/cross-module.e2e.test.ts` (`covers auth + secrets + flags paths in one project context`)
+  - Reference doc: `docs/testing/cross-module-e2e.md`
