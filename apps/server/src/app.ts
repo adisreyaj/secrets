@@ -23,11 +23,11 @@ import {
 } from './server/auth/guards.js';
 import { ROLE_RANK } from './server/auth/policies.js';
 import { toApprovalRequestDto, toApprovalRuleDto } from './server/mappers/approvals.js';
-import { toEnvironmentDto, toProjectDto } from './server/mappers/projects.js';
+import { toEnvironmentDto } from './server/mappers/projects.js';
 import { toUserDto } from './server/mappers/users.js';
 import { findMatchingApprovalRules, findPendingApprovalRequest, createApprovalRequest } from './server/services/approvals.js';
 import { logAudit } from './server/services/audit.js';
-import { deleteEnvironmentWithGuards, deleteProjectWithGuards } from './server/services/deletions.js';
+import { deleteEnvironmentWithGuards } from './server/services/deletions.js';
 import { registerCoreHttpMiddleware } from './server/http/middleware.js';
 import { forbidden } from './server/http/errors.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
@@ -39,9 +39,10 @@ import { registerRoutes as registerFlagRuntimeRoutes } from './server/routes/fla
 import { registerRoutes as registerRuntimeAuthRoutes } from './server/routes/runtimeAuth.js';
 import { registerRoutes as registerProjectSettingsRoutes } from './server/routes/projectSettings.js';
 import { registerRoutes as registerProjectMemberRoutes } from './server/routes/projectMembers.js';
+import { registerRoutes as registerProjectCoreRoutes } from './server/routes/projectCore.js';
 import { registerRoutes as registerOrganizationRoutes } from './server/routes/organizations.js';
 import { registerRoutes as registerServiceAccountRoutes } from './server/routes/serviceAccounts.js';
-import { ensureUniqueEnvironmentSlug, ensureUniqueProjectSlug } from './server/services/slugs.js';
+import { ensureUniqueEnvironmentSlug } from './server/services/slugs.js';
 import { normalizeIdentifier } from './server/services/identifiers.js';
 import { isPrismaUniqueError } from './server/services/prismaErrors.js';
 import { createLogDispatcher } from './server/logging/dispatcher.js';
@@ -99,215 +100,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerFlagRoutes(app);
   await registerFlagRuntimeRoutes(app);
   await registerRuntimeAuthRoutes(app);
+  await registerProjectCoreRoutes(app);
   await registerProjectSettingsRoutes(app);
   await registerProjectMemberRoutes(app);
   await registerOrganizationRoutes(app);
   await registerServiceAccountRoutes(app);
-
-  app.post('/projects', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const body = request.body as { name?: string; organizationId?: string } | undefined;
-    const name = body?.name?.trim();
-    const organizationId = body?.organizationId?.trim();
-    if (!name) {
-      reply.code(400).send({ error: 'Name is required' });
-      return;
-    }
-    if (!auth.user) {
-      reply.code(403).send({ error: 'API token creation requires a user session' });
-      return;
-    }
-    if (organizationId) {
-      const organizationMembership = await prisma.organizationMember.findUnique({
-        where: {
-          organizationId_userId: {
-            organizationId,
-            userId: auth.user.id,
-          },
-        },
-      });
-      if (!organizationMembership) {
-        reply.code(403).send({ error: 'Organization access denied' });
-        return;
-      }
-      if (ROLE_RANK[organizationMembership.role] < ROLE_RANK[Role.EDITOR]) {
-        reply.code(403).send({ error: 'Insufficient organization role' });
-        return;
-      }
-    }
-
-    const memberships = await prisma.projectMember.findMany({
-      where: { userId: auth.user.id },
-      select: { project: { select: { name: true } } },
-    });
-    const conflict = memberships.some(
-      (membership) => normalizeIdentifier(membership.project.name) === normalizeIdentifier(name),
-    );
-    if (conflict) {
-      reply.code(409).send({ error: 'Project name already exists' });
-      return;
-    }
-
-    const slug = await ensureUniqueProjectSlug(name);
-    let project;
-    try {
-      project = await prisma.project.create({
-        data: {
-          name,
-          slug,
-          organizationId: organizationId ?? null,
-          members: {
-            create: {
-              userId: auth.user!.id,
-              role: Role.ADMIN,
-            },
-          },
-          modules: {
-            create: [
-              { module: 'SECRETS', enabled: true },
-              { module: 'FLAGS', enabled: true },
-              { module: 'AUTH', enabled: true },
-            ],
-          },
-        },
-      });
-    } catch (error) {
-      if (isPrismaUniqueError(error)) {
-        reply.code(409).send({ error: 'Project name already exists' });
-        return;
-      }
-      throw error;
-    }
-
-    await logAudit({
-      projectId: project.id,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'project.create',
-      resourceType: 'project',
-      resourceId: project.id,
-    });
-
-    reply.code(201).send(toProjectDto(project, Role.ADMIN));
-  });
-
-  app.get('/projects', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const memberships = await prisma.projectMember.findMany({
-      where: { userId: auth.user!.id },
-      include: { project: true },
-    });
-
-    reply.send(memberships.map((membership) => toProjectDto(membership.project, membership.role)));
-  });
-
-  app.put('/projects/:id/organization', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth?.user) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const projectRole = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!projectRole) {
-      return;
-    }
-
-    const body = request.body as { organizationId?: string | null } | undefined;
-    if (!body || !('organizationId' in body)) {
-      reply.code(400).send({ error: 'organizationId is required' });
-      return;
-    }
-
-    const nextOrganizationId = body.organizationId?.trim() || null;
-    if (nextOrganizationId) {
-      const organizationMembership = await prisma.organizationMember.findUnique({
-        where: {
-          organizationId_userId: {
-            organizationId: nextOrganizationId,
-            userId: auth.user.id,
-          },
-        },
-      });
-      if (!organizationMembership) {
-        reply.code(403).send({ error: 'Organization access denied' });
-        return;
-      }
-      if (ROLE_RANK[organizationMembership.role] < ROLE_RANK[Role.ADMIN]) {
-        reply.code(403).send({ error: 'Insufficient organization role' });
-        return;
-      }
-    }
-
-    const project = await prisma.project.update({
-      where: { id: projectId },
-      data: { organizationId: nextOrganizationId },
-    });
-
-    reply.send(toProjectDto(project, projectRole));
-  });
-
-  app.delete('/projects/:id', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
-
-    const body = request.body as { confirmText?: string } | undefined;
-    if (!body?.confirmText?.trim()) {
-      reply.code(400).send({ error: 'confirmText is required' });
-      return;
-    }
-
-    const result = await deleteProjectWithGuards({
-      projectId,
-      confirmText: body.confirmText,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-    });
-
-    if (!result.ok) {
-      reply.code(result.status).send({ error: result.error });
-      return;
-    }
-
-    reply.send({ ok: true });
-  });
-
-  app.get('/projects/slug/:slug', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { slug } = request.params as { slug: string };
-    const project = await prisma.project.findUnique({ where: { slug } });
-    if (!project) {
-      reply.code(404).send({ error: 'Project not found' });
-      return;
-    }
-
-    const role = await requireProjectRole(request, reply, project.id, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    reply.send(toProjectDto(project, role));
-  });
 
   app.get('/projects/:id/approval-rules', async (request, reply) => {
     const auth = requireAuth(request, reply);
