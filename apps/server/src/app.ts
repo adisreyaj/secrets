@@ -2,7 +2,14 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
-import { ApprovalAction, ApprovalStatus, Prisma, Role } from '@prisma/client';
+import {
+  ApprovalAction,
+  ApprovalStatus,
+  AuthClientType,
+  AuthIdentityProvider,
+  Prisma,
+  Role,
+} from '@prisma/client';
 import Fastify, { FastifyInstance } from 'fastify';
 import { generateToken, hashToken } from './auth.js';
 import { config } from './config.js';
@@ -1095,6 +1102,219 @@ export async function buildApp(): Promise<FastifyInstance> {
         auditAction = 'flag.override.update';
         auditResourceType = 'feature_flag_env_override';
         return { resourceId, auditAction, auditResourceType };
+      }
+
+      if (metadata?.module === 'auth' && typeof metadata?.approvalKind === 'string') {
+        const approvalKind = metadata.approvalKind;
+        const asString = (value: unknown) =>
+          typeof value === 'string' ? value.trim() : '';
+        const asNumber = (value: unknown) =>
+          typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+        const asBoolean = (value: unknown) =>
+          typeof value === 'boolean' ? value : undefined;
+        const asStringArray = (value: unknown) =>
+          Array.isArray(value)
+            ? value.filter((entry): entry is string => typeof entry === 'string')
+            : undefined;
+
+        if (approvalKind === 'config.update') {
+          const updated = await tx.authProjectConfig.upsert({
+            where: { projectId: approval.projectId },
+            create: {
+              projectId: approval.projectId,
+              nativeAuthEnabled: asBoolean(metadata.nativeAuthEnabled) ?? true,
+              emailPasswordEnabled: asBoolean(metadata.emailPasswordEnabled) ?? true,
+              accessTokenTtlMinutes: asNumber(metadata.accessTokenTtlMinutes) ?? 15,
+              refreshTokenTtlDays: asNumber(metadata.refreshTokenTtlDays) ?? 30,
+            },
+            update: {
+              nativeAuthEnabled: asBoolean(metadata.nativeAuthEnabled),
+              emailPasswordEnabled: asBoolean(metadata.emailPasswordEnabled),
+              accessTokenTtlMinutes: asNumber(metadata.accessTokenTtlMinutes),
+              refreshTokenTtlDays: asNumber(metadata.refreshTokenTtlDays),
+            },
+          });
+          resourceId = updated.id;
+          auditAction = 'auth.config.update';
+          auditResourceType = 'auth_config';
+          return { resourceId, auditAction, auditResourceType };
+        }
+
+        if (approvalKind === 'provider.upsert') {
+          const provider = asString(metadata.provider).toUpperCase();
+          const clientId = asString(metadata.clientId);
+          const clientSecret = asString(metadata.clientSecret);
+          if (
+            (provider !== 'GOOGLE' && provider !== 'GITHUB') ||
+            !clientId ||
+            !clientSecret
+          ) {
+            throw new Error('Invalid auth provider approval payload');
+          }
+          const encrypted = encryptSecret(clientSecret, masterKey);
+          const providerConfig = await tx.authProviderConfig.upsert({
+            where: {
+              projectId_provider: {
+                projectId: approval.projectId,
+                provider: provider as AuthIdentityProvider,
+              },
+            },
+            create: {
+              projectId: approval.projectId,
+              provider: provider as AuthIdentityProvider,
+              enabled: asBoolean(metadata.enabled) ?? true,
+              clientId,
+              clientSecretCiphertext: Buffer.from(encrypted.ciphertext),
+              clientSecretIv: Buffer.from(encrypted.iv),
+              clientSecretTag: Buffer.from(encrypted.tag),
+              keyVersion: masterKeyVersion(),
+              scopesJson: asStringArray(metadata.scopes) ?? [],
+            },
+            update: {
+              enabled: asBoolean(metadata.enabled) ?? undefined,
+              clientId,
+              clientSecretCiphertext: Buffer.from(encrypted.ciphertext),
+              clientSecretIv: Buffer.from(encrypted.iv),
+              clientSecretTag: Buffer.from(encrypted.tag),
+              keyVersion: masterKeyVersion(),
+              scopesJson: asStringArray(metadata.scopes) ?? undefined,
+            },
+          });
+          resourceId = providerConfig.id;
+          auditAction = 'auth.provider.upsert';
+          auditResourceType = 'auth_provider_config';
+          return { resourceId, auditAction, auditResourceType };
+        }
+
+        if (approvalKind === 'provider.update') {
+          const providerId = asString(metadata.providerId);
+          if (!providerId) {
+            throw new Error('Missing providerId for approval');
+          }
+          const currentProvider = await tx.authProviderConfig.findUnique({
+            where: { id: providerId },
+          });
+          if (!currentProvider || currentProvider.projectId !== approval.projectId) {
+            throw new Error('Provider config not found');
+          }
+          const updated = await tx.authProviderConfig.update({
+            where: { id: currentProvider.id },
+            data: {
+              enabled: asBoolean(metadata.enabled),
+              clientId: asString(metadata.clientId) || undefined,
+              scopesJson: asStringArray(metadata.scopes) ?? undefined,
+            },
+          });
+          resourceId = updated.id;
+          auditAction = 'auth.provider.update';
+          auditResourceType = 'auth_provider_config';
+          return { resourceId, auditAction, auditResourceType };
+        }
+
+        if (approvalKind === 'provider.rotate_secret') {
+          const providerId = asString(metadata.providerId);
+          const clientSecret = asString(metadata.clientSecret);
+          if (!providerId || !clientSecret) {
+            throw new Error('Missing provider rotate payload');
+          }
+          const currentProvider = await tx.authProviderConfig.findUnique({
+            where: { id: providerId },
+          });
+          if (!currentProvider || currentProvider.projectId !== approval.projectId) {
+            throw new Error('Provider config not found');
+          }
+          const encrypted = encryptSecret(clientSecret, masterKey);
+          const updated = await tx.authProviderConfig.update({
+            where: { id: currentProvider.id },
+            data: {
+              clientSecretCiphertext: Buffer.from(encrypted.ciphertext),
+              clientSecretIv: Buffer.from(encrypted.iv),
+              clientSecretTag: Buffer.from(encrypted.tag),
+              keyVersion: masterKeyVersion(),
+            },
+          });
+          resourceId = updated.id;
+          auditAction = 'auth.provider.rotate_secret';
+          auditResourceType = 'auth_provider_config';
+          return { resourceId, auditAction, auditResourceType };
+        }
+
+        if (approvalKind === 'client.create') {
+          const name = asString(metadata.name);
+          const typeRaw = asString(metadata.type).toLowerCase();
+          if (!name) {
+            throw new Error('Missing client name for approval');
+          }
+          const type: AuthClientType =
+            typeRaw === 'confidential' ? AuthClientType.CONFIDENTIAL : AuthClientType.PUBLIC;
+          const redirectUris = asStringArray(metadata.redirectUris) ?? [];
+          const clientId = `ac_${generateToken().slice(0, 24)}`;
+          const rawSecret = type === AuthClientType.CONFIDENTIAL ? `acs_${generateToken()}` : null;
+          const created = await tx.authClient.create({
+            data: {
+              projectId: approval.projectId,
+              name,
+              type,
+              clientId,
+              clientSecretHash: rawSecret ? hashToken(rawSecret) : null,
+              redirectUrisJson: redirectUris,
+            },
+          });
+          resourceId = created.id;
+          auditAction = 'auth.client.create';
+          auditResourceType = 'auth_client';
+          return { resourceId, auditAction, auditResourceType };
+        }
+
+        if (approvalKind === 'client.update') {
+          const clientRecordId = asString(metadata.clientId);
+          if (!clientRecordId) {
+            throw new Error('Missing clientId for approval');
+          }
+          const currentClient = await tx.authClient.findFirst({
+            where: { id: clientRecordId, deletedAt: null },
+          });
+          if (!currentClient || currentClient.projectId !== approval.projectId) {
+            throw new Error('Auth client not found');
+          }
+          const rotateSecret =
+            asBoolean(metadata.rotateSecret) === true &&
+            currentClient.type === AuthClientType.CONFIDENTIAL;
+          const rawSecret = rotateSecret ? `acs_${generateToken()}` : null;
+          const updated = await tx.authClient.update({
+            where: { id: currentClient.id },
+            data: {
+              name: asString(metadata.name) || undefined,
+              redirectUrisJson: asStringArray(metadata.redirectUris) ?? undefined,
+              clientSecretHash: rawSecret ? hashToken(rawSecret) : undefined,
+            },
+          });
+          resourceId = updated.id;
+          auditAction = rotateSecret ? 'auth.client.rotate_secret' : 'auth.client.update';
+          auditResourceType = 'auth_client';
+          return { resourceId, auditAction, auditResourceType };
+        }
+
+        if (approvalKind === 'client.delete') {
+          const clientRecordId = asString(metadata.clientId);
+          if (!clientRecordId) {
+            throw new Error('Missing clientId for approval');
+          }
+          const currentClient = await tx.authClient.findFirst({
+            where: { id: clientRecordId, deletedAt: null },
+          });
+          if (!currentClient || currentClient.projectId !== approval.projectId) {
+            throw new Error('Auth client not found');
+          }
+          await tx.authClient.update({
+            where: { id: currentClient.id },
+            data: { deletedAt: new Date() },
+          });
+          resourceId = currentClient.id;
+          auditAction = 'auth.client.delete';
+          auditResourceType = 'auth_client';
+          return { resourceId, auditAction, auditResourceType };
+        }
       }
 
       if (approval.action === ApprovalAction.CREATE) {
