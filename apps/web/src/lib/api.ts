@@ -330,6 +330,32 @@ export const api = {
     ),
   listAuthProviders: (projectId: string) =>
     apiFetch<AuthProviderDto[]>(`/projects/${projectId}/auth/providers`),
+  createAuthProvider: (
+    projectId: string,
+    payload: {
+      provider: 'google' | 'github'
+      enabled?: boolean
+      clientId: string
+      clientSecret: string
+      scopes?: string[]
+    },
+  ) =>
+    apiFetch<AuthProviderDto>(`/projects/${projectId}/auth/providers`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateAuthProvider: (
+    providerId: string,
+    payload: {
+      enabled?: boolean
+      clientId?: string
+      scopes?: string[]
+    },
+  ) =>
+    apiFetch<AuthProviderDto>(`/auth/providers/${providerId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   listAuthClients: (projectId: string) =>
     apiFetch<AuthClientDto[]>(`/projects/${projectId}/auth/clients`),
 

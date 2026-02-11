@@ -492,6 +492,7 @@ export interface AuthProviderDto {
   provider: AuthProviderType;
   enabled: boolean;
   clientId: string;
+  scopes: string[];
   createdAt: string;
   updatedAt: string;
 }
