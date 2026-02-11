@@ -36,6 +36,7 @@ import { registerRoutes as registerProjectMemberRoutes } from './server/routes/p
 import { registerRoutes as registerProjectCoreRoutes } from './server/routes/projectCore.js';
 import { registerRoutes as registerOrganizationRoutes } from './server/routes/organizations.js';
 import { registerRoutes as registerSecretReadRoutes } from './server/routes/secretReads.js';
+import { registerRoutes as registerSecretRollbackRoutes } from './server/routes/secretRollback.js';
 import { registerRoutes as registerServiceAccountRoutes } from './server/routes/serviceAccounts.js';
 import { normalizeIdentifier } from './server/services/identifiers.js';
 import { isPrismaUniqueError } from './server/services/prismaErrors.js';
@@ -103,6 +104,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerProjectMemberRoutes(app);
   await registerOrganizationRoutes(app);
   await registerSecretReadRoutes(app);
+  await registerSecretRollbackRoutes(app);
   await registerServiceAccountRoutes(app);
 
   app.post('/environments/:id/secrets', async (request, reply) => {
@@ -1086,120 +1088,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
 
     reply.send({ created, updated, skipped, skippedDetails });
-  });
-
-  app.post('/secrets/:id/rollback', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: secretId } = request.params as { id: string };
-    const body = request.body as { versionId?: string } | undefined;
-
-    const secret = await prisma.secret.findUnique({
-      include: {
-        environment: true,
-        versions: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-      },
-      where: { id: secretId },
-    });
-    if (!secret) {
-      reply.code(404).send({ error: 'Secret not found' });
-      return;
-    }
-
-    const role = await requireProjectRole(
-      request,
-      reply,
-      secret.environment.projectId,
-      Role.EDITOR,
-    );
-    if (!role) {
-      return;
-    }
-
-    const versions = await prisma.secretVersion.findMany({
-      where: { secretId },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (versions.length < 2 && !body?.versionId) {
-      reply.code(400).send({ error: 'No previous version to rollback' });
-      return;
-    }
-
-    const target = body?.versionId ? versions.find((v) => v.id === body.versionId) : versions[1];
-
-    if (!target) {
-      reply.code(404).send({ error: 'Version not found' });
-      return;
-    }
-
-    const matchingRules = await findMatchingApprovalRules({
-      projectId: secret.environment.projectId,
-      environmentId: secret.environmentId,
-      action: ApprovalAction.ROLLBACK,
-      key: secret.key,
-    });
-    if (matchingRules.length > 0) {
-      if (!requireUserForApproval(request, reply)) {
-        return;
-      }
-      const existing = await findPendingApprovalRequest({
-        projectId: secret.environment.projectId,
-        environmentId: secret.environmentId,
-        action: ApprovalAction.ROLLBACK,
-        key: secret.key,
-        secretId: secretId,
-      });
-      if (existing) {
-        reply.code(202).send({ status: 'pending', approvalRequestId: existing.id });
-        return;
-      }
-      const approval = await createApprovalRequest({
-        projectId: secret.environment.projectId,
-        environmentId: secret.environmentId,
-        action: ApprovalAction.ROLLBACK,
-        key: secret.key,
-        requestedBy: auth.user!.id,
-        secretId: secretId,
-        expectedVersionId: target.id,
-        metadataJson: { versionId: target.id },
-      });
-      await logAudit({
-        projectId: secret.environment.projectId,
-        actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'approval.requested',
-        resourceType: 'approval_request',
-        resourceId: approval.id,
-        metadataJson: { action: 'ROLLBACK', key: secret.key, secretId, versionId: target.id },
-      });
-      reply.code(202).send({ status: 'pending', approvalRequestId: approval.id });
-      return;
-    }
-
-    await prisma.$transaction([
-      prisma.secretVersion.updateMany({ where: { secretId }, data: { isActive: false } }),
-      prisma.secretVersion.update({ where: { id: target.id }, data: { isActive: true } }),
-    ]);
-
-    await logAudit({
-      projectId: secret.environment.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'secret.rollback',
-      resourceType: 'secret',
-      resourceId: secretId,
-      metadataJson: { versionId: target.id },
-    });
-
-    reply.send({ ok: true });
   });
 
   app.delete('/secrets/:id', async (request, reply) => {
