@@ -29,6 +29,8 @@ export const queryKeys = {
   tokens: (projectId: string) => ['projects', projectId, 'tokens'] as const,
   flags: (projectId: string, environmentId?: string | null) =>
     ['projects', projectId, 'flags', environmentId ?? 'all'] as const,
+  flagsMatrix: (projectId: string) =>
+    ['projects', projectId, 'flags', 'matrix'] as const,
   flag: (flagId: string) => ['flags', flagId] as const,
   flagVariants: (flagId: string, environmentId?: string | null) =>
     ['flags', flagId, 'variants', environmentId ?? 'all'] as const,

@@ -9,6 +9,7 @@ const baseFlag: FeatureFlagDto = {
   key: 'checkout-redesign',
   name: 'Checkout redesign',
   valueType: 'BOOLEAN',
+  exposed: true,
   enabled: true,
   runtime: 'both',
   labels: [],

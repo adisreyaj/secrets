@@ -449,6 +449,8 @@ export interface FeatureFlagDto {
   name: string;
   description?: string | null;
   valueType: FlagValueType;
+  exposed: boolean;
+  /** @deprecated Use `exposed` */
   enabled: boolean;
   runtime: FeatureFlagRuntime;
   labels: string[];
@@ -463,6 +465,8 @@ export interface FeatureFlagDto {
 
 export interface FeatureFlagEnvironmentSnapshotDto {
   environmentId: string;
+  exposed: boolean;
+  /** @deprecated Use `exposed` */
   enabled: boolean;
   runtime: FeatureFlagRuntime;
   labels: string[];
@@ -480,11 +484,29 @@ export interface FeatureFlagEnvironmentDiffDto {
   from: FeatureFlagEnvironmentSnapshotDto;
   to: FeatureFlagEnvironmentSnapshotDto;
   differences: {
+    exposed: boolean;
     enabled: boolean;
     runtime: boolean;
     labels: boolean;
     value: boolean;
   };
+}
+
+export interface FeatureFlagEnvironmentCellDto {
+  environmentId: string;
+  environmentName: string;
+  status: 'configured' | 'missing';
+  snapshot?: FeatureFlagEnvironmentSnapshotDto | null;
+}
+
+export interface FeatureFlagMatrixRowDto {
+  flagId: string;
+  flagKey: string;
+  flagName: string;
+  valueType: FlagValueType;
+  createdAt: string;
+  updatedAt: string;
+  environments: FeatureFlagEnvironmentCellDto[];
 }
 
 export interface FeatureFlagSdkKeyDto {

@@ -39,6 +39,16 @@ type MultivariateInput = {
   }>;
 };
 
+type EnvironmentOverrideInput = {
+  environmentId?: string;
+  exposed?: boolean;
+  enabled?: boolean;
+  runtime?: 'both' | 'client' | 'server';
+  labels?: unknown;
+  booleanValue?: boolean;
+  multivariate?: unknown;
+};
+
 function validateMultivariate(input: unknown): MultivariateInput {
   if (!input || typeof input !== 'object') {
     throw new Error('multivariate is required for MULTIVARIATE flags');
@@ -138,7 +148,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     flagId: string;
     environmentId: string;
     valueType: 'BOOLEAN' | 'MULTIVARIATE';
-    enabled: boolean;
+    exposed: boolean;
     runtime: 'BOTH' | 'CLIENT' | 'SERVER';
     labels: string[];
     booleanValue?: boolean | null;
@@ -154,7 +164,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       create: {
         flagId: params.flagId,
         environmentId: params.environmentId,
-        enabled: params.enabled,
+        enabled: params.exposed,
         valueType: params.valueType,
         booleanValue:
           params.valueType === 'BOOLEAN' ? params.booleanValue ?? false : null,
@@ -166,7 +176,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             : null,
       },
       update: {
-        enabled: params.enabled,
+        enabled: params.exposed,
         valueType: params.valueType,
         booleanValue:
           params.valueType === 'BOOLEAN' ? params.booleanValue ?? false : null,
@@ -202,6 +212,52 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     return withVariants!;
   };
+
+  const resolveExposed = (exposed?: boolean, enabled?: boolean, fallback = true) => {
+    if (typeof exposed === 'boolean') return exposed;
+    if (typeof enabled === 'boolean') return enabled;
+    return fallback;
+  };
+
+  const toEnvironmentSnapshot = (cfg: {
+    environmentId: string;
+    enabled: boolean;
+    runtime: 'BOTH' | 'CLIENT' | 'SERVER';
+    labelsJson: unknown;
+    valueType: 'BOOLEAN' | 'MULTIVARIATE';
+    booleanValue: boolean | null;
+    defaultVariantKey: string | null;
+    variants: Array<{
+      key: string;
+      valueType: 'STRING' | 'JSON';
+      value: string;
+      orderIndex: number;
+    }>;
+  }) => ({
+    environmentId: cfg.environmentId,
+    exposed: cfg.enabled,
+    enabled: cfg.enabled,
+    runtime: cfg.runtime.toLowerCase(),
+    labels: Array.isArray(cfg.labelsJson)
+      ? cfg.labelsJson.filter((item): item is string => typeof item === 'string')
+      : [],
+    valueType: cfg.valueType,
+    booleanValue: cfg.booleanValue,
+    multivariate:
+      cfg.valueType === 'MULTIVARIATE'
+        ? {
+            defaultVariantKey: cfg.defaultVariantKey ?? '',
+            variants: cfg.variants
+              .slice()
+              .sort((a, b) => a.orderIndex - b.orderIndex)
+              .map((variant) => ({
+                key: variant.key,
+                valueType: variant.valueType === 'JSON' ? 'json' : 'string',
+                value: variant.value,
+              })),
+          }
+        : null,
+  });
 
   app.get('/projects/:projectId/flags', async (request, reply) => {
     const auth = requireAuth(request, reply);
@@ -250,6 +306,70 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     reply.send(payload);
   });
 
+  app.get('/projects/:projectId/flags/matrix', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) return;
+
+    const { projectId } = request.params as { projectId: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) return;
+
+    const [environments, flags] = await Promise.all([
+      prisma.environment.findMany({
+        where: { projectId },
+        select: { id: true, name: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+      prisma.featureFlag.findMany({
+        where: { projectId, deletedAt: null },
+        include: {
+          environmentConfigs: {
+            include: { variants: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const payload = flags.map((flag) => {
+      const cfgByEnvironment = new Map(
+        flag.environmentConfigs.map((cfg) => [cfg.environmentId, cfg]),
+      );
+      const latestUpdatedAt = flag.environmentConfigs.reduce(
+        (max, cfg) => (cfg.updatedAt > max ? cfg.updatedAt : max),
+        flag.updatedAt,
+      );
+
+      return {
+        flagId: flag.id,
+        flagKey: flag.key,
+        flagName: flag.name,
+        valueType: flag.valueType,
+        createdAt: flag.createdAt.toISOString(),
+        updatedAt: latestUpdatedAt.toISOString(),
+        environments: environments.map((environment) => {
+          const cfg = cfgByEnvironment.get(environment.id);
+          if (!cfg) {
+            return {
+              environmentId: environment.id,
+              environmentName: environment.name,
+              status: 'missing' as const,
+              snapshot: null,
+            };
+          }
+          return {
+            environmentId: environment.id,
+            environmentName: environment.name,
+            status: 'configured' as const,
+            snapshot: toEnvironmentSnapshot(cfg),
+          };
+        }),
+      };
+    });
+
+    reply.send(payload);
+  });
+
   app.post('/projects/:projectId/flags', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) return;
@@ -265,20 +385,21 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           name?: string;
           description?: string | null;
           valueType?: 'BOOLEAN' | 'MULTIVARIATE';
+          exposed?: boolean;
           enabled?: boolean;
           booleanValue?: boolean;
           multivariate?: unknown;
           runtime?: 'both' | 'client' | 'server';
           labels?: unknown;
+          environmentOverrides?: EnvironmentOverrideInput[];
         }
       | undefined;
 
-    const environmentId = body?.environmentId?.trim();
     const key = body?.key?.trim();
     const name = body?.name?.trim();
 
-    if (!environmentId || !key || !name) {
-      sendError(reply, 400, 'environmentId, key and name are required');
+    if (!key || !name) {
+      sendError(reply, 400, 'key and name are required');
       return;
     }
     if (!body?.valueType || !isFeatureFlagValueType(body.valueType)) {
@@ -286,12 +407,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const environment = await prisma.environment.findUnique({
-      where: { id: environmentId },
-      select: { id: true, projectId: true },
+    const environments = await prisma.environment.findMany({
+      where: { projectId },
+      select: { id: true, name: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
     });
-    if (!environment || environment.projectId !== projectId) {
-      sendError(reply, 404, 'Environment not found');
+    if (environments.length === 0) {
+      sendError(reply, 400, 'Create an environment before creating flags');
       return;
     }
 
@@ -309,7 +431,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const labels = normalizeLabels(body.labels);
     const runtime = parseRuntime(body.runtime);
-    const enabled = typeof body.enabled === 'boolean' ? body.enabled : true;
+    const exposed = resolveExposed(body?.exposed, body?.enabled, true);
 
     let multivariate: MultivariateInput | null = null;
     if (body.valueType === 'MULTIVARIATE') {
@@ -329,20 +451,64 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           name,
           description: body?.description?.trim() ?? null,
           valueType: body.valueType,
-          enabled,
+          enabled: exposed,
         },
       });
 
-      const envConfig = await upsertEnvironmentConfig({
-        flagId: flag.id,
-        environmentId,
-        valueType: body.valueType,
-        enabled,
-        runtime,
-        labels,
-        booleanValue: body.booleanValue,
-        multivariate,
+      const overrides = new Map<string, EnvironmentOverrideInput>();
+      const environmentIdSet = new Set(environments.map((environment) => environment.id));
+      for (const rawOverride of body?.environmentOverrides ?? []) {
+        const envId = rawOverride.environmentId?.trim();
+        if (!envId) continue;
+        if (!environmentIdSet.has(envId)) {
+          sendError(reply, 400, `Unknown environmentId in overrides: ${envId}`);
+          return;
+        }
+        overrides.set(envId, rawOverride);
+      }
+
+      for (const environment of environments) {
+        const override = overrides.get(environment.id);
+        const resolvedValueType = body.valueType;
+        let resolvedMultivariate = multivariate;
+        if (resolvedValueType === 'MULTIVARIATE' && override?.multivariate) {
+          resolvedMultivariate = validateMultivariate(override.multivariate);
+        }
+        await upsertEnvironmentConfig({
+          flagId: flag.id,
+          environmentId: environment.id,
+          valueType: resolvedValueType,
+          exposed: resolveExposed(override?.exposed, override?.enabled, exposed),
+          runtime:
+            typeof override?.runtime !== 'undefined'
+              ? parseRuntime(override.runtime)
+              : runtime,
+          labels:
+            typeof override?.labels !== 'undefined'
+              ? normalizeLabels(override.labels)
+              : labels,
+          booleanValue:
+            resolvedValueType === 'BOOLEAN'
+              ? typeof override?.booleanValue === 'boolean'
+                ? override.booleanValue
+                : (typeof body.booleanValue === 'boolean' ? body.booleanValue : true)
+              : null,
+          multivariate: resolvedValueType === 'MULTIVARIATE' ? resolvedMultivariate : null,
+        });
+      }
+
+      const requestedResponseEnvironmentId = body?.environmentId?.trim();
+      const responseEnvironmentId =
+        environments.find((item) => item.id === requestedResponseEnvironmentId)?.id ??
+        environments[0]!.id;
+      const responseConfig = await prisma.featureFlagEnvironmentConfig.findUnique({
+        where: { flagId_environmentId: { flagId: flag.id, environmentId: responseEnvironmentId } },
+        include: { variants: true },
       });
+      if (!responseConfig) {
+        sendError(reply, 500, 'Failed to resolve created flag configuration');
+        return;
+      }
 
       await logAudit({
         projectId,
@@ -351,12 +517,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         action: 'flag.create',
         resourceType: 'feature_flag',
         resourceId: flag.id,
-        metadataJson: { module: 'flags', key: flag.key, environmentId },
+        metadataJson: { module: 'flags', key: flag.key, seededEnvironments: environments.length },
       });
 
-      reply.code(201).send(toFeatureFlagDto(flag, envConfig));
+      reply.code(201).send(toFeatureFlagDto(flag, responseConfig));
       return;
     } catch (error) {
+      if (error instanceof Error && error.message.includes('multivariate')) {
+        sendError(reply, 400, error.message);
+        return;
+      }
       if (isPrismaUniqueError(error)) {
         sendError(reply, 409, 'Flag key already exists');
         return;
@@ -370,20 +540,21 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (!auth) return;
 
     const { flagId } = request.params as { flagId: string };
-    const query = request.query as { environmentId?: string } | undefined;
+    const query = request.query as
+      | { environmentId?: string; includeAllEnvironments?: string | boolean }
+      | undefined;
     const environmentId = query?.environmentId?.trim();
-    if (!environmentId) {
-      sendError(reply, 400, 'environmentId is required');
-      return;
-    }
+    const includeAll =
+      query?.includeAllEnvironments === true ||
+      query?.includeAllEnvironments === 'true';
 
     const flag = await prisma.featureFlag.findFirst({
       where: { id: flagId, deletedAt: null },
       include: {
         environmentConfigs: {
-          where: { environmentId },
+          where: environmentId ? { environmentId } : undefined,
           include: { variants: true },
-          take: 1,
+          ...(environmentId ? { take: 1 } : {}),
         },
       },
     });
@@ -394,6 +565,25 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
     const role = await requireProjectRole(request, reply, flag.projectId, Role.VIEWER);
     if (!role) return;
+
+    if (!includeAll && !environmentId) {
+      sendError(reply, 400, 'environmentId is required');
+      return;
+    }
+
+    if (includeAll) {
+      reply.send({
+        flagId: flag.id,
+        projectId: flag.projectId,
+        key: flag.key,
+        name: flag.name,
+        description: flag.description,
+        createdAt: flag.createdAt.toISOString(),
+        updatedAt: flag.updatedAt.toISOString(),
+        environments: flag.environmentConfigs.map((cfg) => toEnvironmentSnapshot(cfg)),
+      });
+      return;
+    }
 
     const cfg = flag.environmentConfigs[0];
     if (!cfg) {
@@ -426,6 +616,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           name?: string;
           description?: string | null;
           valueType?: 'BOOLEAN' | 'MULTIVARIATE';
+          exposed?: boolean;
           enabled?: boolean;
           booleanValue?: boolean;
           multivariate?: unknown;
@@ -513,10 +704,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         ? parseRuntime(body.runtime)
         : (existingConfig?.runtime ?? 'BOTH');
 
-    const enabled =
-      typeof body?.enabled === 'boolean'
-        ? body.enabled
-        : (existingConfig?.enabled ?? current.enabled);
+    const exposed = resolveExposed(
+      body?.exposed,
+      body?.enabled,
+      existingConfig?.enabled ?? current.enabled,
+    );
 
     const updatedFlag = await prisma.featureFlag.update({
       where: { id: current.id },
@@ -527,7 +719,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           ? body?.description?.trim() ?? null
           : undefined,
         valueType: body?.valueType ?? undefined,
-        enabled: typeof body?.enabled === 'boolean' ? body.enabled : undefined,
+        enabled:
+          typeof body?.exposed === 'boolean' || typeof body?.enabled === 'boolean'
+            ? exposed
+            : undefined,
       },
     });
 
@@ -535,7 +730,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       flagId: updatedFlag.id,
       environmentId,
       valueType: resolvedValueType,
-      enabled,
+      exposed,
       runtime,
       labels,
       booleanValue:
@@ -602,6 +797,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const toSnapshot = (cfg: NonNullable<typeof fromConfig>, environmentId: string) => ({
       environmentId,
+      exposed: cfg.enabled,
       enabled: cfg.enabled,
       runtime: cfg.runtime.toLowerCase(),
       labels: Array.isArray(cfg.labelsJson)
@@ -634,6 +830,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       from,
       to,
       differences: {
+        exposed: from.exposed !== to.exposed,
         enabled: from.enabled !== to.enabled,
         runtime: from.runtime !== to.runtime,
         labels: JSON.stringify(from.labels) !== JSON.stringify(to.labels),

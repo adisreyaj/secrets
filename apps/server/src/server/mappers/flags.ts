@@ -42,6 +42,7 @@ export function toFeatureFlagDto(
     name: flag.name,
     description: flag.description,
     valueType: environmentConfig.valueType as 'BOOLEAN' | 'MULTIVARIATE',
+    exposed: environmentConfig.enabled,
     enabled: environmentConfig.enabled,
     runtime: toRuntimeDto(environmentConfig.runtime),
     labels: toLabels(environmentConfig.labelsJson),

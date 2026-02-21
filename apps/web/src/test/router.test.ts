@@ -53,6 +53,10 @@ describe('router helpers', () => {
       name: 'flag-environments',
       projectId: 'p1',
     })
+    expect(getRouteMatch('/projects/p1/flags/matrix', '')).toEqual({
+      name: 'flags-matrix',
+      projectId: 'p1',
+    })
   })
 
   it('returns null for non project routes', () => {

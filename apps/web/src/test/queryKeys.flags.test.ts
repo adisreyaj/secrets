@@ -19,5 +19,13 @@ describe('flags query keys', () => {
       'all',
     ])
   })
-})
 
+  it('builds matrix key', () => {
+    expect(queryKeys.flagsMatrix('p1')).toEqual([
+      'projects',
+      'p1',
+      'flags',
+      'matrix',
+    ])
+  })
+})

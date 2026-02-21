@@ -9,6 +9,7 @@ export type FlagEvaluationResult = {
   variantKey?: string;
   variantValue?: string;
   reason:
+    | 'flag_not_configured'
     | 'flag_disabled'
     | 'runtime_not_allowed'
     | 'boolean_value'

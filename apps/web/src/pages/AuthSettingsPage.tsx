@@ -706,10 +706,7 @@ export const AuthSettingsPage = ({
             </div>
           </div>
 
-          <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm">
-            <span className="text-foreground font-medium">
-              {providerForm.enabled ? 'Enabled' : 'Disabled'}
-            </span>
+          <div className="space-y-2">
             <Switch
               checked={providerForm.enabled}
               onCheckedChange={(checked) =>
@@ -721,7 +718,10 @@ export const AuthSettingsPage = ({
               disabled={!isAdmin}
               aria-label="Toggle provider enabled state"
             />
-          </label>
+            <p className="text-muted-foreground text-xs">
+              {providerForm.enabled ? 'Enabled' : 'Disabled'}
+            </p>
+          </div>
 
           {editingProviderId ? (
             <div className="border-border/70 space-y-3 border-t pt-4">

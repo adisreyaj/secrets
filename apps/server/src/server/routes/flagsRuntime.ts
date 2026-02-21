@@ -127,7 +127,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const config = flag.environmentConfigs[0];
     if (!config) {
-      reply.code(404).send({ error: 'Flag config not found for environment' });
+      reply.send({
+        flagKey: flag.key,
+        projectId: flag.projectId,
+        environmentId,
+        enabled: false,
+        reason: 'flag_not_configured' as const,
+      });
       return;
     }
 
@@ -217,7 +223,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           projectId: flag.projectId,
           environmentId,
           enabled: false,
-          reason: 'flag_disabled' as const,
+          reason: 'flag_not_configured' as const,
         };
       }
       const evaluation = evaluateFlag({

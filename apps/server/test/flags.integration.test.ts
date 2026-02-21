@@ -66,7 +66,10 @@ const state = {
       }
     | null,
   role: 'ADMIN' as Role,
-  environments: [{ id: 'env_1', projectId: 'project_1' }],
+  environments: [
+    { id: 'env_1', projectId: 'project_1', name: 'Production', createdAt: new Date('2026-01-01') },
+    { id: 'env_2', projectId: 'project_1', name: 'Staging', createdAt: new Date('2026-01-02') },
+  ],
   flags: [] as Flag[],
   environmentConfigs: [] as EnvironmentConfig[],
   variants: [] as Variant[],
@@ -315,6 +318,10 @@ vi.mock('../src/db.js', () => ({
     environment: {
       findUnique: async ({ where }: any) =>
         state.environments.find((environment) => environment.id === where.id) ?? null,
+      findMany: async ({ where }: any) =>
+        state.environments.filter(
+          (environment) => environment.projectId === where.projectId,
+        ),
     },
     featureFlagSdkKey: {
       create: async ({ data }: any) => {
@@ -432,6 +439,27 @@ describe('feature flags integration flow', () => {
     const flag = flagResponse.json() as { id: string; key: string; runtime: string }
     expect(flag.runtime).toBe('both')
 
+    const seededResponse = await app.inject({
+      method: 'GET',
+      url: '/projects/project_1/flags?environmentId=env_2',
+      headers: authHeaders,
+    })
+    expect(seededResponse.statusCode).toBe(200)
+    const seededFlags = seededResponse.json() as Array<{ key: string }>
+    expect(seededFlags.map((item) => item.key)).toContain('checkout-redesign')
+
+    const matrixResponse = await app.inject({
+      method: 'GET',
+      url: '/projects/project_1/flags/matrix',
+      headers: authHeaders,
+    })
+    expect(matrixResponse.statusCode).toBe(200)
+    const matrix = matrixResponse.json() as Array<{
+      flagKey: string
+      environments: Array<{ environmentId: string; status: string }>
+    }>
+    expect(matrix[0]?.environments).toHaveLength(2)
+
     const sdkKeyResponse = await app.inject({
       method: 'POST',
       url: '/projects/project_1/flag-sdk-keys',
@@ -534,6 +562,19 @@ describe('feature flags integration flow', () => {
     })
     expect(batch.results).toHaveLength(1)
     expect(batch.results[0]?.enabled).toBe(true)
+
+    state.environmentConfigs = state.environmentConfigs.filter(
+      (config) => !(config.environmentId === 'env_2' && config.flagId === flag.id),
+    )
+
+    const missingConfigResult = await runtimeClientAfterOverride.evaluate({
+      environmentId: 'env_2',
+      flagKey: 'checkout-redesign',
+      subjectKey: 'user_123',
+      runtime: 'server',
+    })
+    expect(missingConfigResult.enabled).toBe(false)
+    expect(missingConfigResult.reason).toBe('flag_not_configured')
 
     await runtimeApp.close()
   })

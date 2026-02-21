@@ -51,6 +51,7 @@ const pageShortcuts: Record<RouteMatch['name'], ShortcutItem[]> = {
   'approval-rules': [{ keys: 'b', label: 'Back to overview' }],
   'flag-environments': [{ keys: 'b', label: 'Back to overview' }],
   'flag-environment': [{ keys: 'b', label: 'Back to environments' }],
+  'flags-matrix': [{ keys: 'b', label: 'Back to flags' }],
   flags: [{ keys: 'b', label: 'Back to overview' }],
   'flag-sdk-keys': [{ keys: 'b', label: 'Back to flags' }],
   'auth-environments': [{ keys: 'b', label: 'Back to overview' }],

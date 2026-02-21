@@ -30,6 +30,11 @@ export interface SecretsClient {
 }
 
 export type FlagEvaluationReason =
+  | 'flag_not_configured'
+  | 'runtime_not_allowed'
+  | 'boolean_value'
+  | 'multivariate_default'
+  | 'multivariate_missing_default'
   | 'override_disabled'
   | 'override_variant'
   | 'override_enabled'

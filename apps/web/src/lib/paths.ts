@@ -49,6 +49,11 @@ export const flagEnvironmentPath = (
   environmentId: string,
 ) => projectPath(projectId, projectSlug, `flags/environments/${pickSegment(environmentId)}`)
 
+export const flagsMatrixPath = (
+  projectId: string,
+  projectSlug?: string | null,
+) => projectPath(projectId, projectSlug, 'flags/matrix')
+
 export const authEnvironmentsPath = (
   projectId: string,
   projectSlug?: string | null,

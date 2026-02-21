@@ -132,6 +132,87 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    // Keep feature-flag behavior consistent: new environments inherit baseline config
+    // for all existing project flags.
+    const flags = await prisma.featureFlag.findMany({
+      where: { projectId, deletedAt: null },
+      include: {
+        environmentConfigs: {
+          include: {
+            variants: true,
+            environment: {
+              select: { id: true, createdAt: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (flags.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        for (const flag of flags) {
+          const sortedConfigs = flag.environmentConfigs
+            .filter((config) => config.environmentId !== env.id)
+            .slice()
+            .sort(
+              (a, b) =>
+                a.environment.createdAt.getTime() - b.environment.createdAt.getTime(),
+            );
+          const baseline = sortedConfigs[0];
+          if (!baseline) {
+            continue;
+          }
+
+          const createdConfig = await tx.featureFlagEnvironmentConfig.upsert({
+            where: {
+              flagId_environmentId: {
+                flagId: flag.id,
+                environmentId: env.id,
+              },
+            },
+            create: {
+              flagId: flag.id,
+              environmentId: env.id,
+              enabled: baseline.enabled,
+              valueType: baseline.valueType,
+              booleanValue: baseline.booleanValue,
+              runtime: baseline.runtime,
+              labelsJson:
+                (baseline.labelsJson as Prisma.InputJsonValue | null) ??
+                Prisma.JsonNull,
+              defaultVariantKey: baseline.defaultVariantKey,
+            },
+            update: {
+              enabled: baseline.enabled,
+              valueType: baseline.valueType,
+              booleanValue: baseline.booleanValue,
+              runtime: baseline.runtime,
+              labelsJson:
+                (baseline.labelsJson as Prisma.InputJsonValue | null) ??
+                Prisma.JsonNull,
+              defaultVariantKey: baseline.defaultVariantKey,
+            },
+          });
+
+          await tx.featureFlagEnvironmentVariant.deleteMany({
+            where: { environmentConfigId: createdConfig.id },
+          });
+          if (baseline.variants.length > 0) {
+            await tx.featureFlagEnvironmentVariant.createMany({
+              data: baseline.variants.map((variant) => ({
+                environmentConfigId: createdConfig.id,
+                key: variant.key,
+                valueType: variant.valueType,
+                value: variant.value,
+                orderIndex: variant.orderIndex,
+              })),
+            });
+          }
+        }
+      });
+    }
+
     await logAudit({
       projectId,
       actorUserId: auth.user?.id,
@@ -140,8 +221,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       resourceType: 'environment',
       resourceId: env.id,
       metadataJson: sourceEnv
-        ? { copyFromEnvironmentId: sourceEnv.id, copiedSecrets: copiedCount }
-        : null,
+        ? { copyFromEnvironmentId: sourceEnv.id, copiedSecrets: copiedCount, seededFlags: flags.length }
+        : { seededFlags: flags.length },
     });
 
     reply.code(201).send(toEnvironmentDto(env));

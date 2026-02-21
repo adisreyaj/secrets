@@ -86,6 +86,9 @@ const EnvironmentsPage = lazy(() =>
 const FlagsPage = lazy(() =>
   import('./pages/FlagsPage').then((m) => ({ default: m.FlagsPage })),
 )
+const FlagsMatrixPage = lazy(() =>
+  import('./pages/FlagsMatrixPage').then((m) => ({ default: m.FlagsMatrixPage })),
+)
 const InvitePage = lazy(() =>
   import('./pages/InvitePage').then((m) => ({ default: m.InvitePage })),
 )
@@ -212,6 +215,13 @@ const FlagEnvironmentRoute = () => {
       navigate={navigate}
     />
   )
+}
+
+const FlagsMatrixRoute = () => {
+  const navigate = useNavigate()
+  const params = useParams()
+  if (!params.projectId) return <Navigate to="/projects" replace />
+  return <FlagsMatrixPage projectId={params.projectId} navigate={navigate} />
 }
 
 const FlagsLegacyRoute = () => {
@@ -589,6 +599,10 @@ const AppShell = () => {
                 <Route
                   path="/projects/:projectId/flags/environments/:environmentId"
                   element={<FlagEnvironmentRoute />}
+                />
+                <Route
+                  path="/projects/:projectId/flags/matrix"
+                  element={<FlagsMatrixRoute />}
                 />
                 <Route
                   path="/projects/:projectId/environments/:environmentId/flags"

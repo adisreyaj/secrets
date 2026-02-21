@@ -1,6 +1,7 @@
 import type {
   FeatureFlagDto,
   FeatureFlagEnvironmentDiffDto,
+  FeatureFlagMatrixRowDto,
   FeatureFlagSdkKeyDto,
 } from '@secrets/shared'
 import type { ApiFetchFn } from '../apiBase'
@@ -21,6 +22,8 @@ export const createFlagsClient = (apiFetch: ApiFetchFn) => ({
       name: string
       description?: string | null
       valueType: 'BOOLEAN' | 'MULTIVARIATE'
+      exposed?: boolean
+      /** @deprecated use `exposed` */
       enabled: boolean
       runtime: 'both' | 'client' | 'server'
       labels: string[]
@@ -33,15 +36,36 @@ export const createFlagsClient = (apiFetch: ApiFetchFn) => ({
           value: string
         }[]
       } | null
+      environmentOverrides?: Array<{
+        environmentId: string
+        exposed?: boolean
+        enabled?: boolean
+        runtime?: 'both' | 'client' | 'server'
+        labels?: string[]
+        booleanValue?: boolean | null
+        multivariate?: {
+          defaultVariantKey: string
+          variants: {
+            key: string
+            valueType: 'string' | 'json'
+            value: string
+          }[]
+        } | null
+      }>
     },
   ) =>
     apiFetch<FeatureFlagDto>(`/projects/${projectId}/flags`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
-  getFlag: (flagId: string, environmentId?: string | null) => {
+  getFlag: (
+    flagId: string,
+    environmentId?: string | null,
+    includeAllEnvironments?: boolean,
+  ) => {
     const params = new URLSearchParams()
     if (environmentId) params.set('environmentId', environmentId)
+    if (includeAllEnvironments) params.set('includeAllEnvironments', 'true')
     return apiFetch<FeatureFlagDto>(
       `/flags/${flagId}${params.size ? `?${params.toString()}` : ''}`,
     )
@@ -54,6 +78,8 @@ export const createFlagsClient = (apiFetch: ApiFetchFn) => ({
       name?: string
       description?: string | null
       valueType?: 'BOOLEAN' | 'MULTIVARIATE'
+      exposed?: boolean
+      /** @deprecated use `exposed` */
       enabled?: boolean
       runtime?: 'both' | 'client' | 'server'
       labels?: string[]
@@ -85,6 +111,8 @@ export const createFlagsClient = (apiFetch: ApiFetchFn) => ({
     apiFetch<FeatureFlagEnvironmentDiffDto>(
       `/flags/${flagId}/diff?fromEnvironmentId=${encodeURIComponent(fromEnvironmentId)}&toEnvironmentId=${encodeURIComponent(toEnvironmentId)}`,
     ),
+  getFlagsMatrix: (projectId: string) =>
+    apiFetch<FeatureFlagMatrixRowDto[]>(`/projects/${projectId}/flags/matrix`),
   listFlagSdkKeys: (projectId: string, environmentId?: string | null) => {
     const params = new URLSearchParams()
     if (environmentId) params.set('environmentId', environmentId)

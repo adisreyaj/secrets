@@ -1,7 +1,6 @@
 import type {
   EnvironmentDto,
   FeatureFlagDto,
-  FeatureFlagEnvironmentDiffDto,
   ProjectDto,
 } from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -14,14 +13,6 @@ import { ShortcutHint } from '../components/ShortcutHint'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Checkbox } from '../components/ui/checkbox'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import {
   Select,
@@ -37,6 +28,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '../components/ui/sheet'
+import { Switch } from '../components/ui/switch'
 import { Textarea } from '../components/ui/textarea'
 import { api } from '../lib/api'
 import { createEnvironmentAndRefresh } from '../lib/environmentMutations'
@@ -48,6 +40,7 @@ import {
   flagEnvironmentPath,
   flagEnvironmentsPath,
   flagSdkKeysPath,
+  flagsMatrixPath,
   flagsPath,
 } from '../lib/paths'
 import { invalidateQueryKeys } from '../lib/queryInvalidation'
@@ -57,10 +50,14 @@ import { useRegisterShortcut } from '../lib/shortcuts'
 import { getLastEnvironmentId } from '../lib/shortcuts.utils'
 import { useRequireAuth } from '../lib/useRequireAuth'
 import {
-  emptyFlagFormState,
-  toFlagMutationPayload,
-  validateFlagForm,
-  type FlagFormState,
+  emptyCreateFlagFormState,
+  emptyEditFlagFormState,
+  toCreateFlagMutationPayload,
+  toEditFlagMutationPayload,
+  validateCreateFlagForm,
+  validateEditFlagForm,
+  type CreateFlagFormState,
+  type EditFlagFormState,
 } from './FlagsPage.form'
 import { EnvironmentTabsCard } from './environment/EnvironmentTabsCard'
 
@@ -76,14 +73,14 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editingFlagId, setEditingFlagId] = useState<string | null>(null)
-  const [form, setForm] = useState<FlagFormState>(emptyFlagFormState)
+  const [createForm, setCreateForm] = useState<CreateFlagFormState>(
+    emptyCreateFlagFormState,
+  )
+  const [editForm, setEditForm] = useState<EditFlagFormState>(
+    emptyEditFlagFormState,
+  )
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-
-  const [diffOpen, setDiffOpen] = useState(false)
-  const [diffFlag, setDiffFlag] = useState<FeatureFlagDto | null>(null)
-  const [diffToEnvironmentId, setDiffToEnvironmentId] = useState<string>('')
-  const [diffResult, setDiffResult] = useState<FeatureFlagEnvironmentDiffDto | null>(null)
-  const [diffLoading, setDiffLoading] = useState(false)
 
   const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
     queryKey: queryKeys.projects(),
@@ -151,23 +148,37 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
   }) => createEnvironmentAndRefresh(queryClient, projectId, payload)
 
   const resetForm = () => {
-    setForm(emptyFlagFormState)
+    setCreateForm({
+      ...emptyCreateFlagFormState,
+      environmentId: activeEnvironmentId ?? '',
+    })
+    setEditForm({
+      ...emptyEditFlagFormState,
+      environmentId: activeEnvironmentId ?? '',
+    })
+    setAdvancedOpen(false)
     setEditingFlagId(null)
   }
 
   const openCreate = () => {
     resetForm()
+    setCreateForm((current) => ({
+      ...current,
+      environmentId: activeEnvironmentId ?? '',
+    }))
     setSheetOpen(true)
   }
 
   const openEdit = (flag: FeatureFlagDto) => {
     setEditingFlagId(flag.id)
-    setForm({
+    setAdvancedOpen(false)
+    setEditForm({
+      environmentId: activeEnvironmentId ?? '',
       key: flag.key,
       name: flag.name,
       description: flag.description ?? '',
       valueType: flag.valueType,
-      enabled: flag.enabled,
+      exposed: flag.exposed,
       runtime: flag.runtime,
       labels: (flag.labels ?? []).join(', '),
       booleanValue: flag.booleanValue ?? true,
@@ -180,7 +191,9 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
   const saveFlag = async () => {
     if (!activeEnvironmentId || saving) return
 
-    const validationError = validateFlagForm(form)
+    const validationError = editingFlagId
+      ? validateEditFlagForm(editForm)
+      : validateCreateFlagForm(createForm)
     if (validationError) {
       await runMutationWithToast(async () => {
         throw new Error(validationError)
@@ -189,7 +202,9 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
     }
 
     setSaving(true)
-    const payload = toFlagMutationPayload(form, activeEnvironmentId)
+    const payload = editingFlagId
+      ? toEditFlagMutationPayload(editForm)
+      : toCreateFlagMutationPayload(createForm)
 
     await runMutationWithToast(
       async () => {
@@ -203,7 +218,11 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
           queryKeys.flags(projectId, activeEnvironmentId),
         )
       },
-      { successMessage: editingFlagId ? 'Flag updated.' : 'Flag created.' },
+      {
+        successMessage: editingFlagId
+          ? 'Flag updated.'
+          : 'Flag created. Switch environments to customize values.',
+      },
     )
 
     setSaving(false)
@@ -223,29 +242,6 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
       },
       { successMessage: 'Flag deleted.' },
     )
-  }
-
-  const openDiff = (flag: FeatureFlagDto) => {
-    const fallback = environments.find((environment) => environment.id !== environmentId)
-    setDiffFlag(flag)
-    setDiffToEnvironmentId(fallback?.id ?? '')
-    setDiffResult(null)
-    setDiffOpen(true)
-  }
-
-  const loadDiff = async () => {
-    if (!diffFlag || !diffToEnvironmentId || !activeEnvironmentId) return
-    setDiffLoading(true)
-    try {
-      const diff = await api.getFlagDiff(diffFlag.id, activeEnvironmentId, diffToEnvironmentId)
-      setDiffResult(diff)
-    } catch (error) {
-      await runMutationWithToast(async () => {
-        throw error
-      })
-    } finally {
-      setDiffLoading(false)
-    }
   }
 
   const projectsError = projectsErrorRaw ? getErrorMessage(projectsErrorRaw) : null
@@ -367,15 +363,25 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
             kicker="Flags"
             title="List"
             action={
-              <Button
-                variant="default"
-                onClick={openCreate}
-                disabled={!activeEnvironmentId}
-              >
-                <Plus className="h-4 w-4" />
-                New flag
-                <ShortcutHint keys="n" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    navigate(flagsMatrixPath(projectId, selectedProject?.slug))
+                  }
+                >
+                  Compare matrix
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={openCreate}
+                  disabled={!activeEnvironmentId}
+                >
+                  <Plus className="h-4 w-4" />
+                  New flag
+                  <ShortcutHint keys="n" />
+                </Button>
+              </div>
             }
           />
           <div className="mt-4 space-y-3">
@@ -408,8 +414,13 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                         {flag.key}
                       </p>
                       <p className="text-muted-foreground mt-1 text-xs">
-                        {flag.enabled ? 'Enabled' : 'Disabled'} · Updated{' '}
-                        {formatDate(flag.updatedAt)}
+                        {flag.exposed ? 'Exposed' : 'Hidden'} ·{' '}
+                        {flag.valueType === 'BOOLEAN'
+                          ? flag.booleanValue
+                            ? 'Enabled'
+                            : 'Disabled'
+                          : `Default ${flag.multivariate?.defaultVariantKey || 'n/a'}`}{' '}
+                        · Updated {formatDate(flag.updatedAt)}
                       </p>
                       {flag.labels.length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1">
@@ -425,7 +436,11 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => openDiff(flag)}
+                        onClick={() =>
+                          navigate(
+                            flagsMatrixPath(projectId, selectedProject?.slug),
+                          )
+                        }
                       >
                         Compare
                       </Button>
@@ -452,254 +467,408 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
               {editingFlagId ? 'Edit flag' : 'Create flag'}
             </SheetTitle>
             <SheetDescription>
-              Configure this flag for{' '}
-              {selectedEnvironment?.name ?? 'the selected environment'}.
+              {editingFlagId
+                ? 'Update this flag for the selected environment.'
+                : 'Quick create a boolean flag. Configure advanced options if needed.'}
             </SheetDescription>
           </SheetHeader>
 
           <div className="mt-6 flex-1 space-y-5 overflow-y-auto px-6 pb-6">
-            <section className="space-y-3">
-              <p className="muted-label">Basics</p>
-              <Input
-                value={form.key}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    key: event.target.value,
-                  }))
-                }
-                placeholder="Flag key"
-                disabled={Boolean(editingFlagId)}
-              />
-              <Input
-                value={form.name}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                placeholder="Flag name"
-              />
-              <Textarea
-                value={form.description}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    description: event.target.value,
-                  }))
-                }
-                placeholder="Description"
-              />
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={form.enabled}
-                  onCheckedChange={(checked) =>
-                    setForm((current) => ({
-                      ...current,
-                      enabled: Boolean(checked),
-                    }))
-                  }
-                />
-                Enabled
-              </label>
-            </section>
-
-            <section className="space-y-3">
-              <p className="muted-label">Type and value</p>
-              <Select
-                value={form.valueType}
-                onValueChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    valueType: value as 'BOOLEAN' | 'MULTIVARIATE',
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="BOOLEAN">BOOLEAN</SelectItem>
-                  <SelectItem value="MULTIVARIATE">MULTIVARIATE</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {form.valueType === 'BOOLEAN' ? (
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={form.booleanValue}
-                    onCheckedChange={(checked) =>
-                      setForm((current) => ({
-                        ...current,
-                        booleanValue: Boolean(checked),
-                      }))
-                    }
-                  />
-                  Boolean value
-                </label>
-              ) : (
-                <div className="space-y-3">
+            {editingFlagId ? (
+              <>
+                <section className="space-y-3">
+                  <p className="muted-label">Basics</p>
                   <Input
-                    value={form.defaultVariantKey}
+                    value={editForm.key}
                     onChange={(event) =>
-                      setForm((current) => ({
+                      setEditForm((current) => ({
                         ...current,
-                        defaultVariantKey: event.target.value,
+                        key: event.target.value,
                       }))
                     }
-                    placeholder="Default variant key"
+                    placeholder="Flag key"
+                    disabled
                   />
-                  <div className="space-y-2">
-                    {form.variants.map((variant, index) => (
-                      <div
-                        key={`${variant.key}-${index}`}
-                        className="space-y-2 rounded-lg border p-3"
-                      >
-                        <div className="grid gap-2 md:grid-cols-2">
-                          <Input
-                            value={variant.key}
-                            onChange={(event) =>
-                              setForm((current) => ({
-                                ...current,
-                                variants: current.variants.map(
-                                  (item, itemIndex) =>
-                                    itemIndex === index
-                                      ? { ...item, key: event.target.value }
-                                      : item,
-                                ),
-                              }))
-                            }
-                            placeholder="Variant key"
-                          />
-                          <Select
-                            value={variant.valueType}
-                            onValueChange={(value) =>
-                              setForm((current) => ({
-                                ...current,
-                                variants: current.variants.map(
-                                  (item, itemIndex) =>
-                                    itemIndex === index
-                                      ? {
-                                          ...item,
-                                          valueType: value as 'string' | 'json',
-                                        }
-                                      : item,
-                                ),
-                              }))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="string">String</SelectItem>
-                              <SelectItem value="json">JSON</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <Textarea
-                          value={variant.value}
-                          onChange={(event) =>
-                            setForm((current) => ({
-                              ...current,
-                              variants: current.variants.map(
-                                (item, itemIndex) =>
-                                  itemIndex === index
-                                    ? { ...item, value: event.target.value }
-                                    : item,
-                              ),
-                            }))
-                          }
-                          placeholder={
-                            variant.valueType === 'json'
-                              ? '{"key":"value"}'
-                              : 'Variant value'
-                          }
-                        />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            setForm((current) => ({
-                              ...current,
-                              variants: current.variants.filter(
-                                (_, itemIndex) => itemIndex !== index,
-                              ),
-                            }))
-                          }
-                        >
-                          Remove variant
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        setForm((current) => ({
-                          ...current,
-                          variants: [
-                            ...current.variants,
-                            { key: '', valueType: 'string', value: '' },
-                          ],
-                        }))
-                      }
-                    >
-                      Add variant
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </section>
-
-            <section className="space-y-3">
-              <p className="muted-label">Evaluation runtime</p>
-              <div className="grid gap-2 md:grid-cols-3">
-                {[
-                  { value: 'both', label: 'Both client and server' },
-                  { value: 'client', label: 'Client-side only' },
-                  { value: 'server', label: 'Server-side only' },
-                ].map((runtimeOption) => (
-                  <Button
-                    key={runtimeOption.value}
-                    type="button"
-                    variant={
-                      form.runtime === runtimeOption.value
-                        ? 'default'
-                        : 'outline'
-                    }
-                    onClick={() =>
-                      setForm((current) => ({
+                  <Input
+                    value={editForm.name}
+                    onChange={(event) =>
+                      setEditForm((current) => ({
                         ...current,
-                        runtime: runtimeOption.value as
-                          | 'both'
-                          | 'client'
-                          | 'server',
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder="Flag name"
+                  />
+                  <Textarea
+                    value={editForm.description}
+                    onChange={(event) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        description: event.target.value,
+                      }))
+                    }
+                    placeholder="Description"
+                  />
+                </section>
+
+                <section className="space-y-3">
+                  <p className="muted-label">Visibility</p>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2">
+                      <Checkbox
+                        checked={editForm.exposed}
+                        onCheckedChange={(checked) =>
+                          setEditForm((current) => ({
+                            ...current,
+                            exposed: checked === true,
+                          }))
+                        }
+                      />
+                      <span className="text-sm">Visible to consumers</span>
+                    </label>
+                    <p className="text-muted-foreground text-xs">
+                      {editForm.exposed
+                        ? 'Exposed to consumers'
+                        : 'Hidden from consumers'}
+                    </p>
+                  </div>
+                </section>
+
+                <section className="space-y-3">
+                  <p className="muted-label">Type and value</p>
+                  <Select
+                    value={editForm.valueType}
+                    onValueChange={(value) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        valueType: value as 'BOOLEAN' | 'MULTIVARIATE',
                       }))
                     }
                   >
-                    {runtimeOption.label}
-                  </Button>
-                ))}
-              </div>
-            </section>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BOOLEAN">BOOLEAN</SelectItem>
+                      <SelectItem value="MULTIVARIATE">MULTIVARIATE</SelectItem>
+                    </SelectContent>
+                  </Select>
 
-            <section className="space-y-3">
-              <p className="muted-label">Labels</p>
-              <Input
-                value={form.labels}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    labels: event.target.value,
-                  }))
-                }
-                placeholder="payments, beta, checkout"
-              />
-              <p className="text-muted-foreground text-xs">
-                Comma-separated labels.
-              </p>
-            </section>
+                  {editForm.valueType === 'BOOLEAN' ? (
+                    <div className="space-y-2">
+                      <Switch
+                        checked={editForm.booleanValue}
+                        onCheckedChange={(checked) =>
+                          setEditForm((current) => ({
+                            ...current,
+                            booleanValue: checked,
+                          }))
+                        }
+                      />
+                      <p className="text-muted-foreground text-xs">
+                        {editForm.booleanValue ? 'Enabled' : 'Disabled'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <Input
+                        value={editForm.defaultVariantKey}
+                        onChange={(event) =>
+                          setEditForm((current) => ({
+                            ...current,
+                            defaultVariantKey: event.target.value,
+                          }))
+                        }
+                        placeholder="Default variant key"
+                      />
+                      <div className="space-y-2">
+                        {editForm.variants.map((variant, index) => (
+                          <div
+                            key={`${variant.key}-${index}`}
+                            className="space-y-2 rounded-lg border p-3"
+                          >
+                            <div className="grid gap-2 md:grid-cols-2">
+                              <Input
+                                value={variant.key}
+                                onChange={(event) =>
+                                  setEditForm((current) => ({
+                                    ...current,
+                                    variants: current.variants.map(
+                                      (item, itemIndex) =>
+                                        itemIndex === index
+                                          ? { ...item, key: event.target.value }
+                                          : item,
+                                    ),
+                                  }))
+                                }
+                                placeholder="Variant key"
+                              />
+                              <Select
+                                value={variant.valueType}
+                                onValueChange={(value) =>
+                                  setEditForm((current) => ({
+                                    ...current,
+                                    variants: current.variants.map(
+                                      (item, itemIndex) =>
+                                        itemIndex === index
+                                          ? {
+                                              ...item,
+                                              valueType: value as
+                                                | 'string'
+                                                | 'json',
+                                            }
+                                          : item,
+                                    ),
+                                  }))
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="string">String</SelectItem>
+                                  <SelectItem value="json">JSON</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <Textarea
+                              value={variant.value}
+                              onChange={(event) =>
+                                setEditForm((current) => ({
+                                  ...current,
+                                  variants: current.variants.map(
+                                    (item, itemIndex) =>
+                                      itemIndex === index
+                                        ? { ...item, value: event.target.value }
+                                        : item,
+                                  ),
+                                }))
+                              }
+                              placeholder={
+                                variant.valueType === 'json'
+                                  ? '{"key":"value"}'
+                                  : 'Variant value'
+                              }
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                setEditForm((current) => ({
+                                  ...current,
+                                  variants: current.variants.filter(
+                                    (_, itemIndex) => itemIndex !== index,
+                                  ),
+                                }))
+                              }
+                            >
+                              Remove variant
+                            </Button>
+                          </div>
+                        ))}
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            setEditForm((current) => ({
+                              ...current,
+                              variants: [
+                                ...current.variants,
+                                { key: '', valueType: 'string', value: '' },
+                              ],
+                            }))
+                          }
+                        >
+                          Add variant
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                <section className="space-y-3">
+                  <p className="muted-label">Evaluation runtime</p>
+                  <div className="grid gap-2 md:grid-cols-3">
+                    {[
+                      { value: 'both', label: 'Both client and server' },
+                      { value: 'client', label: 'Client-side only' },
+                      { value: 'server', label: 'Server-side only' },
+                    ].map((runtimeOption) => (
+                      <Button
+                        key={runtimeOption.value}
+                        type="button"
+                        variant={
+                          editForm.runtime === runtimeOption.value
+                            ? 'default'
+                            : 'outline'
+                        }
+                        onClick={() =>
+                          setEditForm((current) => ({
+                            ...current,
+                            runtime: runtimeOption.value as
+                              | 'both'
+                              | 'client'
+                              | 'server',
+                          }))
+                        }
+                      >
+                        {runtimeOption.label}
+                      </Button>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="space-y-3">
+                  <p className="muted-label">Labels</p>
+                  <Input
+                    value={editForm.labels}
+                    onChange={(event) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        labels: event.target.value,
+                      }))
+                    }
+                    placeholder="payments, beta, checkout"
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Comma-separated labels.
+                  </p>
+                </section>
+              </>
+            ) : (
+              <>
+                <section className="space-y-3">
+                  <p className="muted-label">Quick create</p>
+                  <Input
+                    value={createForm.key}
+                    onChange={(event) =>
+                      setCreateForm((current) => ({
+                        ...current,
+                        key: event.target.value,
+                      }))
+                    }
+                    placeholder="Flag key"
+                  />
+                  <Input
+                    value={createForm.name}
+                    onChange={(event) =>
+                      setCreateForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder="Flag name"
+                  />
+                  <div className="space-y-2">
+                    <Switch
+                      checked={createForm.booleanValue}
+                      onCheckedChange={(checked) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          booleanValue: checked,
+                        }))
+                      }
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      {createForm.booleanValue ? 'Enabled' : 'Disabled'}
+                    </p>
+                  </div>
+                </section>
+
+                <details
+                  className="space-y-3 rounded-lg border p-4"
+                  open={advancedOpen}
+                  onToggle={(event) =>
+                    setAdvancedOpen((event.target as HTMLDetailsElement).open)
+                  }
+                >
+                  <summary className="cursor-pointer text-sm font-medium">
+                    Advanced
+                  </summary>
+                  <p className="text-muted-foreground text-xs">
+                    Need multivariate? Create first, then convert in Edit.
+                  </p>
+
+                  <section className="space-y-3">
+                    <p className="muted-label">Description</p>
+                    <Textarea
+                      value={createForm.description}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          description: event.target.value,
+                        }))
+                      }
+                      placeholder="Description"
+                    />
+                  </section>
+
+                  <section className="space-y-3">
+                    <p className="muted-label">Visibility</p>
+                    <label className="flex items-center gap-2">
+                      <Checkbox
+                        checked={createForm.exposed}
+                        onCheckedChange={(checked) =>
+                          setCreateForm((current) => ({
+                            ...current,
+                            exposed: checked === true,
+                          }))
+                        }
+                      />
+                      <span className="text-sm">Visible to consumers</span>
+                    </label>
+                  </section>
+
+                  <section className="space-y-3">
+                    <p className="muted-label">Evaluation runtime</p>
+                    <div className="grid gap-2 md:grid-cols-3">
+                      {[
+                        { value: 'both', label: 'Both client and server' },
+                        { value: 'client', label: 'Client-side only' },
+                        { value: 'server', label: 'Server-side only' },
+                      ].map((runtimeOption) => (
+                        <Button
+                          key={runtimeOption.value}
+                          type="button"
+                          variant={
+                            createForm.runtime === runtimeOption.value
+                              ? 'default'
+                              : 'outline'
+                          }
+                          onClick={() =>
+                            setCreateForm((current) => ({
+                              ...current,
+                              runtime: runtimeOption.value as
+                                | 'both'
+                                | 'client'
+                                | 'server',
+                            }))
+                          }
+                        >
+                          {runtimeOption.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="space-y-3">
+                    <p className="muted-label">Labels</p>
+                    <Input
+                      value={createForm.labels}
+                      onChange={(event) =>
+                        setCreateForm((current) => ({
+                          ...current,
+                          labels: event.target.value,
+                        }))
+                      }
+                      placeholder="payments, beta, checkout"
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      Comma-separated labels.
+                    </p>
+                  </section>
+                </details>
+              </>
+            )}
           </div>
 
           <div className="border-border/70 bg-background/95 border-t px-6 py-4">
@@ -723,79 +892,6 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
           </div>
         </SheetContent>
       </Sheet>
-
-      <Dialog open={diffOpen} onOpenChange={setDiffOpen}>
-        <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
-          <DialogHeader>
-            <DialogTitle>Compare environments</DialogTitle>
-            <DialogDescription>
-              Compare values for{' '}
-              <span className="font-semibold">
-                {diffFlag?.key ?? 'selected flag'}
-              </span>
-              .
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm">
-              From: {selectedEnvironment?.name ?? environmentId}
-            </p>
-            <Select
-              value={diffToEnvironmentId}
-              onValueChange={setDiffToEnvironmentId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select target environment" />
-              </SelectTrigger>
-              <SelectContent>
-                {environments
-                  .filter((environment) => environment.id !== environmentId)
-                  .map((environment) => (
-                    <SelectItem key={environment.id} value={environment.id}>
-                      {environment.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={loadDiff}
-              disabled={!diffToEnvironmentId || diffLoading}
-            >
-              {diffLoading ? 'Comparing...' : 'Compare'}
-            </Button>
-
-            {diffResult ? (
-              <div className="rounded-xl border p-3 text-sm">
-                <div className="grid gap-1">
-                  <p>
-                    Enabled changed:{' '}
-                    {diffResult.differences.enabled ? 'Yes' : 'No'}
-                  </p>
-                  <p>
-                    Runtime changed:{' '}
-                    {diffResult.differences.runtime ? 'Yes' : 'No'}
-                  </p>
-                  <p>
-                    Labels changed:{' '}
-                    {diffResult.differences.labels ? 'Yes' : 'No'}
-                  </p>
-                  <p>
-                    Value changed: {diffResult.differences.value ? 'Yes' : 'No'}
-                  </p>
-                </div>
-                <pre className="bg-muted mt-3 max-h-56 overflow-auto rounded-md p-2 text-xs">
-                  {JSON.stringify(diffResult, null, 2)}
-                </pre>
-              </div>
-            ) : null}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDiffOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </section>
   )
 }
