@@ -28,7 +28,7 @@ Scope: Launch-ready integration contracts for the web portal and management/runt
 
 ### Flags
 
-- Purpose: runtime feature delivery (boolean and multivariate).
+- Purpose: runtime feature delivery (boolean and JSON).
 - Management API endpoints:
   - `GET /projects/:projectId/flags?environmentId=...`
   - `GET /projects/:projectId/flags/matrix`
@@ -49,7 +49,7 @@ Terminology in flags:
 
 - `Expose/Hide` controls delivery visibility.
 - `Enabled/Disabled` controls BOOLEAN value.
-- Multivariate is default-variant only in this phase.
+- JSON flags return `jsonValue` at runtime when exposed.
 
 ### Auth
 

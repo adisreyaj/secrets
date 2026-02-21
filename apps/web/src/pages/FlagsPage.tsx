@@ -172,6 +172,13 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
   const openEdit = (flag: FeatureFlagDto) => {
     setEditingFlagId(flag.id)
     setAdvancedOpen(false)
+    const formatJsonValue = (value: unknown) => {
+      try {
+        return JSON.stringify(value ?? null, null, 2)
+      } catch {
+        return 'null'
+      }
+    }
     setEditForm({
       environmentId: activeEnvironmentId ?? '',
       key: flag.key,
@@ -182,8 +189,7 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
       runtime: flag.runtime,
       labels: (flag.labels ?? []).join(', '),
       booleanValue: flag.booleanValue ?? true,
-      defaultVariantKey: flag.multivariate?.defaultVariantKey ?? '',
-      variants: flag.multivariate?.variants ?? [],
+      jsonValue: formatJsonValue(flag.jsonValue),
     })
     setSheetOpen(true)
   }
@@ -419,7 +425,7 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                           ? flag.booleanValue
                             ? 'Enabled'
                             : 'Disabled'
-                          : `Default ${flag.multivariate?.defaultVariantKey || 'n/a'}`}{' '}
+                          : 'JSON configured'}{' '}
                         · Updated {formatDate(flag.updatedAt)}
                       </p>
                       {flag.labels.length > 0 ? (
@@ -469,7 +475,7 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
             <SheetDescription>
               {editingFlagId
                 ? 'Update this flag for the selected environment.'
-                : 'Quick create a boolean flag. Configure advanced options if needed.'}
+                : 'Create a boolean or JSON flag. Configure advanced options if needed.'}
             </SheetDescription>
           </SheetHeader>
 
@@ -541,7 +547,7 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                     onValueChange={(value) =>
                       setEditForm((current) => ({
                         ...current,
-                        valueType: value as 'BOOLEAN' | 'MULTIVARIATE',
+                        valueType: value as 'BOOLEAN' | 'JSON',
                       }))
                     }
                   >
@@ -550,7 +556,7 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="BOOLEAN">BOOLEAN</SelectItem>
-                      <SelectItem value="MULTIVARIATE">MULTIVARIATE</SelectItem>
+                      <SelectItem value="JSON">JSON</SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -571,116 +577,20 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <Input
-                        value={editForm.defaultVariantKey}
+                      <Textarea
+                        className="min-h-40 font-mono text-xs"
+                        value={editForm.jsonValue}
                         onChange={(event) =>
                           setEditForm((current) => ({
                             ...current,
-                            defaultVariantKey: event.target.value,
+                            jsonValue: event.target.value,
                           }))
                         }
-                        placeholder="Default variant key"
+                        placeholder='{"enabled":true}'
                       />
-                      <div className="space-y-2">
-                        {editForm.variants.map((variant, index) => (
-                          <div
-                            key={`${variant.key}-${index}`}
-                            className="space-y-2 rounded-lg border p-3"
-                          >
-                            <div className="grid gap-2 md:grid-cols-2">
-                              <Input
-                                value={variant.key}
-                                onChange={(event) =>
-                                  setEditForm((current) => ({
-                                    ...current,
-                                    variants: current.variants.map(
-                                      (item, itemIndex) =>
-                                        itemIndex === index
-                                          ? { ...item, key: event.target.value }
-                                          : item,
-                                    ),
-                                  }))
-                                }
-                                placeholder="Variant key"
-                              />
-                              <Select
-                                value={variant.valueType}
-                                onValueChange={(value) =>
-                                  setEditForm((current) => ({
-                                    ...current,
-                                    variants: current.variants.map(
-                                      (item, itemIndex) =>
-                                        itemIndex === index
-                                          ? {
-                                              ...item,
-                                              valueType: value as
-                                                | 'string'
-                                                | 'json',
-                                            }
-                                          : item,
-                                    ),
-                                  }))
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="string">String</SelectItem>
-                                  <SelectItem value="json">JSON</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <Textarea
-                              value={variant.value}
-                              onChange={(event) =>
-                                setEditForm((current) => ({
-                                  ...current,
-                                  variants: current.variants.map(
-                                    (item, itemIndex) =>
-                                      itemIndex === index
-                                        ? { ...item, value: event.target.value }
-                                        : item,
-                                  ),
-                                }))
-                              }
-                              placeholder={
-                                variant.valueType === 'json'
-                                  ? '{"key":"value"}'
-                                  : 'Variant value'
-                              }
-                            />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setEditForm((current) => ({
-                                  ...current,
-                                  variants: current.variants.filter(
-                                    (_, itemIndex) => itemIndex !== index,
-                                  ),
-                                }))
-                              }
-                            >
-                              Remove variant
-                            </Button>
-                          </div>
-                        ))}
-                        <Button
-                          variant="outline"
-                          onClick={() =>
-                            setEditForm((current) => ({
-                              ...current,
-                              variants: [
-                                ...current.variants,
-                                { key: '', valueType: 'string', value: '' },
-                              ],
-                            }))
-                          }
-                        >
-                          Add variant
-                        </Button>
-                      </div>
+                      <p className="text-muted-foreground text-xs">
+                        Enter valid JSON for this flag value.
+                      </p>
                     </div>
                   )}
                 </section>
@@ -758,20 +668,56 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                     }
                     placeholder="Flag name"
                   />
-                  <div className="space-y-2">
-                    <Switch
-                      checked={createForm.booleanValue}
-                      onCheckedChange={(checked) =>
-                        setCreateForm((current) => ({
-                          ...current,
-                          booleanValue: checked,
-                        }))
-                      }
-                    />
-                    <p className="text-muted-foreground text-xs">
-                      {createForm.booleanValue ? 'Enabled' : 'Disabled'}
-                    </p>
-                  </div>
+                  <Select
+                    value={createForm.valueType}
+                    onValueChange={(value) =>
+                      setCreateForm((current) => ({
+                        ...current,
+                        valueType: value as 'BOOLEAN' | 'JSON',
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BOOLEAN">BOOLEAN</SelectItem>
+                      <SelectItem value="JSON">JSON</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {createForm.valueType === 'BOOLEAN' ? (
+                    <div className="space-y-2">
+                      <Switch
+                        checked={createForm.booleanValue}
+                        onCheckedChange={(checked) =>
+                          setCreateForm((current) => ({
+                            ...current,
+                            booleanValue: checked,
+                          }))
+                        }
+                      />
+                      <p className="text-muted-foreground text-xs">
+                        {createForm.booleanValue ? 'Enabled' : 'Disabled'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Textarea
+                        className="min-h-40 font-mono text-xs"
+                        value={createForm.jsonValue}
+                        onChange={(event) =>
+                          setCreateForm((current) => ({
+                            ...current,
+                            jsonValue: event.target.value,
+                          }))
+                        }
+                        placeholder='{"enabled":true}'
+                      />
+                      <p className="text-muted-foreground text-xs">
+                        Enter valid JSON for this flag value.
+                      </p>
+                    </div>
+                  )}
                 </section>
 
                 <details
@@ -784,9 +730,6 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                   <summary className="cursor-pointer text-sm font-medium">
                     Advanced
                   </summary>
-                  <p className="text-muted-foreground text-xs">
-                    Need multivariate? Create first, then convert in Edit.
-                  </p>
 
                   <section className="space-y-3">
                     <p className="muted-label">Description</p>

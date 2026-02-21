@@ -12,10 +12,9 @@ describe('evaluateFlag', () => {
         enabled: true,
         valueType: 'BOOLEAN',
         booleanValue: true,
+        jsonValue: null,
         runtime: 'BOTH',
-        defaultVariantKey: null,
       },
-      variants: [],
       runtime: 'server',
     });
 
@@ -33,10 +32,9 @@ describe('evaluateFlag', () => {
         enabled: true,
         valueType: 'BOOLEAN',
         booleanValue: true,
+        jsonValue: null,
         runtime: 'SERVER',
-        defaultVariantKey: null,
       },
-      variants: [],
       runtime: 'client',
     });
 
@@ -44,7 +42,7 @@ describe('evaluateFlag', () => {
     expect(result.reason).toBe('runtime_not_allowed');
   });
 
-  it('returns default multivariate variant', () => {
+  it('returns json value for JSON flags', () => {
     const result = evaluateFlag({
       flag: {
         id: 'flag_3',
@@ -52,20 +50,16 @@ describe('evaluateFlag', () => {
       },
       config: {
         enabled: true,
-        valueType: 'MULTIVARIATE',
+        valueType: 'JSON',
         booleanValue: null,
+        jsonValue: { theme: 'new' },
         runtime: 'BOTH',
-        defaultVariantKey: 'modern',
       },
-      variants: [
-        { key: 'legacy', value: 'legacy' },
-        { key: 'modern', value: '{"theme":"new"}' },
-      ],
       runtime: 'server',
     });
 
     expect(result.enabled).toBe(true);
-    expect(result.variantKey).toBe('modern');
-    expect(result.reason).toBe('multivariate_default');
+    expect(result.jsonValue).toEqual({ theme: 'new' });
+    expect(result.reason).toBe('json_value');
   });
 });

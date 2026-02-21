@@ -27,7 +27,7 @@ When adding cases, prefer extending the same integration flow test file if the s
 
 1. Add endpoint-level behavior assertions through `app.inject`.
 2. If runtime consumption behavior changes, assert through `createFeatureFlagRuntimeClient`.
-3. Keep deterministic inputs (`subjectKey`, variant keys) to avoid flaky expectations.
+3. Keep deterministic inputs (`subjectKey`, JSON payloads) to avoid flaky expectations.
 4. Add regression checks for:
    - Authorization failures (`401/403`)
    - Invalid payloads (`400`)

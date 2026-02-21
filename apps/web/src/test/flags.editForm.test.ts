@@ -6,42 +6,31 @@ import {
 } from '../pages/FlagsPage.form'
 
 describe('flags edit form', () => {
-  it('supports multivariate payload mapping', () => {
+  it('supports JSON payload mapping', () => {
     const payload = toEditFlagMutationPayload({
       ...emptyEditFlagFormState,
       environmentId: 'env-1',
       key: 'experiment-checkout',
       name: 'Experiment checkout',
-      valueType: 'MULTIVARIATE',
-      defaultVariantKey: 'control',
-      variants: [
-        { key: 'control', valueType: 'string', value: 'A' },
-        { key: 'treatment', valueType: 'json', value: '{"bucket":"B"}' },
-      ],
+      valueType: 'JSON',
+      jsonValue: '{"bucket":"B"}',
     })
 
-    expect(payload.valueType).toBe('MULTIVARIATE')
-    expect(payload.multivariate).toEqual({
-      defaultVariantKey: 'control',
-      variants: [
-        { key: 'control', valueType: 'string', value: 'A' },
-        { key: 'treatment', valueType: 'json', value: '{"bucket":"B"}' },
-      ],
-    })
+    expect(payload.valueType).toBe('JSON')
+    expect(payload.jsonValue).toEqual({ bucket: 'B' })
     expect(payload.booleanValue).toBeUndefined()
   })
 
-  it('validates default variant key and variant presence for multivariate', () => {
-    const noVariants = validateEditFlagForm({
+  it('validates JSON payload for JSON flags', () => {
+    const invalid = validateEditFlagForm({
       ...emptyEditFlagFormState,
       environmentId: 'env-1',
       key: 'exp',
       name: 'Experiment',
-      valueType: 'MULTIVARIATE',
-      defaultVariantKey: 'control',
-      variants: [],
+      valueType: 'JSON',
+      jsonValue: '{invalid}',
     })
 
-    expect(noVariants).toBe('Add at least one variant for multivariate flags')
+    expect(invalid).toBe('JSON value must be valid JSON')
   })
 })

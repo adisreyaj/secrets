@@ -7,7 +7,7 @@ type Flag = {
   key: string;
   name: string;
   description: string | null;
-  valueType: 'BOOLEAN' | 'MULTIVARIATE';
+  valueType: 'BOOLEAN' | 'JSON';
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -19,22 +19,11 @@ type EnvironmentConfig = {
   flagId: string;
   environmentId: string;
   enabled: boolean;
-  valueType: 'BOOLEAN' | 'MULTIVARIATE';
+  valueType: 'BOOLEAN' | 'JSON';
   booleanValue: boolean | null;
+  jsonValue: unknown | null;
   runtime: 'BOTH' | 'CLIENT' | 'SERVER';
   labelsJson: string[];
-  defaultVariantKey: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-type EnvironmentVariant = {
-  id: string;
-  environmentConfigId: string;
-  key: string;
-  valueType: 'STRING' | 'JSON';
-  value: string;
-  orderIndex: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -71,9 +60,12 @@ const state = {
     createdAt: new Date(),
     updatedAt: new Date(),
   },
+  environments: [
+    { id: 'env_1', projectId: 'project_1', name: 'Production', createdAt: new Date('2026-01-01') },
+    { id: 'env_2', projectId: 'project_1', name: 'Staging', createdAt: new Date('2026-01-02') },
+  ],
   flags: [] as Flag[],
   environmentConfigs: [] as EnvironmentConfig[],
-  environmentVariants: [] as EnvironmentVariant[],
   sdkKeys: [] as SdkKey[],
 };
 
@@ -115,7 +107,9 @@ vi.mock('../src/db.js', () => ({
     },
     environment: {
       findUnique: async ({ where }: any) =>
-        where?.id === 'env_1' ? { id: 'env_1', projectId: 'project_1' } : null,
+        state.environments.find((environment) => environment.id === where?.id) ?? null,
+      findMany: async ({ where }: any) =>
+        state.environments.filter((environment) => environment.projectId === where.projectId),
     },
     secret: {
       findMany: async () => [],
@@ -141,13 +135,7 @@ vi.mock('../src/db.js', () => ({
                 config.flagId === flag.id &&
                 (!include.environmentConfigs?.where?.environmentId ||
                   config.environmentId === include.environmentConfigs.where.environmentId),
-            )
-            .map((config) => ({
-              ...config,
-              variants: state.environmentVariants.filter(
-                (variant) => variant.environmentConfigId === config.id,
-              ),
-            })),
+            ),
         }));
       },
       findFirst: async ({ where, include }: any) => {
@@ -168,13 +156,7 @@ vi.mock('../src/db.js', () => ({
                 config.flagId === found.id &&
                 (!include.environmentConfigs?.where?.environmentId ||
                   config.environmentId === include.environmentConfigs.where.environmentId),
-            )
-            .map((config) => ({
-              ...config,
-              variants: state.environmentVariants.filter(
-                (variant) => variant.environmentConfigId === config.id,
-              ),
-            })),
+            ),
         };
       },
       create: async ({ data }: any) => {
@@ -227,9 +209,9 @@ vi.mock('../src/db.js', () => ({
           enabled: create.enabled,
           valueType: create.valueType,
           booleanValue: create.booleanValue ?? null,
+          jsonValue: create.jsonValue ?? null,
           runtime: create.runtime,
           labelsJson: create.labelsJson ?? [],
-          defaultVariantKey: create.defaultVariantKey ?? null,
           createdAt: now,
           updatedAt: now,
         };
@@ -250,37 +232,7 @@ vi.mock('../src/db.js', () => ({
             ) ?? null;
         }
         if (!config) return null;
-        if (!include?.variants) return config;
-        return {
-          ...config,
-          variants: state.environmentVariants.filter(
-            (variant) => variant.environmentConfigId === config.id,
-          ),
-        };
-      },
-    },
-    featureFlagEnvironmentVariant: {
-      createMany: async ({ data }: any) => {
-        for (const item of data) {
-          state.environmentVariants.push({
-            id: nextId('ffv', state.environmentVariants.length),
-            environmentConfigId: item.environmentConfigId,
-            key: item.key,
-            valueType: item.valueType,
-            value: item.value,
-            orderIndex: item.orderIndex,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-        }
-        return { count: data.length };
-      },
-      deleteMany: async ({ where }: any) => {
-        const before = state.environmentVariants.length;
-        state.environmentVariants = state.environmentVariants.filter(
-          (item) => item.environmentConfigId !== where.environmentConfigId,
-        );
-        return { count: before - state.environmentVariants.length };
+        return config;
       },
     },
     featureFlagSdkKey: {
@@ -333,7 +285,6 @@ describe('cross-module e2e', () => {
   beforeEach(() => {
     state.flags = [];
     state.environmentConfigs = [];
-    state.environmentVariants = [];
     state.sdkKeys = [];
   });
 

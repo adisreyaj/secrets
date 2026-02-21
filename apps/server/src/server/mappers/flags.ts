@@ -1,14 +1,9 @@
 import type {
   FeatureFlag,
   FeatureFlagEnvironmentConfig,
-  FeatureFlagEnvironmentVariant,
   FeatureFlagRuntime,
   FeatureFlagValueType,
 } from '@prisma/client';
-
-type ConfigWithVariants = FeatureFlagEnvironmentConfig & {
-  variants: FeatureFlagEnvironmentVariant[];
-};
 
 function toRuntimeDto(runtime: FeatureFlagRuntime): 'both' | 'client' | 'server' {
   return runtime.toLowerCase() as 'both' | 'client' | 'server';
@@ -23,17 +18,8 @@ function toLabels(labelsJson: unknown): string[] {
 
 export function toFeatureFlagDto(
   flag: FeatureFlag,
-  environmentConfig: ConfigWithVariants,
+  environmentConfig: FeatureFlagEnvironmentConfig,
 ) {
-  const variants = environmentConfig.variants
-    .slice()
-    .sort((a, b) => a.orderIndex - b.orderIndex)
-    .map((variant) => ({
-      key: variant.key,
-      valueType: variant.valueType === 'JSON' ? 'json' : 'string',
-      value: variant.value,
-    }));
-
   return {
     id: flag.id,
     projectId: flag.projectId,
@@ -41,19 +27,13 @@ export function toFeatureFlagDto(
     key: flag.key,
     name: flag.name,
     description: flag.description,
-    valueType: environmentConfig.valueType as 'BOOLEAN' | 'MULTIVARIATE',
+    valueType: environmentConfig.valueType as 'BOOLEAN' | 'JSON',
     exposed: environmentConfig.enabled,
     enabled: environmentConfig.enabled,
     runtime: toRuntimeDto(environmentConfig.runtime),
     labels: toLabels(environmentConfig.labelsJson),
     booleanValue: environmentConfig.booleanValue,
-    multivariate:
-      environmentConfig.valueType === 'MULTIVARIATE'
-        ? {
-            defaultVariantKey: environmentConfig.defaultVariantKey ?? '',
-            variants,
-          }
-        : null,
+    jsonValue: environmentConfig.jsonValue ?? null,
     createdAt: flag.createdAt.toISOString(),
     updatedAt: environmentConfig.updatedAt.toISOString(),
   };
@@ -62,5 +42,5 @@ export function toFeatureFlagDto(
 export function isFeatureFlagValueType(
   value: string,
 ): value is FeatureFlagValueType {
-  return value === 'BOOLEAN' || value === 'MULTIVARIATE';
+  return value === 'BOOLEAN' || value === 'JSON';
 }

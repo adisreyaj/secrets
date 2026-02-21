@@ -30,15 +30,6 @@ function normalizeLabels(value: unknown): string[] {
   return [...seen];
 }
 
-type MultivariateInput = {
-  defaultVariantKey: string;
-  variants: Array<{
-    key: string;
-    valueType: 'string' | 'json';
-    value: string;
-  }>;
-};
-
 type EnvironmentOverrideInput = {
   environmentId?: string;
   exposed?: boolean;
@@ -46,57 +37,28 @@ type EnvironmentOverrideInput = {
   runtime?: 'both' | 'client' | 'server';
   labels?: unknown;
   booleanValue?: boolean;
+  jsonValue?: unknown;
   multivariate?: unknown;
 };
 
-function validateMultivariate(input: unknown): MultivariateInput {
-  if (!input || typeof input !== 'object') {
-    throw new Error('multivariate is required for MULTIVARIATE flags');
+function parseJsonValue(input: unknown): Prisma.InputJsonValue {
+  if (input === undefined) {
+    throw new Error('jsonValue is required for JSON flags');
   }
-  const obj = input as {
-    defaultVariantKey?: string;
-    variants?: Array<{ key?: string; valueType?: string; value?: string }>;
-  };
-  const defaultVariantKey = obj.defaultVariantKey?.trim();
-  if (!defaultVariantKey) {
-    throw new Error('multivariate.defaultVariantKey is required');
-  }
-  if (!Array.isArray(obj.variants) || obj.variants.length === 0) {
-    throw new Error('multivariate.variants must contain at least one variant');
-  }
-
-  const variants = obj.variants.map((variant) => {
-    const key = variant.key?.trim();
-    const value = variant.value;
-    const valueType = variant.valueType?.trim().toLowerCase();
-    if (!key || typeof value !== 'string') {
-      throw new Error('Each multivariate variant requires key and value');
+  if (typeof input === 'string') {
+    const raw = input.trim();
+    try {
+      return JSON.parse(raw) as Prisma.InputJsonValue;
+    } catch {
+      throw new Error('jsonValue must be valid JSON');
     }
-    if (valueType !== 'string' && valueType !== 'json') {
-      throw new Error('Variant valueType must be string or json');
-    }
-    if (valueType === 'json') {
-      try {
-        JSON.parse(value);
-      } catch {
-        throw new Error(`Variant ${key} has invalid JSON value`);
-      }
-    }
-    return {
-      key,
-      value,
-      valueType: valueType as 'string' | 'json',
-    };
-  });
-
-  if (!variants.some((variant) => variant.key === defaultVariantKey)) {
-    throw new Error('multivariate.defaultVariantKey must match an existing variant key');
   }
-
-  return {
-    defaultVariantKey,
-    variants,
-  };
+  try {
+    JSON.stringify(input);
+  } catch {
+    throw new Error('jsonValue must be JSON-serializable');
+  }
+  return input as Prisma.InputJsonValue;
 }
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -147,12 +109,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const upsertEnvironmentConfig = async (params: {
     flagId: string;
     environmentId: string;
-    valueType: 'BOOLEAN' | 'MULTIVARIATE';
+    valueType: 'BOOLEAN' | 'JSON';
     exposed: boolean;
     runtime: 'BOTH' | 'CLIENT' | 'SERVER';
     labels: string[];
     booleanValue?: boolean | null;
-    multivariate?: MultivariateInput | null;
+    jsonValue?: Prisma.InputJsonValue | null;
   }) => {
     const configRecord = await prisma.featureFlagEnvironmentConfig.upsert({
       where: {
@@ -168,49 +130,27 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         valueType: params.valueType,
         booleanValue:
           params.valueType === 'BOOLEAN' ? params.booleanValue ?? false : null,
+        jsonValue:
+          params.valueType === 'JSON'
+            ? params.jsonValue ?? Prisma.JsonNull
+            : Prisma.DbNull,
         runtime: params.runtime,
         labelsJson: params.labels,
-        defaultVariantKey:
-          params.valueType === 'MULTIVARIATE'
-            ? params.multivariate?.defaultVariantKey ?? null
-            : null,
       },
       update: {
         enabled: params.exposed,
         valueType: params.valueType,
         booleanValue:
           params.valueType === 'BOOLEAN' ? params.booleanValue ?? false : null,
+        jsonValue:
+          params.valueType === 'JSON'
+            ? params.jsonValue ?? Prisma.JsonNull
+            : Prisma.DbNull,
         runtime: params.runtime,
         labelsJson: params.labels,
-        defaultVariantKey:
-          params.valueType === 'MULTIVARIATE'
-            ? params.multivariate?.defaultVariantKey ?? null
-            : null,
       },
     });
-
-    await prisma.featureFlagEnvironmentVariant.deleteMany({
-      where: { environmentConfigId: configRecord.id },
-    });
-
-    if (params.valueType === 'MULTIVARIATE' && params.multivariate) {
-      await prisma.featureFlagEnvironmentVariant.createMany({
-        data: params.multivariate.variants.map((variant, index) => ({
-          environmentConfigId: configRecord.id,
-          key: variant.key,
-          valueType: variant.valueType === 'json' ? 'JSON' : 'STRING',
-          value: variant.value,
-          orderIndex: index,
-        })),
-      });
-    }
-
-    const withVariants = await prisma.featureFlagEnvironmentConfig.findUnique({
-      where: { id: configRecord.id },
-      include: { variants: true },
-    });
-
-    return withVariants!;
+    return configRecord;
   };
 
   const resolveExposed = (exposed?: boolean, enabled?: boolean, fallback = true) => {
@@ -224,15 +164,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     enabled: boolean;
     runtime: 'BOTH' | 'CLIENT' | 'SERVER';
     labelsJson: unknown;
-    valueType: 'BOOLEAN' | 'MULTIVARIATE';
+    valueType: 'BOOLEAN' | 'JSON';
     booleanValue: boolean | null;
-    defaultVariantKey: string | null;
-    variants: Array<{
-      key: string;
-      valueType: 'STRING' | 'JSON';
-      value: string;
-      orderIndex: number;
-    }>;
+    jsonValue: unknown;
   }) => ({
     environmentId: cfg.environmentId,
     exposed: cfg.enabled,
@@ -243,20 +177,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       : [],
     valueType: cfg.valueType,
     booleanValue: cfg.booleanValue,
-    multivariate:
-      cfg.valueType === 'MULTIVARIATE'
-        ? {
-            defaultVariantKey: cfg.defaultVariantKey ?? '',
-            variants: cfg.variants
-              .slice()
-              .sort((a, b) => a.orderIndex - b.orderIndex)
-              .map((variant) => ({
-                key: variant.key,
-                valueType: variant.valueType === 'JSON' ? 'json' : 'string',
-                value: variant.value,
-              })),
-          }
-        : null,
+    jsonValue: cfg.jsonValue ?? null,
   });
 
   app.get('/projects/:projectId/flags', async (request, reply) => {
@@ -288,7 +209,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       include: {
         environmentConfigs: {
           where: { environmentId },
-          include: { variants: true },
           take: 1,
         },
       },
@@ -323,9 +243,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       prisma.featureFlag.findMany({
         where: { projectId, deletedAt: null },
         include: {
-          environmentConfigs: {
-            include: { variants: true },
-          },
+          environmentConfigs: true,
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -384,10 +302,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           key?: string;
           name?: string;
           description?: string | null;
-          valueType?: 'BOOLEAN' | 'MULTIVARIATE';
+          valueType?: 'BOOLEAN' | 'JSON';
           exposed?: boolean;
           enabled?: boolean;
           booleanValue?: boolean;
+          jsonValue?: unknown;
           multivariate?: unknown;
           runtime?: 'both' | 'client' | 'server';
           labels?: unknown;
@@ -402,8 +321,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       sendError(reply, 400, 'key and name are required');
       return;
     }
+    if (typeof body?.multivariate !== 'undefined') {
+      sendError(reply, 400, 'multivariate is no longer supported');
+      return;
+    }
     if (!body?.valueType || !isFeatureFlagValueType(body.valueType)) {
-      sendError(reply, 400, 'valueType must be BOOLEAN or MULTIVARIATE');
+      sendError(reply, 400, 'valueType must be BOOLEAN or JSON');
       return;
     }
 
@@ -433,10 +356,21 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const runtime = parseRuntime(body.runtime);
     const exposed = resolveExposed(body?.exposed, body?.enabled, true);
 
-    let multivariate: MultivariateInput | null = null;
-    if (body.valueType === 'MULTIVARIATE') {
+    const defaultBooleanValue =
+      typeof body.booleanValue === 'boolean' ? body.booleanValue : true;
+    let defaultJsonValue: Prisma.InputJsonValue | null = null;
+    if (body.valueType === 'BOOLEAN') {
+      if (typeof body.jsonValue !== 'undefined') {
+        sendError(reply, 400, 'jsonValue is only allowed for JSON flags');
+        return;
+      }
+    } else {
+      if (typeof body.booleanValue !== 'undefined') {
+        sendError(reply, 400, 'booleanValue is only allowed for BOOLEAN flags');
+        return;
+      }
       try {
-        multivariate = validateMultivariate(body.multivariate);
+        defaultJsonValue = parseJsonValue(body.jsonValue);
       } catch (error) {
         reply.code(400).send({ error: (error as Error).message });
         return;
@@ -460,6 +394,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       for (const rawOverride of body?.environmentOverrides ?? []) {
         const envId = rawOverride.environmentId?.trim();
         if (!envId) continue;
+        if (typeof rawOverride.multivariate !== 'undefined') {
+          sendError(reply, 400, 'multivariate is no longer supported');
+          return;
+        }
         if (!environmentIdSet.has(envId)) {
           sendError(reply, 400, `Unknown environmentId in overrides: ${envId}`);
           return;
@@ -469,11 +407,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
       for (const environment of environments) {
         const override = overrides.get(environment.id);
-        const resolvedValueType = body.valueType;
-        let resolvedMultivariate = multivariate;
-        if (resolvedValueType === 'MULTIVARIATE' && override?.multivariate) {
-          resolvedMultivariate = validateMultivariate(override.multivariate);
+        const resolvedValueType = body.valueType as 'BOOLEAN' | 'JSON';
+        let resolvedJsonValue: Prisma.InputJsonValue | null = null;
+
+        if (resolvedValueType === 'BOOLEAN' && typeof override?.jsonValue !== 'undefined') {
+          sendError(reply, 400, 'jsonValue is only allowed for JSON flags');
+          return;
         }
+        if (resolvedValueType === 'JSON' && typeof override?.booleanValue !== 'undefined') {
+          sendError(reply, 400, 'booleanValue is only allowed for BOOLEAN flags');
+          return;
+        }
+        if (resolvedValueType === 'JSON') {
+          try {
+            resolvedJsonValue =
+              typeof override?.jsonValue !== 'undefined'
+                ? parseJsonValue(override.jsonValue)
+                : defaultJsonValue;
+          } catch (error) {
+            reply.code(400).send({ error: (error as Error).message });
+            return;
+          }
+        }
+
         await upsertEnvironmentConfig({
           flagId: flag.id,
           environmentId: environment.id,
@@ -491,9 +447,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             resolvedValueType === 'BOOLEAN'
               ? typeof override?.booleanValue === 'boolean'
                 ? override.booleanValue
-                : (typeof body.booleanValue === 'boolean' ? body.booleanValue : true)
+                : defaultBooleanValue
               : null,
-          multivariate: resolvedValueType === 'MULTIVARIATE' ? resolvedMultivariate : null,
+          jsonValue: resolvedValueType === 'JSON' ? resolvedJsonValue : null,
         });
       }
 
@@ -503,7 +459,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         environments[0]!.id;
       const responseConfig = await prisma.featureFlagEnvironmentConfig.findUnique({
         where: { flagId_environmentId: { flagId: flag.id, environmentId: responseEnvironmentId } },
-        include: { variants: true },
       });
       if (!responseConfig) {
         sendError(reply, 500, 'Failed to resolve created flag configuration');
@@ -523,10 +478,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       reply.code(201).send(toFeatureFlagDto(flag, responseConfig));
       return;
     } catch (error) {
-      if (error instanceof Error && error.message.includes('multivariate')) {
-        sendError(reply, 400, error.message);
-        return;
-      }
       if (isPrismaUniqueError(error)) {
         sendError(reply, 409, 'Flag key already exists');
         return;
@@ -553,7 +504,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       include: {
         environmentConfigs: {
           where: environmentId ? { environmentId } : undefined,
-          include: { variants: true },
           ...(environmentId ? { take: 1 } : {}),
         },
       },
@@ -615,10 +565,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           key?: string;
           name?: string;
           description?: string | null;
-          valueType?: 'BOOLEAN' | 'MULTIVARIATE';
+          valueType?: 'BOOLEAN' | 'JSON';
           exposed?: boolean;
           enabled?: boolean;
           booleanValue?: boolean;
+          jsonValue?: unknown;
           multivariate?: unknown;
           runtime?: 'both' | 'client' | 'server';
           labels?: unknown;
@@ -628,6 +579,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const environmentId = body?.environmentId?.trim();
     if (!environmentId) {
       sendError(reply, 400, 'environmentId is required');
+      return;
+    }
+    if (typeof body?.multivariate !== 'undefined') {
+      sendError(reply, 400, 'multivariate is no longer supported');
       return;
     }
 
@@ -659,35 +614,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       where: {
         flagId_environmentId: { flagId: current.id, environmentId },
       },
-      include: { variants: true },
     });
 
     const resolvedValueType = body?.valueType ?? existingConfig?.valueType ?? current.valueType;
     if (!isFeatureFlagValueType(resolvedValueType)) {
-      sendError(reply, 400, 'valueType must be BOOLEAN or MULTIVARIATE');
+      sendError(reply, 400, 'valueType must be BOOLEAN or JSON');
       return;
     }
-
-    let multivariate: MultivariateInput | null = null;
-    if (resolvedValueType === 'MULTIVARIATE') {
-      try {
-        multivariate = validateMultivariate(
-          body?.multivariate ??
-            (existingConfig
-              ? {
-                  defaultVariantKey: existingConfig.defaultVariantKey,
-                  variants: existingConfig.variants.map((variant) => ({
-                    key: variant.key,
-                    valueType: variant.valueType === 'JSON' ? 'json' : 'string',
-                    value: variant.value,
-                  })),
-                }
-              : null),
-        );
-      } catch (error) {
-        reply.code(400).send({ error: (error as Error).message });
-        return;
-      }
+    if (resolvedValueType === 'BOOLEAN' && typeof body?.jsonValue !== 'undefined') {
+      sendError(reply, 400, 'jsonValue is only allowed for JSON flags');
+      return;
+    }
+    if (resolvedValueType === 'JSON' && typeof body?.booleanValue !== 'undefined') {
+      sendError(reply, 400, 'booleanValue is only allowed for BOOLEAN flags');
+      return;
     }
 
     const labels =
@@ -726,18 +666,33 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
+    let resolvedJsonValue: Prisma.InputJsonValue | null = null;
+    if (resolvedValueType === 'JSON') {
+      try {
+        resolvedJsonValue =
+          typeof body?.jsonValue !== 'undefined'
+            ? parseJsonValue(body.jsonValue)
+            : ((existingConfig?.jsonValue ?? null) as Prisma.InputJsonValue | null);
+      } catch (error) {
+        reply.code(400).send({ error: (error as Error).message });
+        return;
+      }
+    }
+
     const envConfig = await upsertEnvironmentConfig({
       flagId: updatedFlag.id,
       environmentId,
-      valueType: resolvedValueType,
+      valueType: resolvedValueType as 'BOOLEAN' | 'JSON',
       exposed,
       runtime,
       labels,
       booleanValue:
-        typeof body?.booleanValue === 'boolean'
-          ? body.booleanValue
-          : existingConfig?.booleanValue ?? updatedFlag.enabled,
-      multivariate,
+        resolvedValueType === 'BOOLEAN'
+          ? (typeof body?.booleanValue === 'boolean'
+              ? body.booleanValue
+              : existingConfig?.booleanValue ?? updatedFlag.enabled)
+          : null,
+      jsonValue: resolvedValueType === 'JSON' ? resolvedJsonValue : null,
     });
 
     await logAudit({
@@ -782,11 +737,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const [fromConfig, toConfig] = await Promise.all([
       prisma.featureFlagEnvironmentConfig.findUnique({
         where: { flagId_environmentId: { flagId, environmentId: fromEnvironmentId } },
-        include: { variants: true },
       }),
       prisma.featureFlagEnvironmentConfig.findUnique({
         where: { flagId_environmentId: { flagId, environmentId: toEnvironmentId } },
-        include: { variants: true },
       }),
     ]);
 
@@ -805,20 +758,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         : [],
       valueType: cfg.valueType,
       booleanValue: cfg.booleanValue,
-      multivariate:
-        cfg.valueType === 'MULTIVARIATE'
-          ? {
-              defaultVariantKey: cfg.defaultVariantKey ?? '',
-              variants: cfg.variants
-                .slice()
-                .sort((a, b) => a.orderIndex - b.orderIndex)
-                .map((variant) => ({
-                  key: variant.key,
-                  valueType: variant.valueType === 'JSON' ? 'json' : 'string',
-                  value: variant.value,
-                })),
-            }
-          : null,
+      jsonValue: cfg.jsonValue ?? null,
     });
 
     const from = toSnapshot(fromConfig, fromEnvironmentId);
@@ -837,7 +777,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         value:
           from.valueType !== to.valueType ||
           from.booleanValue !== to.booleanValue ||
-          JSON.stringify(from.multivariate) !== JSON.stringify(to.multivariate),
+          JSON.stringify(from.jsonValue) !== JSON.stringify(to.jsonValue),
       },
     });
   });

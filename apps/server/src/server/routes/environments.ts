@@ -139,7 +139,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       include: {
         environmentConfigs: {
           include: {
-            variants: true,
             environment: {
               select: { id: true, createdAt: true },
             },
@@ -177,38 +176,28 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
               enabled: baseline.enabled,
               valueType: baseline.valueType,
               booleanValue: baseline.booleanValue,
+              jsonValue:
+                (baseline.jsonValue as Prisma.InputJsonValue | null) ??
+                Prisma.JsonNull,
               runtime: baseline.runtime,
               labelsJson:
                 (baseline.labelsJson as Prisma.InputJsonValue | null) ??
                 Prisma.JsonNull,
-              defaultVariantKey: baseline.defaultVariantKey,
             },
             update: {
               enabled: baseline.enabled,
               valueType: baseline.valueType,
               booleanValue: baseline.booleanValue,
+              jsonValue:
+                (baseline.jsonValue as Prisma.InputJsonValue | null) ??
+                Prisma.JsonNull,
               runtime: baseline.runtime,
               labelsJson:
                 (baseline.labelsJson as Prisma.InputJsonValue | null) ??
                 Prisma.JsonNull,
-              defaultVariantKey: baseline.defaultVariantKey,
             },
           });
-
-          await tx.featureFlagEnvironmentVariant.deleteMany({
-            where: { environmentConfigId: createdConfig.id },
-          });
-          if (baseline.variants.length > 0) {
-            await tx.featureFlagEnvironmentVariant.createMany({
-              data: baseline.variants.map((variant) => ({
-                environmentConfigId: createdConfig.id,
-                key: variant.key,
-                valueType: variant.valueType,
-                value: variant.value,
-                orderIndex: variant.orderIndex,
-              })),
-            });
-          }
+          void createdConfig;
         }
       });
     }

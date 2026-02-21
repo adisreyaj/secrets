@@ -19,7 +19,7 @@ Evolve the current secrets product into a super app with 3 modules per customer 
 - Add organization-level grouping above projects.
 - Feature flags in Phase 1 support:
   - Server-side + client-side evaluation
-  - Boolean + multivariate flags
+  - Boolean + JSON flags
   - No segments, no scheduling, no dependencies, no analytics (for now)
 - Auth in Phase 2 supports:
   - Native auth first (not integration-first)
@@ -44,7 +44,7 @@ Evolve the current secrets product into a super app with 3 modules per customer 
 | Migration | Purpose | Schema Changes |
 | --- | --- | --- |
 | `2026xxxxxx_orgs_and_modules` | Add organization model + module toggles | `organizations`, `organization_members`, `projects.organization_id`, `project_modules` |
-| `2026xxxxxx_flags_core` | Feature flag core entities | `feature_flags`, `feature_flag_variants`, `feature_flag_rules`, `feature_flag_env_overrides` |
+| `2026xxxxxx_flags_core` | Feature flag core entities | `feature_flags`, `feature_flag_environment_configs` |
 | `2026xxxxxx_flags_keys_history` | Runtime keys + change history | `feature_flag_sdk_keys`, `feature_flag_change_history` |
 | `2026xxxxxx_approvals_module_scope` | Extend approvals beyond secrets | Approval model adds module/resource metadata (non-breaking) |
 | `2026xxxxxx_auth_core` | Native auth core entities | `auth_project_config`, `auth_end_users`, `auth_identities`, `auth_sessions`, `auth_refresh_tokens` |
@@ -62,13 +62,6 @@ Evolve the current secrets product into a super app with 3 modules per customer 
 - `GET /flags/:flagId`
 - `PATCH /flags/:flagId`
 - `DELETE /flags/:flagId`
-- `POST /flags/:flagId/variants`
-- `PATCH /flag-variants/:variantId`
-- `DELETE /flag-variants/:variantId`
-- `POST /flags/:flagId/rules`
-- `PATCH /flag-rules/:ruleId`
-- `DELETE /flag-rules/:ruleId`
-- `PUT /flags/:flagId/environments/:environmentId/override`
 - `GET /projects/:projectId/flag-sdk-keys`
 - `POST /projects/:projectId/flag-sdk-keys`
 - `POST /flag-sdk-keys/:keyId/rotate`
@@ -126,14 +119,14 @@ Evolve the current secrets product into a super app with 3 modules per customer 
 ### Week 3
 
 - `FF-001` Flags schema migration and Prisma model wiring.
-- `FF-002` Flags management CRUD (flags, variants, rules).
+- `FF-002` Flags management CRUD (flags + environment configs).
 - `FF-003` Audit event coverage for flags.
 
 ### Week 4
 
-- `FF-004` Evaluation engine (deterministic bucketing, boolean + multivariate).
-- `FF-005` Environment overrides support.
-- `FF-006` Reuse approval workflows for flag writes.
+- `FF-004` Evaluation engine (boolean + JSON).
+- `FF-005` Environment configuration support.
+- `FF-006` Reuse approval workflows for flag writes where needed.
 
 ### Week 5
 
@@ -144,7 +137,7 @@ Evolve the current secrets product into a super app with 3 modules per customer 
 ### Week 6
 
 - `WEB-FF-001` Flags list/detail/editor pages.
-- `WEB-FF-002` Variant + rules UX.
+- `WEB-FF-002` Boolean/JSON value editor UX.
 - `WEB-FF-003` SDK key management UI.
 
 ### Week 7
@@ -199,10 +192,10 @@ Evolve the current secrets product into a super app with 3 modules per customer 
 
 ### Phase 1 (Feature Flags)
 
-- Portal can create/update/delete boolean and multivariate flags.
+- Portal can create/update/delete boolean and JSON flags.
 - Consumer apps can evaluate flags via runtime API (server and client usage).
-- Deterministic rollout behavior is stable.
-- Environment overrides work.
+- JSON value evaluation behavior is stable.
+- Environment configuration works.
 - Approval + audit coverage exists for all write operations.
 
 ### Phase 2 (Auth)

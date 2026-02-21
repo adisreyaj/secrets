@@ -9,22 +9,11 @@ type Flag = {
   key: string
   name: string
   description: string | null
-  valueType: 'BOOLEAN' | 'MULTIVARIATE'
+  valueType: 'BOOLEAN' | 'JSON'
   enabled: boolean
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null
-}
-
-type Variant = {
-  id: string
-  environmentConfigId: string
-  key: string
-  value: string
-  valueType: 'STRING' | 'JSON'
-  orderIndex: number
-  createdAt: Date
-  updatedAt: Date
 }
 
 type EnvironmentConfig = {
@@ -32,11 +21,11 @@ type EnvironmentConfig = {
   flagId: string
   environmentId: string
   enabled: boolean
-  valueType: 'BOOLEAN' | 'MULTIVARIATE'
+  valueType: 'BOOLEAN' | 'JSON'
   booleanValue: boolean | null
+  jsonValue: unknown | null
   runtime: 'BOTH' | 'CLIENT' | 'SERVER'
   labelsJson: string[]
-  defaultVariantKey: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -72,7 +61,6 @@ const state = {
   ],
   flags: [] as Flag[],
   environmentConfigs: [] as EnvironmentConfig[],
-  variants: [] as Variant[],
   sdkKeys: [] as SdkKey[],
 }
 
@@ -128,22 +116,7 @@ vi.mock('../src/db.js', () => ({
                 config.flagId === flag.id &&
                 (!include.environmentConfigs?.where?.environmentId ||
                   config.environmentId === include.environmentConfigs.where.environmentId),
-            )
-            .map((config) => ({
-              ...config,
-              variants: state.variants.filter(
-                (variant) => variant.environmentConfigId === config.id,
-              ),
-            })),
-          variants: include.variants
-            ? state.environmentConfigs
-                .filter((config) => config.flagId === flag.id)
-                .flatMap((config) =>
-                  state.variants.filter(
-                    (variant) => variant.environmentConfigId === config.id,
-                  ),
-                )
-            : [],
+            ),
           rules: [],
           envOverrides: [],
         }))
@@ -165,13 +138,7 @@ vi.mock('../src/db.js', () => ({
                 config.flagId === found.id &&
                 (!include.environmentConfigs?.where?.environmentId ||
                   config.environmentId === include.environmentConfigs.where.environmentId),
-            )
-            .map((config) => ({
-              ...config,
-              variants: state.variants.filter(
-                (variant) => variant.environmentConfigId === config.id,
-              ),
-            })),
+            ),
         }
       },
       create: async ({ data }: any) => {
@@ -218,9 +185,9 @@ vi.mock('../src/db.js', () => ({
           existing.enabled = update.enabled
           existing.valueType = update.valueType
           existing.booleanValue = update.booleanValue ?? null
+          existing.jsonValue = update.jsonValue ?? null
           existing.runtime = update.runtime
           existing.labelsJson = update.labelsJson ?? []
-          existing.defaultVariantKey = update.defaultVariantKey ?? null
           existing.updatedAt = new Date()
           return existing
         }
@@ -232,9 +199,9 @@ vi.mock('../src/db.js', () => ({
           enabled: create.enabled,
           valueType: create.valueType,
           booleanValue: create.booleanValue ?? null,
+          jsonValue: create.jsonValue ?? null,
           runtime: create.runtime,
           labelsJson: create.labelsJson ?? [],
-          defaultVariantKey: create.defaultVariantKey ?? null,
           createdAt: now,
           updatedAt: now,
         }
@@ -255,65 +222,8 @@ vi.mock('../src/db.js', () => ({
             ) ?? null
         }
         if (!config) return null
-        if (!include?.variants) return config
-        return {
-          ...config,
-          variants: state.variants.filter(
-            (variant) => variant.environmentConfigId === config.id,
-          ),
-        }
+        return config
       },
-    },
-    featureFlagEnvironmentVariant: {
-      createMany: async ({ data }: any) => {
-        for (const item of data) {
-          const now = new Date()
-          state.variants.push({
-            id: nextId('ffv', state.variants.length),
-            environmentConfigId: item.environmentConfigId,
-            key: item.key,
-            valueType: item.valueType,
-            value: item.value,
-            orderIndex: item.orderIndex ?? 0,
-            createdAt: now,
-            updatedAt: now,
-          })
-        }
-        return { count: data.length }
-      },
-      deleteMany: async ({ where }: any) => {
-        const before = state.variants.length
-        state.variants = state.variants.filter(
-          (variant) => variant.environmentConfigId !== where.environmentConfigId,
-        )
-        return { count: before - state.variants.length }
-      },
-      create: async ({ data }: any) => {
-        const now = new Date()
-        const created: Variant = {
-          id: nextId('ffv', state.variants.length),
-          environmentConfigId: data.environmentConfigId,
-          key: data.key,
-          value: data.value,
-          valueType: data.valueType ?? 'STRING',
-          orderIndex: data.orderIndex ?? 0,
-          createdAt: now,
-          updatedAt: now,
-        }
-        state.variants.push(created)
-        return created
-      },
-      findFirst: async ({ where }: any) =>
-        state.variants.find(
-          (variant) =>
-            (!where?.id || variant.id === where.id) &&
-            (!where?.environmentConfigId ||
-              variant.environmentConfigId === where.environmentConfigId),
-        ) ?? null,
-      findMany: async ({ where }: any) =>
-        state.variants.filter(
-          (variant) => variant.environmentConfigId === where.environmentConfigId,
-        ),
     },
     environment: {
       findUnique: async ({ where }: any) =>
@@ -397,7 +307,6 @@ describe('feature flags integration flow', () => {
   beforeEach(() => {
     state.flags = []
     state.environmentConfigs = []
-    state.variants = []
     state.sdkKeys = []
     state.role = 'ADMIN'
     state.apiToken = {
@@ -422,17 +331,11 @@ describe('feature flags integration flow', () => {
         environmentId: 'env_1',
         key: 'checkout-redesign',
         name: 'Checkout redesign',
-        valueType: 'MULTIVARIATE',
+        valueType: 'JSON',
         enabled: true,
         runtime: 'both',
         labels: ['checkout', 'beta'],
-        multivariate: {
-          defaultVariantKey: 'treatment',
-          variants: [
-            { key: 'control', valueType: 'string', value: 'A' },
-            { key: 'treatment', valueType: 'json', value: '{"bucket":"B"}' },
-          ],
-        },
+        jsonValue: { bucket: 'B' },
       },
     })
     expect(flagResponse.statusCode).toBe(201)
@@ -502,8 +405,8 @@ describe('feature flags integration flow', () => {
       subjectKey: 'user_123',
     })
     expect(preOverride.enabled).toBe(true)
-    expect(preOverride.variantKey).toBe('treatment')
-    expect(preOverride.reason).toBe('multivariate_default')
+    expect(preOverride.jsonValue).toEqual({ bucket: 'B' })
+    expect(preOverride.reason).toBe('json_value')
 
     const updateResponse = await app.inject({
       method: 'PATCH',
@@ -577,5 +480,74 @@ describe('feature flags integration flow', () => {
     expect(missingConfigResult.reason).toBe('flag_not_configured')
 
     await runtimeApp.close()
+  })
+
+  it('rejects invalid flag payload combinations for BOOLEAN/JSON mode', async () => {
+    const app = await buildApp()
+    const authHeaders = { authorization: 'Bearer mgmt-token' }
+
+    const invalidJson = await app.inject({
+      method: 'POST',
+      url: '/projects/project_1/flags',
+      headers: authHeaders,
+      payload: {
+        environmentId: 'env_1',
+        key: 'flag-invalid-json',
+        name: 'Invalid json',
+        valueType: 'JSON',
+        enabled: true,
+        jsonValue: '{bad json}',
+      },
+    })
+    expect(invalidJson.statusCode).toBe(400)
+
+    const booleanWithJsonValue = await app.inject({
+      method: 'POST',
+      url: '/projects/project_1/flags',
+      headers: authHeaders,
+      payload: {
+        environmentId: 'env_1',
+        key: 'flag-boolean-with-json',
+        name: 'Boolean with json',
+        valueType: 'BOOLEAN',
+        enabled: true,
+        booleanValue: true,
+        jsonValue: { invalid: true },
+      },
+    })
+    expect(booleanWithJsonValue.statusCode).toBe(400)
+
+    const jsonWithBooleanValue = await app.inject({
+      method: 'POST',
+      url: '/projects/project_1/flags',
+      headers: authHeaders,
+      payload: {
+        environmentId: 'env_1',
+        key: 'flag-json-with-boolean',
+        name: 'Json with boolean',
+        valueType: 'JSON',
+        enabled: true,
+        booleanValue: true,
+        jsonValue: { valid: true },
+      },
+    })
+    expect(jsonWithBooleanValue.statusCode).toBe(400)
+
+    const withMultivariateField = await app.inject({
+      method: 'POST',
+      url: '/projects/project_1/flags',
+      headers: authHeaders,
+      payload: {
+        environmentId: 'env_1',
+        key: 'flag-with-multivariate',
+        name: 'With multivariate',
+        valueType: 'BOOLEAN',
+        enabled: true,
+        multivariate: { defaultVariantKey: 'control', variants: [] },
+      },
+    })
+    expect(withMultivariateField.statusCode).toBe(400)
+
+    await app.close()
   })
 })

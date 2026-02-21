@@ -8,7 +8,7 @@ import { createRuntimeCatalogCache } from '../services/flags/runtimeCache.js';
 
 type FlagWithEnvConfig = Prisma.FeatureFlagGetPayload<{
   include: {
-    environmentConfigs: { include: { variants: true } };
+    environmentConfigs: true;
   };
 }>;
 
@@ -112,7 +112,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           include: {
             environmentConfigs: {
               where: { environmentId },
-              include: { variants: true },
               take: 1,
             },
           },
@@ -140,7 +139,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const result = evaluateFlag({
       flag,
       config,
-      variants: config.variants,
       runtime,
     });
 
@@ -208,7 +206,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           include: {
             environmentConfigs: {
               where: { environmentId },
-              include: { variants: true },
               take: 1,
             },
           },
@@ -229,7 +226,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const evaluation = evaluateFlag({
         flag,
         config,
-        variants: config.variants,
         runtime,
       });
 

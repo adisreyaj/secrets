@@ -32,10 +32,6 @@ export const queryKeys = {
   flagsMatrix: (projectId: string) =>
     ['projects', projectId, 'flags', 'matrix'] as const,
   flag: (flagId: string) => ['flags', flagId] as const,
-  flagVariants: (flagId: string, environmentId?: string | null) =>
-    ['flags', flagId, 'variants', environmentId ?? 'all'] as const,
-  flagRules: (flagId: string, environmentId?: string | null) =>
-    ['flags', flagId, 'rules', environmentId ?? 'all'] as const,
   flagSdkKeys: (projectId: string, environmentId?: string | null) =>
     ['projects', projectId, 'flag-sdk-keys', environmentId ?? 'all'] as const,
   authConfig: (projectId: string) =>

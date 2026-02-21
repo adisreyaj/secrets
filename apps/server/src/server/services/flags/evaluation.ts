@@ -1,29 +1,25 @@
 import type {
   FeatureFlag,
   FeatureFlagEnvironmentConfig,
-  FeatureFlagEnvironmentVariant,
 } from '@prisma/client';
 
 export type FlagEvaluationResult = {
   enabled: boolean;
-  variantKey?: string;
-  variantValue?: string;
+  jsonValue?: unknown;
   reason:
     | 'flag_not_configured'
     | 'flag_disabled'
     | 'runtime_not_allowed'
     | 'boolean_value'
-    | 'multivariate_default'
-    | 'multivariate_missing_default';
+    | 'json_value';
 };
 
 export function evaluateFlag(params: {
   flag: Pick<FeatureFlag, 'id' | 'key'>;
   config: Pick<
     FeatureFlagEnvironmentConfig,
-    'enabled' | 'valueType' | 'booleanValue' | 'runtime' | 'defaultVariantKey'
+    'enabled' | 'valueType' | 'booleanValue' | 'jsonValue' | 'runtime'
   >;
-  variants: Array<Pick<FeatureFlagEnvironmentVariant, 'key' | 'value'>>;
   runtime: 'client' | 'server';
 }): FlagEvaluationResult {
   const allowsRuntime =
@@ -46,16 +42,9 @@ export function evaluateFlag(params: {
     };
   }
 
-  const defaultKey = params.config.defaultVariantKey ?? '';
-  const variant = params.variants.find((candidate) => candidate.key === defaultKey);
-  if (!variant) {
-    return { enabled: false, reason: 'multivariate_missing_default' };
-  }
-
   return {
     enabled: true,
-    variantKey: variant.key,
-    variantValue: variant.value,
-    reason: 'multivariate_default',
+    jsonValue: params.config.jsonValue ?? null,
+    reason: 'json_value',
   };
 }

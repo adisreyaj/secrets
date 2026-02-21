@@ -21,7 +21,7 @@ Deferred items remain out of scope:
 
 - `Expose/Hide`: controls whether a flag is exposed to consumers in an environment.
 - `Enabled/Disabled`: BOOLEAN flag value when exposed.
-- Multivariate mode is default-variant only in this phase.
+- JSON mode returns `jsonValue` when exposed.
 
 ## API Contract Summary
 
@@ -57,7 +57,6 @@ Feature flags runtime client methods:
 - `client.evaluate({ environmentId, flagKey, subjectKey })`
 - `client.evaluateBatch({ environmentId, subjectKey, flagKeys? })`
 - `client.isEnabled({ environmentId, flagKey, subjectKey })`
-- `client.getVariant({ environmentId, flagKey, subjectKey })`
 
 ## Operational Expectations
 

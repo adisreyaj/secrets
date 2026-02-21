@@ -14,15 +14,11 @@ describe('flags runtime performance', () => {
         },
         config: {
           enabled: true,
-          valueType: 'MULTIVARIATE',
+          valueType: 'JSON',
           booleanValue: null,
+          jsonValue: { bucket: 'B' },
           runtime: 'BOTH',
-          defaultVariantKey: 'treatment',
         },
-        variants: [
-          { key: 'control', value: 'A' },
-          { key: 'treatment', value: 'B' },
-        ],
         runtime: index % 2 === 0 ? 'server' : 'client',
       });
       samples.push(performance.now() - startedAt);

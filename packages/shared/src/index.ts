@@ -431,15 +431,8 @@ export interface UpdateProjectModuleRequest {
   enabled: boolean;
 }
 
-export type FlagValueType = 'BOOLEAN' | 'MULTIVARIATE';
+export type FlagValueType = 'BOOLEAN' | 'JSON';
 export type FeatureFlagRuntime = 'both' | 'client' | 'server';
-export type FeatureFlagVariantValueType = 'string' | 'json';
-
-export interface FeatureFlagVariantDto {
-  key: string;
-  valueType: FeatureFlagVariantValueType;
-  value: string;
-}
 
 export interface FeatureFlagDto {
   id: string;
@@ -455,10 +448,7 @@ export interface FeatureFlagDto {
   runtime: FeatureFlagRuntime;
   labels: string[];
   booleanValue?: boolean | null;
-  multivariate?: {
-    defaultVariantKey: string;
-    variants: FeatureFlagVariantDto[];
-  } | null;
+  jsonValue?: unknown;
   createdAt: string;
   updatedAt: string;
 }
@@ -472,10 +462,7 @@ export interface FeatureFlagEnvironmentSnapshotDto {
   labels: string[];
   valueType: FlagValueType;
   booleanValue?: boolean | null;
-  multivariate?: {
-    defaultVariantKey: string;
-    variants: FeatureFlagVariantDto[];
-  } | null;
+  jsonValue?: unknown;
 }
 
 export interface FeatureFlagEnvironmentDiffDto {

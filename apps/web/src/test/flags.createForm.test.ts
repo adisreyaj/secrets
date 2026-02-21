@@ -28,7 +28,7 @@ describe('flags create form', () => {
       description: null,
     })
     expect('environmentOverrides' in payload).toBe(false)
-    expect('multivariate' in payload).toBe(false)
+    expect(payload.jsonValue).toBeUndefined()
   })
 
   it('applies advanced defaults when create uses only minimum inputs', () => {
@@ -50,6 +50,21 @@ describe('flags create form', () => {
     })
   })
 
+  it('builds a JSON payload with parsed jsonValue', () => {
+    const payload = toCreateFlagMutationPayload({
+      ...emptyCreateFlagFormState,
+      environmentId: 'env-1',
+      key: 'json-flag',
+      name: 'JSON flag',
+      valueType: 'JSON',
+      jsonValue: '{"bucket":"B"}',
+    })
+
+    expect(payload.valueType).toBe('JSON')
+    expect(payload.jsonValue).toEqual({ bucket: 'B' })
+    expect(payload.booleanValue).toBeUndefined()
+  })
+
   it('validates required key and name', () => {
     const missingKey = validateCreateFlagForm({
       ...emptyCreateFlagFormState,
@@ -64,5 +79,18 @@ describe('flags create form', () => {
 
     expect(missingKey).toBe('Key and name are required')
     expect(missingName).toBe('Key and name are required')
+  })
+
+  it('validates json payload shape for JSON flags', () => {
+    const invalid = validateCreateFlagForm({
+      ...emptyCreateFlagFormState,
+      environmentId: 'env-1',
+      key: 'json-flag',
+      name: 'JSON flag',
+      valueType: 'JSON',
+      jsonValue: '{bad}',
+    })
+
+    expect(invalid).toBe('JSON value must be valid JSON')
   })
 })

@@ -21,21 +21,14 @@ export const createFlagsClient = (apiFetch: ApiFetchFn) => ({
       key: string
       name: string
       description?: string | null
-      valueType: 'BOOLEAN' | 'MULTIVARIATE'
+      valueType: 'BOOLEAN' | 'JSON'
       exposed?: boolean
       /** @deprecated use `exposed` */
       enabled: boolean
       runtime: 'both' | 'client' | 'server'
       labels: string[]
       booleanValue?: boolean | null
-      multivariate?: {
-        defaultVariantKey: string
-        variants: {
-          key: string
-          valueType: 'string' | 'json'
-          value: string
-        }[]
-      } | null
+      jsonValue?: unknown
       environmentOverrides?: Array<{
         environmentId: string
         exposed?: boolean
@@ -43,14 +36,7 @@ export const createFlagsClient = (apiFetch: ApiFetchFn) => ({
         runtime?: 'both' | 'client' | 'server'
         labels?: string[]
         booleanValue?: boolean | null
-        multivariate?: {
-          defaultVariantKey: string
-          variants: {
-            key: string
-            valueType: 'string' | 'json'
-            value: string
-          }[]
-        } | null
+        jsonValue?: unknown
       }>
     },
   ) =>
@@ -77,21 +63,14 @@ export const createFlagsClient = (apiFetch: ApiFetchFn) => ({
       key?: string
       name?: string
       description?: string | null
-      valueType?: 'BOOLEAN' | 'MULTIVARIATE'
+      valueType?: 'BOOLEAN' | 'JSON'
       exposed?: boolean
       /** @deprecated use `exposed` */
       enabled?: boolean
       runtime?: 'both' | 'client' | 'server'
       labels?: string[]
       booleanValue?: boolean | null
-      multivariate?: {
-        defaultVariantKey: string
-        variants: {
-          key: string
-          valueType: 'string' | 'json'
-          value: string
-        }[]
-      } | null
+      jsonValue?: unknown
     },
   ) =>
     apiFetch<FeatureFlagDto>(`/flags/${flagId}`, {

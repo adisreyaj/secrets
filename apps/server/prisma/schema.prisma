@@ -44,18 +44,13 @@ enum ProjectModuleKey {
 
 enum FeatureFlagValueType {
   BOOLEAN
-  MULTIVARIATE
+  JSON
 }
 
 enum FeatureFlagRuntime {
   BOTH
   CLIENT
   SERVER
-}
-
-enum FeatureFlagVariantValueType {
-  STRING
-  JSON
 }
 
 enum AuthIdentityProvider {
@@ -255,7 +250,6 @@ model Environment {
   approvalRequests                ApprovalRequest[]
   serviceAccountEnvironments      ServiceAccountEnvironment[]
   serviceAccountTokenEnvironments ServiceAccountTokenEnvironment[]
-  featureFlagOverrides            FeatureFlagEnvironmentOverride[]
   featureFlagEnvironmentConfigs   FeatureFlagEnvironmentConfig[]
 
   @@unique([projectId, name])
@@ -275,10 +269,7 @@ model FeatureFlag {
   updatedAt   DateTime             @updatedAt @map("updated_at")
   deletedAt   DateTime?            @map("deleted_at")
 
-  project            Project                          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  variants           FeatureFlagVariant[]
-  rules              FeatureFlagRule[]
-  envOverrides       FeatureFlagEnvironmentOverride[]
+  project            Project                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   environmentConfigs FeatureFlagEnvironmentConfig[]
   changeHistory      FeatureFlagChangeHistory[]
 
@@ -295,36 +286,18 @@ model FeatureFlagEnvironmentConfig {
   enabled           Boolean              @default(true)
   valueType         FeatureFlagValueType @map("value_type")
   booleanValue      Boolean?             @map("boolean_value")
+  jsonValue         Json?                @map("json_value")
   runtime           FeatureFlagRuntime   @default(BOTH)
   labelsJson        Json?                @map("labels_json")
-  defaultVariantKey String?              @map("default_variant_key")
   createdAt         DateTime             @default(now()) @map("created_at")
   updatedAt         DateTime             @updatedAt @map("updated_at")
 
-  flag        FeatureFlag                     @relation(fields: [flagId], references: [id], onDelete: Cascade)
-  environment Environment                     @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  variants    FeatureFlagEnvironmentVariant[]
+  flag        FeatureFlag @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  environment Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
 
   @@unique([flagId, environmentId], map: "ff_env_cfg_flag_env_uk")
   @@index([environmentId], map: "ff_env_cfg_env_idx")
   @@map("feature_flag_environment_configs")
-}
-
-model FeatureFlagEnvironmentVariant {
-  id                  String                      @id @default(cuid())
-  environmentConfigId String                      @map("environment_config_id")
-  key                 String
-  valueType           FeatureFlagVariantValueType @map("value_type")
-  value               String
-  orderIndex          Int                         @default(0) @map("order_index")
-  createdAt           DateTime                    @default(now()) @map("created_at")
-  updatedAt           DateTime                    @updatedAt @map("updated_at")
-
-  environmentConfig FeatureFlagEnvironmentConfig @relation(fields: [environmentConfigId], references: [id], onDelete: Cascade)
-
-  @@unique([environmentConfigId, key], map: "ff_env_var_cfg_key_uk")
-  @@index([environmentConfigId, orderIndex], map: "ff_env_var_cfg_order_idx")
-  @@map("feature_flag_environment_variants")
 }
 
 model FeatureFlagSdkKey {
@@ -367,59 +340,6 @@ model FeatureFlagChangeHistory {
   @@index([flagId])
   @@index([actorUserId])
   @@map("feature_flag_change_history")
-}
-
-model FeatureFlagVariant {
-  id        String   @id @default(cuid())
-  flagId    String   @map("flag_id")
-  key       String
-  value     String
-  weight    Int
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  flag      FeatureFlag                      @relation(fields: [flagId], references: [id], onDelete: Cascade)
-  rules     FeatureFlagRule[]
-  overrides FeatureFlagEnvironmentOverride[]
-
-  @@unique([flagId, key])
-  @@map("feature_flag_variants")
-}
-
-model FeatureFlagRule {
-  id                String   @id @default(cuid())
-  flagId            String   @map("flag_id")
-  priority          Int
-  rolloutPercentage Int      @default(100) @map("rollout_percentage")
-  variantId         String?  @map("variant_id")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-
-  flag    FeatureFlag         @relation(fields: [flagId], references: [id], onDelete: Cascade)
-  variant FeatureFlagVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-
-  @@index([flagId, priority])
-  @@index([variantId])
-  @@map("feature_flag_rules")
-}
-
-model FeatureFlagEnvironmentOverride {
-  id            String   @id @default(cuid())
-  flagId        String   @map("flag_id")
-  environmentId String   @map("environment_id")
-  enabled       Boolean?
-  variantId     String?  @map("variant_id")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  flag        FeatureFlag         @relation(fields: [flagId], references: [id], onDelete: Cascade)
-  environment Environment         @relation(fields: [environmentId], references: [id], onDelete: Cascade)
-  variant     FeatureFlagVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-
-  @@unique([flagId, environmentId])
-  @@index([environmentId])
-  @@index([variantId])
-  @@map("feature_flag_env_overrides")
 }
 
 model AuthProjectConfig {

@@ -111,7 +111,7 @@ export const FlagsMatrixPage = ({
                               ? cell.snapshot.booleanValue
                                 ? 'Enabled'
                                 : 'Disabled'
-                              : `Default: ${cell.snapshot.multivariate?.defaultVariantKey ?? 'n/a'}`}
+                              : 'JSON configured'}
                           </p>
                         </div>
                       ) : (

@@ -33,25 +33,20 @@ export type FlagEvaluationReason =
   | 'flag_not_configured'
   | 'runtime_not_allowed'
   | 'boolean_value'
-  | 'multivariate_default'
-  | 'multivariate_missing_default'
+  | 'json_value'
   | 'override_disabled'
-  | 'override_variant'
   | 'override_enabled'
   | 'flag_disabled'
   | 'rule_disabled'
   | 'rule_enabled'
-  | 'weighted_variant'
   | 'default_boolean'
-  | 'default_multivariate_disabled'
 
 export interface FeatureFlagRuntimeEvaluation {
   flagKey: string
   projectId: string
   environmentId: string
   enabled: boolean
-  variantKey?: string
-  variantValue?: string
+  jsonValue?: unknown
   reason: FlagEvaluationReason
 }
 
@@ -84,11 +79,6 @@ export interface FeatureFlagRuntimeClient {
     flagKey: string
     subjectKey: string
   }) => Promise<boolean>
-  getVariant: (input: {
-    environmentId: string
-    flagKey: string
-    subjectKey: string
-  }) => Promise<{ key?: string; value?: string; enabled: boolean }>
 }
 
 async function apiFetch<T>(
@@ -345,20 +335,10 @@ export function createFeatureFlagRuntimeClient(
     return evaluation.enabled
   }
 
-  const getVariant: FeatureFlagRuntimeClient['getVariant'] = async (input) => {
-    const evaluation = await evaluate(input)
-    return {
-      enabled: evaluation.enabled,
-      key: evaluation.variantKey,
-      value: evaluation.variantValue,
-    }
-  }
-
   return {
     evaluate,
     evaluateBatch,
     isEnabled,
-    getVariant,
   }
 }
 
