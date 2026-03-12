@@ -4,16 +4,16 @@ import type {
   ProjectDto,
 } from '@secrets/shared'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
-import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Checkbox } from '../components/ui/checkbox'
 import { Input } from '../components/ui/input'
+import { JsonCodeEditor } from '../components/ui/json-code-editor'
 import {
   Select,
   SelectContent,
@@ -67,7 +67,17 @@ type FlagsPageProps = {
   navigate: (path: string) => void
 }
 
-export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps) => {
+const runtimeOptions = [
+  { value: 'both', label: 'Both client and server' },
+  { value: 'client', label: 'Client-side only' },
+  { value: 'server', label: 'Server-side only' },
+] as const
+
+export const FlagsPage = ({
+  projectId,
+  environmentId,
+  navigate,
+}: FlagsPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
 
@@ -82,7 +92,9 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
+  const { data: projectsData, error: projectsErrorRaw } = useQuery<
+    ProjectDto[]
+  >({
     queryKey: queryKeys.projects(),
     queryFn: () => api.listProjects(),
     enabled: Boolean(user),
@@ -109,15 +121,27 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
   )
 
   useEffect(() => {
-    if (!projectId || environmentsLoading || environments.length === 0 || selectedEnvironment) {
+    if (
+      !projectId ||
+      environmentsLoading ||
+      environments.length === 0 ||
+      selectedEnvironment
+    ) {
       return
     }
     const lastEnvironmentId = getLastEnvironmentId(projectId)
     const fallbackEnvironment =
-      environments.find((env) => env.id === lastEnvironmentId) ?? environments[0]
+      environments.find((env) => env.id === lastEnvironmentId) ??
+      environments[0]
     if (!fallbackEnvironment) return
     navigate(flagsPath(projectId, undefined, fallbackEnvironment.id))
-  }, [projectId, environments, environmentsLoading, selectedEnvironment, navigate])
+  }, [
+    projectId,
+    environments,
+    environmentsLoading,
+    selectedEnvironment,
+    navigate,
+  ])
 
   const activeEnvironmentId = selectedEnvironment?.id ?? null
 
@@ -128,18 +152,24 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
   } = useQuery<FeatureFlagDto[]>({
     queryKey: queryKeys.flags(projectId, activeEnvironmentId),
     queryFn: () => api.listFlags(projectId, activeEnvironmentId),
-    enabled: Boolean(user) && Boolean(projectId) && Boolean(activeEnvironmentId),
+    enabled:
+      Boolean(user) && Boolean(projectId) && Boolean(activeEnvironmentId),
   })
 
   const projects = asArray(projectsData)
   const flags = asArray(flagsData)
-  const moduleState = useMemo(() => getProjectModuleState(modulesData), [modulesData])
+  const moduleState = useMemo(
+    () => getProjectModuleState(modulesData),
+    [modulesData],
+  )
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
     [projects, projectId],
   )
 
-  useRegisterShortcut('b', () => navigate(flagEnvironmentsPath(projectId, selectedProject?.slug)))
+  useRegisterShortcut('b', () =>
+    navigate(flagEnvironmentsPath(projectId, selectedProject?.slug)),
+  )
   useRegisterShortcut('n', () => setSheetOpen(true))
 
   const handleCreateEnvironment = async (payload: {
@@ -182,7 +212,6 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
     setEditForm({
       environmentId: activeEnvironmentId ?? '',
       key: flag.key,
-      name: flag.name,
       description: flag.description ?? '',
       valueType: flag.valueType,
       exposed: flag.exposed,
@@ -208,32 +237,40 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
     }
 
     setSaving(true)
-    const payload = editingFlagId
-      ? toEditFlagMutationPayload(editForm)
-      : toCreateFlagMutationPayload(createForm)
+    try {
+      const payload = editingFlagId
+        ? toEditFlagMutationPayload(editForm)
+        : toCreateFlagMutationPayload(createForm)
 
-    await runMutationWithToast(
-      async () => {
-        if (editingFlagId) {
-          await api.updateFlag(editingFlagId, payload)
-        } else {
-          await api.createFlag(projectId, payload)
-        }
-        await invalidateQueryKeys(
-          queryClient,
-          queryKeys.flags(projectId, activeEnvironmentId),
-        )
-      },
-      {
-        successMessage: editingFlagId
-          ? 'Flag updated.'
-          : 'Flag created. Switch environments to customize values.',
-      },
-    )
+      const result = await runMutationWithToast(
+        async () => {
+          if (editingFlagId) {
+            await api.updateFlag(editingFlagId, payload)
+          } else {
+            await api.createFlag(projectId, payload)
+          }
+          await invalidateQueryKeys(
+            queryClient,
+            queryKeys.flags(projectId, activeEnvironmentId),
+          )
+          return true
+        },
+        {
+          successMessage: editingFlagId
+            ? 'Flag updated.'
+            : 'Flag created. Switch environments to customize values.',
+        },
+      )
 
-    setSaving(false)
-    setSheetOpen(false)
-    resetForm()
+      if (!result) {
+        return
+      }
+
+      setSheetOpen(false)
+      resetForm()
+    } finally {
+      setSaving(false)
+    }
   }
 
   const deleteFlag = async (flagId: string) => {
@@ -250,9 +287,13 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
     )
   }
 
-  const projectsError = projectsErrorRaw ? getErrorMessage(projectsErrorRaw) : null
+  const projectsError = projectsErrorRaw
+    ? getErrorMessage(projectsErrorRaw)
+    : null
   const flagsError = flagsErrorRaw ? getErrorMessage(flagsErrorRaw) : null
-  const environmentsError = environmentsErrorRaw ? getErrorMessage(environmentsErrorRaw) : null
+  const environmentsError = environmentsErrorRaw
+    ? getErrorMessage(environmentsErrorRaw)
+    : null
 
   if (!moduleState.flags) {
     return (
@@ -261,7 +302,12 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
           title="Feature flags"
           subtitle="This module is disabled for this project."
           actions={
-            <Button variant="outline" onClick={() => navigate(flagEnvironmentsPath(projectId, selectedProject?.slug))}>
+            <Button
+              variant="outline"
+              onClick={() =>
+                navigate(flagEnvironmentsPath(projectId, selectedProject?.slug))
+              }
+            >
               <ArrowLeft className="h-4 w-4" />
               Back to environments
             </Button>
@@ -279,7 +325,9 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
           subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
         />
         <SectionCard>
-          <p className="text-muted-foreground text-sm">Loading environments...</p>
+          <p className="text-muted-foreground text-sm">
+            Loading environments...
+          </p>
         </SectionCard>
       </section>
     )
@@ -292,7 +340,12 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
           title="Feature flags"
           subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
           actions={
-            <Button variant="outline" onClick={() => navigate(flagEnvironmentsPath(projectId, selectedProject?.slug))}>
+            <Button
+              variant="outline"
+              onClick={() =>
+                navigate(flagEnvironmentsPath(projectId, selectedProject?.slug))
+              }
+            >
               Create environment
             </Button>
           }
@@ -409,34 +462,21 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                       onClick={() => openEdit(flag)}
                       className="flex-1 text-left"
                     >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-foreground text-sm font-semibold">
-                          {flag.name}
-                        </p>
-                        <Badge variant="outline">{flag.valueType}</Badge>
-                        <Badge variant="secondary">{flag.runtime}</Badge>
-                      </div>
-                      <p className="text-muted-foreground text-xs">
+                      <p className="text-foreground text-sm font-semibold">
                         {flag.key}
                       </p>
                       <p className="text-muted-foreground mt-1 text-xs">
-                        {flag.exposed ? 'Exposed' : 'Hidden'} ·{' '}
+                        Value:{' '}
                         {flag.valueType === 'BOOLEAN'
                           ? flag.booleanValue
-                            ? 'Enabled'
-                            : 'Disabled'
-                          : 'JSON configured'}{' '}
-                        · Updated {formatDate(flag.updatedAt)}
+                            ? 'true'
+                            : 'false'
+                          : JSON.stringify(flag.jsonValue ?? null)}
                       </p>
-                      {flag.labels.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {flag.labels.map((label) => (
-                            <Badge key={label} variant="secondary">
-                              {label}
-                            </Badge>
-                          ))}
-                        </div>
-                      ) : null}
+                      <p className="text-muted-foreground mt-1 text-xs">
+                        {flag.exposed ? 'Exposed' : 'Hidden'} · Updated{' '}
+                        {formatDate(flag.updatedAt)}
+                      </p>
                     </button>
                     <div className="flex items-center gap-2">
                       <Button
@@ -484,7 +524,11 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
               <>
                 <section className="space-y-3">
                   <p className="muted-label">Basics</p>
+                  <label className="muted-label" htmlFor="edit-flag-key">
+                    Flag key
+                  </label>
                   <Input
+                    id="edit-flag-key"
                     value={editForm.key}
                     onChange={(event) =>
                       setEditForm((current) => ({
@@ -492,20 +536,17 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                         key: event.target.value,
                       }))
                     }
-                    placeholder="Flag key"
+                    placeholder="e.g. checkout_new_flow"
                     disabled
                   />
-                  <Input
-                    value={editForm.name}
-                    onChange={(event) =>
-                      setEditForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="Flag name"
-                  />
+                  <label
+                    className="muted-label"
+                    htmlFor="edit-flag-description"
+                  >
+                    Description
+                  </label>
                   <Textarea
+                    id="edit-flag-description"
                     value={editForm.description}
                     onChange={(event) =>
                       setEditForm((current) => ({
@@ -513,7 +554,7 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                         description: event.target.value,
                       }))
                     }
-                    placeholder="Description"
+                    placeholder="e.g. Enables the redesigned checkout experience."
                   />
                 </section>
 
@@ -542,26 +583,27 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
 
                 <section className="space-y-3">
                   <p className="muted-label">Type and value</p>
+                  <label className="muted-label" htmlFor="edit-flag-value-type">
+                    Value type
+                  </label>
                   <Select
                     value={editForm.valueType}
-                    onValueChange={(value) =>
-                      setEditForm((current) => ({
-                        ...current,
-                        valueType: value as 'BOOLEAN' | 'JSON',
-                      }))
-                    }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="edit-flag-value-type" disabled>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="BOOLEAN">BOOLEAN</SelectItem>
-                      <SelectItem value="JSON">JSON</SelectItem>
+                      <SelectItem value="BOOLEAN">Boolean</SelectItem>
+                      <SelectItem value="JSON">Json</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-muted-foreground text-xs">
+                    Value type is fixed after creation.
+                  </p>
 
                   {editForm.valueType === 'BOOLEAN' ? (
                     <div className="space-y-2">
+                      <p className="muted-label">Boolean value</p>
                       <Switch
                         checked={editForm.booleanValue}
                         onCheckedChange={(checked) =>
@@ -577,13 +619,20 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <Textarea
+                      <label
+                        className="muted-label"
+                        htmlFor="edit-flag-json-value"
+                      >
+                        JSON value
+                      </label>
+                      <JsonCodeEditor
+                        id="edit-flag-json-value"
                         className="min-h-40 font-mono text-xs"
                         value={editForm.jsonValue}
-                        onChange={(event) =>
+                        onChange={(value) =>
                           setEditForm((current) => ({
                             ...current,
-                            jsonValue: event.target.value,
+                            jsonValue: value,
                           }))
                         }
                         placeholder='{"enabled":true}'
@@ -597,39 +646,38 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
 
                 <section className="space-y-3">
                   <p className="muted-label">Evaluation runtime</p>
-                  <div className="grid gap-2 md:grid-cols-3">
-                    {[
-                      { value: 'both', label: 'Both client and server' },
-                      { value: 'client', label: 'Client-side only' },
-                      { value: 'server', label: 'Server-side only' },
-                    ].map((runtimeOption) => (
-                      <Button
-                        key={runtimeOption.value}
-                        type="button"
-                        variant={
-                          editForm.runtime === runtimeOption.value
-                            ? 'default'
-                            : 'outline'
-                        }
-                        onClick={() =>
-                          setEditForm((current) => ({
-                            ...current,
-                            runtime: runtimeOption.value as
-                              | 'both'
-                              | 'client'
-                              | 'server',
-                          }))
-                        }
-                      >
-                        {runtimeOption.label}
-                      </Button>
-                    ))}
-                  </div>
+                  <Select
+                    value={editForm.runtime}
+                    onValueChange={(value) =>
+                      setEditForm((current) => ({
+                        ...current,
+                        runtime: value as 'both' | 'client' | 'server',
+                      }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {runtimeOptions.map((runtimeOption) => (
+                        <SelectItem
+                          key={runtimeOption.value}
+                          value={runtimeOption.value}
+                        >
+                          {runtimeOption.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </section>
 
                 <section className="space-y-3">
                   <p className="muted-label">Labels</p>
+                  <label className="muted-label" htmlFor="edit-flag-labels">
+                    Labels
+                  </label>
                   <Input
+                    id="edit-flag-labels"
                     value={editForm.labels}
                     onChange={(event) =>
                       setEditForm((current) => ({
@@ -646,9 +694,12 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
               </>
             ) : (
               <>
-                <section className="space-y-3">
-                  <p className="muted-label">Quick create</p>
+                <section className="space-y-4">
+                  <label className="muted-label" htmlFor="create-flag-key">
+                    Flag key
+                  </label>
                   <Input
+                    id="create-flag-key"
                     value={createForm.key}
                     onChange={(event) =>
                       setCreateForm((current) => ({
@@ -656,18 +707,14 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                         key: event.target.value,
                       }))
                     }
-                    placeholder="Flag key"
+                    placeholder="e.g. checkout_new_flow"
                   />
-                  <Input
-                    value={createForm.name}
-                    onChange={(event) =>
-                      setCreateForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="Flag name"
-                  />
+                  <label
+                    className="muted-label"
+                    htmlFor="create-flag-value-type"
+                  >
+                    Value type
+                  </label>
                   <Select
                     value={createForm.valueType}
                     onValueChange={(value) =>
@@ -677,16 +724,17 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                       }))
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="create-flag-value-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="BOOLEAN">BOOLEAN</SelectItem>
-                      <SelectItem value="JSON">JSON</SelectItem>
+                      <SelectItem value="BOOLEAN">Boolean</SelectItem>
+                      <SelectItem value="JSON">Json</SelectItem>
                     </SelectContent>
                   </Select>
                   {createForm.valueType === 'BOOLEAN' ? (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
+                      <p className="muted-label">Boolean value</p>
                       <Switch
                         checked={createForm.booleanValue}
                         onCheckedChange={(checked) =>
@@ -701,14 +749,21 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <Textarea
+                    <div className="space-y-3">
+                      <label
+                        className="muted-label"
+                        htmlFor="create-flag-json-value"
+                      >
+                        JSON value
+                      </label>
+                      <JsonCodeEditor
+                        id="create-flag-json-value"
                         className="min-h-40 font-mono text-xs"
                         value={createForm.jsonValue}
-                        onChange={(event) =>
+                        onChange={(value) =>
                           setCreateForm((current) => ({
                             ...current,
-                            jsonValue: event.target.value,
+                            jsonValue: value,
                           }))
                         }
                         placeholder='{"enabled":true}'
@@ -720,96 +775,111 @@ export const FlagsPage = ({ projectId, environmentId, navigate }: FlagsPageProps
                   )}
                 </section>
 
-                <details
-                  className="space-y-3 rounded-lg border p-4"
-                  open={advancedOpen}
-                  onToggle={(event) =>
-                    setAdvancedOpen((event.target as HTMLDetailsElement).open)
-                  }
-                >
-                  <summary className="cursor-pointer text-sm font-medium">
-                    Advanced
-                  </summary>
-
-                  <section className="space-y-3">
-                    <p className="muted-label">Description</p>
-                    <Textarea
-                      value={createForm.description}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({
-                          ...current,
-                          description: event.target.value,
-                        }))
-                      }
-                      placeholder="Description"
+                <section className="border-border/70 space-y-3 border-t pt-4">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between text-left text-sm font-medium"
+                    onClick={() => setAdvancedOpen((current) => !current)}
+                    aria-expanded={advancedOpen}
+                  >
+                    <span>Advanced</span>
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${
+                        advancedOpen ? 'rotate-0' : '-rotate-90'
+                      }`}
                     />
-                  </section>
+                  </button>
 
-                  <section className="space-y-3">
-                    <p className="muted-label">Visibility</p>
-                    <label className="flex items-center gap-2">
-                      <Checkbox
-                        checked={createForm.exposed}
-                        onCheckedChange={(checked) =>
-                          setCreateForm((current) => ({
-                            ...current,
-                            exposed: checked === true,
-                          }))
-                        }
-                      />
-                      <span className="text-sm">Visible to consumers</span>
-                    </label>
-                  </section>
-
-                  <section className="space-y-3">
-                    <p className="muted-label">Evaluation runtime</p>
-                    <div className="grid gap-2 md:grid-cols-3">
-                      {[
-                        { value: 'both', label: 'Both client and server' },
-                        { value: 'client', label: 'Client-side only' },
-                        { value: 'server', label: 'Server-side only' },
-                      ].map((runtimeOption) => (
-                        <Button
-                          key={runtimeOption.value}
-                          type="button"
-                          variant={
-                            createForm.runtime === runtimeOption.value
-                              ? 'default'
-                              : 'outline'
-                          }
-                          onClick={() =>
+                  {advancedOpen ? (
+                    <div className="space-y-6 pt-1">
+                      <section className="space-y-4">
+                        <label
+                          className="muted-label"
+                          htmlFor="create-flag-description"
+                        >
+                          Description
+                        </label>
+                        <Textarea
+                          id="create-flag-description"
+                          value={createForm.description}
+                          onChange={(event) =>
                             setCreateForm((current) => ({
                               ...current,
-                              runtime: runtimeOption.value as
-                                | 'both'
-                                | 'client'
-                                | 'server',
+                              description: event.target.value,
+                            }))
+                          }
+                          placeholder="e.g. Enables the redesigned checkout experience."
+                        />
+                      </section>
+
+                      <section className="space-y-4">
+                        <p className="muted-label">Visibility</p>
+                        <label className="flex items-center gap-2">
+                          <Checkbox
+                            checked={createForm.exposed}
+                            onCheckedChange={(checked) =>
+                              setCreateForm((current) => ({
+                                ...current,
+                                exposed: checked === true,
+                              }))
+                            }
+                          />
+                          <span className="text-sm">Visible to consumers</span>
+                        </label>
+                      </section>
+
+                      <section className="space-y-4">
+                        <p className="muted-label">Evaluation runtime</p>
+                        <Select
+                          value={createForm.runtime}
+                          onValueChange={(value) =>
+                            setCreateForm((current) => ({
+                              ...current,
+                              runtime: value as 'both' | 'client' | 'server',
                             }))
                           }
                         >
-                          {runtimeOption.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </section>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {runtimeOptions.map((runtimeOption) => (
+                              <SelectItem
+                                key={runtimeOption.value}
+                                value={runtimeOption.value}
+                              >
+                                {runtimeOption.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </section>
 
-                  <section className="space-y-3">
-                    <p className="muted-label">Labels</p>
-                    <Input
-                      value={createForm.labels}
-                      onChange={(event) =>
-                        setCreateForm((current) => ({
-                          ...current,
-                          labels: event.target.value,
-                        }))
-                      }
-                      placeholder="payments, beta, checkout"
-                    />
-                    <p className="text-muted-foreground text-xs">
-                      Comma-separated labels.
-                    </p>
-                  </section>
-                </details>
+                      <section className="space-y-4">
+                        <label
+                          className="muted-label"
+                          htmlFor="create-flag-labels"
+                        >
+                          Labels
+                        </label>
+                        <Input
+                          id="create-flag-labels"
+                          value={createForm.labels}
+                          onChange={(event) =>
+                            setCreateForm((current) => ({
+                              ...current,
+                              labels: event.target.value,
+                            }))
+                          }
+                          placeholder="payments, beta, checkout"
+                        />
+                        <p className="text-muted-foreground text-xs">
+                          Comma-separated labels.
+                        </p>
+                      </section>
+                    </div>
+                  ) : null}
+                </section>
               </>
             )}
           </div>

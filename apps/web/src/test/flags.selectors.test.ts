@@ -7,7 +7,6 @@ const baseFlag: FeatureFlagDto = {
   projectId: 'p1',
   environmentId: 'env-dev',
   key: 'checkout-redesign',
-  name: 'Checkout redesign',
   valueType: 'BOOLEAN',
   exposed: true,
   enabled: true,

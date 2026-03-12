@@ -11,14 +11,12 @@ describe('flags create form', () => {
       ...emptyCreateFlagFormState,
       environmentId: 'env-1',
       key: 'checkout-redesign',
-      name: 'Checkout redesign',
       booleanValue: false,
     })
 
     expect(payload).toMatchObject({
       environmentId: 'env-1',
       key: 'checkout-redesign',
-      name: 'Checkout redesign',
       valueType: 'BOOLEAN',
       exposed: true,
       enabled: true,
@@ -36,7 +34,6 @@ describe('flags create form', () => {
       ...emptyCreateFlagFormState,
       environmentId: 'env-1',
       key: 'new-flag',
-      name: 'New flag',
     })
 
     expect(payload).toMatchObject({
@@ -55,7 +52,6 @@ describe('flags create form', () => {
       ...emptyCreateFlagFormState,
       environmentId: 'env-1',
       key: 'json-flag',
-      name: 'JSON flag',
       valueType: 'JSON',
       jsonValue: '{"bucket":"B"}',
     })
@@ -65,20 +61,13 @@ describe('flags create form', () => {
     expect(payload.booleanValue).toBeUndefined()
   })
 
-  it('validates required key and name', () => {
+  it('validates required key', () => {
     const missingKey = validateCreateFlagForm({
       ...emptyCreateFlagFormState,
       environmentId: 'env-1',
-      name: 'Name only',
-    })
-    const missingName = validateCreateFlagForm({
-      ...emptyCreateFlagFormState,
-      environmentId: 'env-1',
-      key: 'key-only',
     })
 
-    expect(missingKey).toBe('Key and name are required')
-    expect(missingName).toBe('Key and name are required')
+    expect(missingKey).toBe('Key is required')
   })
 
   it('validates json payload shape for JSON flags', () => {
@@ -86,7 +75,6 @@ describe('flags create form', () => {
       ...emptyCreateFlagFormState,
       environmentId: 'env-1',
       key: 'json-flag',
-      name: 'JSON flag',
       valueType: 'JSON',
       jsonValue: '{bad}',
     })

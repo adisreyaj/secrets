@@ -550,4 +550,67 @@ describe('feature flags integration flow', () => {
 
     await app.close()
   })
+
+  it('rejects changing valueType when editing an existing flag', async () => {
+    const app = await buildApp()
+    const authHeaders = { authorization: 'Bearer mgmt-token' }
+
+    const booleanFlagResponse = await app.inject({
+      method: 'POST',
+      url: '/projects/project_1/flags',
+      headers: authHeaders,
+      payload: {
+        environmentId: 'env_1',
+        key: 'flag-boolean-edit',
+        name: 'Boolean edit',
+        valueType: 'BOOLEAN',
+        enabled: true,
+        booleanValue: true,
+      },
+    })
+    expect(booleanFlagResponse.statusCode).toBe(201)
+    const booleanFlag = booleanFlagResponse.json() as { id: string }
+
+    const booleanToJson = await app.inject({
+      method: 'PATCH',
+      url: `/flags/${booleanFlag.id}`,
+      headers: authHeaders,
+      payload: {
+        environmentId: 'env_1',
+        valueType: 'JSON',
+        jsonValue: { enabled: true },
+      },
+    })
+    expect(booleanToJson.statusCode).toBe(400)
+
+    const jsonFlagResponse = await app.inject({
+      method: 'POST',
+      url: '/projects/project_1/flags',
+      headers: authHeaders,
+      payload: {
+        environmentId: 'env_1',
+        key: 'flag-json-edit',
+        name: 'JSON edit',
+        valueType: 'JSON',
+        enabled: true,
+        jsonValue: { bucket: 'A' },
+      },
+    })
+    expect(jsonFlagResponse.statusCode).toBe(201)
+    const jsonFlag = jsonFlagResponse.json() as { id: string }
+
+    const jsonToBoolean = await app.inject({
+      method: 'PATCH',
+      url: `/flags/${jsonFlag.id}`,
+      headers: authHeaders,
+      payload: {
+        environmentId: 'env_1',
+        valueType: 'BOOLEAN',
+        booleanValue: false,
+      },
+    })
+    expect(jsonToBoolean.statusCode).toBe(400)
+
+    await app.close()
+  })
 })

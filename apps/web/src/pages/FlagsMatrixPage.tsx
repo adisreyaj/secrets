@@ -94,10 +94,7 @@ export const FlagsMatrixPage = ({
               {matrix.map((row) => (
                 <TableRow key={row.flagId}>
                   <TableCell>
-                    <div className="space-y-1">
-                      <p className="text-sm font-semibold">{row.flagName}</p>
-                      <p className="text-muted-foreground text-xs">{row.flagKey}</p>
-                    </div>
+                    <p className="text-sm font-semibold">{row.flagKey}</p>
                   </TableCell>
                   {row.environments.map((cell) => (
                     <TableCell key={`${row.flagId}-${cell.environmentId}`}>

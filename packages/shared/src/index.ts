@@ -439,7 +439,6 @@ export interface FeatureFlagDto {
   projectId: string;
   environmentId: string;
   key: string;
-  name: string;
   description?: string | null;
   valueType: FlagValueType;
   exposed: boolean;
@@ -489,7 +488,6 @@ export interface FeatureFlagEnvironmentCellDto {
 export interface FeatureFlagMatrixRowDto {
   flagId: string;
   flagKey: string;
-  flagName: string;
   valueType: FlagValueType;
   createdAt: string;
   updatedAt: string;

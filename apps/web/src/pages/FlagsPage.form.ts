@@ -1,7 +1,6 @@
 export type CreateFlagFormState = {
   environmentId: string
   key: string
-  name: string
   description: string
   valueType: 'BOOLEAN' | 'JSON'
   exposed: boolean
@@ -16,7 +15,6 @@ export type EditFlagFormState = CreateFlagFormState
 export const emptyCreateFlagFormState: CreateFlagFormState = {
   environmentId: '',
   key: '',
-  name: '',
   description: '',
   valueType: 'BOOLEAN',
   exposed: true,
@@ -42,8 +40,8 @@ export const validateCreateFlagForm = (form: CreateFlagFormState): string | null
   if (!form.environmentId.trim()) {
     return 'Environment context is required'
   }
-  if (!form.key.trim() || !form.name.trim()) {
-    return 'Key and name are required'
+  if (!form.key.trim()) {
+    return 'Key is required'
   }
   if (form.valueType === 'JSON') {
     if (!form.jsonValue.trim()) {
@@ -66,7 +64,6 @@ export const toCreateFlagMutationPayload = (
 ) => ({
   environmentId: form.environmentId,
   key: form.key.trim(),
-  name: form.name.trim(),
   description: form.description.trim() || null,
   valueType: form.valueType,
   exposed: form.exposed,
@@ -82,7 +79,6 @@ export const toEditFlagMutationPayload = (
 ) => ({
   environmentId: form.environmentId,
   key: form.key.trim(),
-  name: form.name.trim(),
   description: form.description.trim() || null,
   valueType: form.valueType,
   exposed: form.exposed,

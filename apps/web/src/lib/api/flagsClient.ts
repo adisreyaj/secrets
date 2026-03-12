@@ -19,7 +19,6 @@ export const createFlagsClient = (apiFetch: ApiFetchFn) => ({
     payload: {
       environmentId: string
       key: string
-      name: string
       description?: string | null
       valueType: 'BOOLEAN' | 'JSON'
       exposed?: boolean
@@ -61,7 +60,6 @@ export const createFlagsClient = (apiFetch: ApiFetchFn) => ({
     payload: {
       environmentId: string
       key?: string
-      name?: string
       description?: string | null
       valueType?: 'BOOLEAN' | 'JSON'
       exposed?: boolean

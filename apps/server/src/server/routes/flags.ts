@@ -261,7 +261,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return {
         flagId: flag.id,
         flagKey: flag.key,
-        flagName: flag.name,
         valueType: flag.valueType,
         createdAt: flag.createdAt.toISOString(),
         updatedAt: latestUpdatedAt.toISOString(),
@@ -315,10 +314,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       | undefined;
 
     const key = body?.key?.trim();
-    const name = body?.name?.trim();
 
-    if (!key || !name) {
-      sendError(reply, 400, 'key and name are required');
+    if (!key) {
+      sendError(reply, 400, 'key is required');
       return;
     }
     if (typeof body?.multivariate !== 'undefined') {
@@ -382,7 +380,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         data: {
           projectId,
           key,
-          name,
+          name: key,
           description: body?.description?.trim() ?? null,
           valueType: body.valueType,
           enabled: exposed,
@@ -526,7 +524,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         flagId: flag.id,
         projectId: flag.projectId,
         key: flag.key,
-        name: flag.name,
         description: flag.description,
         createdAt: flag.createdAt.toISOString(),
         updatedAt: flag.updatedAt.toISOString(),
@@ -616,7 +613,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    const resolvedValueType = body?.valueType ?? existingConfig?.valueType ?? current.valueType;
+    const persistedValueType = existingConfig?.valueType ?? current.valueType;
+    if (
+      typeof body?.valueType !== 'undefined' &&
+      body.valueType !== persistedValueType
+    ) {
+      sendError(reply, 400, 'valueType cannot be changed for an existing flag');
+      return;
+    }
+
+    const resolvedValueType = body?.valueType ?? persistedValueType;
     if (!isFeatureFlagValueType(resolvedValueType)) {
       sendError(reply, 400, 'valueType must be BOOLEAN or JSON');
       return;
@@ -654,7 +660,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       where: { id: current.id },
       data: {
         key: nextKey ?? undefined,
-        name: body?.name?.trim() ?? undefined,
+        name: nextKey ?? undefined,
         description: Object.prototype.hasOwnProperty.call(body ?? {}, 'description')
           ? body?.description?.trim() ?? null
           : undefined,

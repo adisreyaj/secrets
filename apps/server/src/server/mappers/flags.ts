@@ -25,7 +25,6 @@ export function toFeatureFlagDto(
     projectId: flag.projectId,
     environmentId: environmentConfig.environmentId,
     key: flag.key,
-    name: flag.name,
     description: flag.description,
     valueType: environmentConfig.valueType as 'BOOLEAN' | 'JSON',
     exposed: environmentConfig.enabled,

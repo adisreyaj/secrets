@@ -230,6 +230,8 @@ model ProjectInvite {
   creator User    @relation("ProjectInviteCreator", fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([projectId, createdAt], map: "project_invites_project_created_idx")
+  @@index([projectId, email, status, expiresAt], map: "project_invites_lookup_idx")
   @@index([email])
   @@index([tokenHash])
   @@index([status])
@@ -254,6 +256,7 @@ model Environment {
 
   @@unique([projectId, name])
   @@unique([projectId, slug])
+  @@index([projectId, createdAt], map: "environments_project_created_idx")
   @@map("environments")
 }
 
@@ -274,8 +277,7 @@ model FeatureFlag {
   changeHistory      FeatureFlagChangeHistory[]
 
   @@unique([projectId, key])
-  @@index([projectId, enabled])
-  @@index([projectId, deletedAt])
+  @@index([projectId, deletedAt, createdAt], map: "ff_project_deleted_created_idx")
   @@map("feature_flags")
 }
 
@@ -316,6 +318,7 @@ model FeatureFlagSdkKey {
   creator User    @relation("FeatureFlagSdkKeyCreator", fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([projectId, createdAt], map: "ff_sdk_keys_project_created_idx")
   @@index([tokenHash])
   @@index([revokedAt])
   @@map("feature_flag_sdk_keys")
@@ -458,7 +461,8 @@ model AuthSigningKey {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, kid])
-  @@index([projectId, active])
+  @@index([projectId, active, retiredAt], map: "auth_signing_keys_active_idx")
+  @@index([projectId, retiredAt, createdAt], map: "auth_signing_keys_jwks_idx")
   @@map("auth_signing_keys")
 }
 
@@ -567,6 +571,7 @@ model SecretVersion {
   creator User?  @relation("SecretVersionCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([secretId, isActive])
+  @@index([secretId, createdAt], map: "secret_versions_secret_created_idx")
   @@map("secret_versions")
 }
 
@@ -585,6 +590,7 @@ model ApiToken {
   creator User    @relation("ApiTokenCreator", fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([projectId, createdAt], map: "api_tokens_project_created_idx")
   @@index([tokenHash])
   @@index([expiresAt])
   @@map("api_tokens")
@@ -684,7 +690,6 @@ model AuditLog {
   actor          User?           @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   serviceAccount ServiceAccount? @relation(fields: [actorServiceAccountId], references: [id], onDelete: SetNull)
 
-  @@index([projectId])
   @@index([actorUserId])
   @@index([projectId, createdAt])
   @@index([resourceType, resourceId])
@@ -711,6 +716,7 @@ model ApprovalRule {
   @@index([projectId])
   @@index([environmentId])
   @@index([isActive])
+  @@index([projectId, isActive, environmentId], map: "approval_rules_project_active_env_idx")
   @@map("approval_rules")
 }
 
@@ -744,6 +750,8 @@ model ApprovalRequest {
   approver    User?       @relation("ApprovalRequestApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
 
   @@index([projectId, status])
+  @@index([projectId, status, createdAt], map: "approval_requests_project_status_created_idx")
+  @@index([projectId, environmentId, action, status, key], map: "approval_requests_pending_lookup_idx")
   @@index([status, createdAt])
   @@index([environmentId, status])
   @@index([requestedBy, status])

@@ -11,7 +11,6 @@ describe('flags edit form', () => {
       ...emptyEditFlagFormState,
       environmentId: 'env-1',
       key: 'experiment-checkout',
-      name: 'Experiment checkout',
       valueType: 'JSON',
       jsonValue: '{"bucket":"B"}',
     })
@@ -26,7 +25,6 @@ describe('flags edit form', () => {
       ...emptyEditFlagFormState,
       environmentId: 'env-1',
       key: 'exp',
-      name: 'Experiment',
       valueType: 'JSON',
       jsonValue: '{invalid}',
     })
