@@ -12,7 +12,11 @@ import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { Calendar } from '../components/ui/calendar'
 import { Input } from '../components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -50,13 +54,13 @@ export const AuditPage = ({ projectId, navigate }: AuditPageProps) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
 
-  const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>(
-    {
-      queryKey: queryKeys.projects(),
-      queryFn: () => api.listProjects(),
-      enabled: Boolean(user),
-    },
-  )
+  const { data: projectsData, error: projectsErrorRaw } = useQuery<
+    ProjectDto[]
+  >({
+    queryKey: queryKeys.projects(),
+    queryFn: () => api.listProjects(),
+    enabled: Boolean(user),
+  })
   const projects = asArray(projectsData)
 
   const [filterError, setFilterError] = useState<string | null>(null)
@@ -261,7 +265,7 @@ export const AuditPage = ({ projectId, navigate }: AuditPageProps) => {
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className="border-input placeholder:text-muted-foreground focus-visible:ring-ring bg-background text-foreground flex h-11 w-full items-center justify-between gap-2 rounded-md border px-4 text-sm shadow-sm transition-colors focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    className="border-input placeholder:text-muted-foreground focus-visible:ring-ring bg-background text-foreground flex h-11 w-full items-center justify-between gap-2 rounded-md border px-4 text-sm transition-colors focus-visible:ring-1 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {filters.dateRange?.from ? (
                       filters.dateRange.to ? (
