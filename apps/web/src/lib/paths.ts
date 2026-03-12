@@ -21,9 +21,7 @@ export const environmentPath = (
   projectId: string,
   _projectSlug: string | null | undefined,
   environmentId: string,
-  _environmentSlug?: string | null,
-) =>
-  `${environmentsPath(projectId)}/${pickSegment(environmentId)}`
+) => `${environmentsPath(projectId)}/${pickSegment(environmentId)}`
 
 export const flagsPath = (
   projectId: string,
@@ -47,7 +45,12 @@ export const flagEnvironmentPath = (
   projectId: string,
   projectSlug: string | null | undefined,
   environmentId: string,
-) => projectPath(projectId, projectSlug, `flags/environments/${pickSegment(environmentId)}`)
+) =>
+  projectPath(
+    projectId,
+    projectSlug,
+    `flags/environments/${pickSegment(environmentId)}`,
+  )
 
 export const flagsMatrixPath = (
   projectId: string,
@@ -63,7 +66,12 @@ export const authEnvironmentPath = (
   projectId: string,
   projectSlug: string | null | undefined,
   environmentId: string,
-) => projectPath(projectId, projectSlug, `auth/environments/${pickSegment(environmentId)}`)
+) =>
+  projectPath(
+    projectId,
+    projectSlug,
+    `auth/environments/${pickSegment(environmentId)}`,
+  )
 
 export const flagSdkKeysPath = (
   projectId: string,
