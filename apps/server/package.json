@@ -11,8 +11,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "test": "vitest run",
-    "lint": "eslint . --ext .ts",
-    "format": "prettier --write ."
+    "lint": "oxlint",
+    "format": "oxfmt . --write"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
@@ -28,11 +28,8 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
-    "eslint": "^9.0.0",
-    "eslint-config-prettier": "^9.0.0",
-    "prettier": "^3.0.0",
+    "oxc": "^0.0.0",
+    "oxlint": "^0.0.0",
     "prisma": "^7.3.0",
     "supertest": "^7.2.2",
     "typescript": "^5.9.3",

@@ -10,6 +10,7 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "pnpm --filter server --filter web --parallel dev",
     "dev:server": "pnpm -C apps/server dev",
     "dev:web": "pnpm -C apps/web dev",
     "build:server": "pnpm -C apps/server build",
@@ -37,6 +38,8 @@
     "yalc:push:all": "pnpm yalc:push:sdk && pnpm yalc:push:cli"
   },
   "devDependencies": {
+    "oxc": "^0.0.0",
+    "oxlint": "^0.0.0",
     "yalc": "1.0.0-pre.53"
   }
 }

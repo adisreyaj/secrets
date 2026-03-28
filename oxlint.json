@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "warn",
+    "pedantic": "allow",
+    "style": "warn",
+    "restriction": "allow",
+    "nursery": "allow"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "prefer-const": "warn",
+    "no-console": "allow",
+    "react-hooks/exhaustive-deps": "warn",
+    "react-refresh/only-export-components": "warn",
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": [
+      "warn",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ]
+  },
+  "plugins": [],
+  "env": {
+    "es2022": true,
+    "browser": true,
+    "node": true
+  },
+  "settings": {},
+  "globals": {}
+}
