@@ -6,27 +6,15 @@ import {
   LayoutDashboard,
   Layers,
   ShieldCheck,
-  Users,
-  type LucideIcon,
 } from 'lucide-react'
 import { Button } from './ui/button'
 import { formatDate } from '../lib/format'
 import { projectPath } from '../lib/paths'
 
 const navItems: {
-  key:
-    | 'overview'
-    | 'environments'
-    | 'secrets'
-    | 'audit'
-    | 'approvals'
-    | 'approval-rules'
-    | 'auth'
-    | 'tokens'
-    | 'service-accounts'
-    | 'team'
+  key: 'overview' | 'environments' | 'secrets' | 'audit' | 'tokens'
   label: string
-  icon: LucideIcon
+  icon: typeof LayoutDashboard
   path: (id: string, slug?: string | null) => string
 }[] = [
   {
@@ -57,46 +45,11 @@ const navItems: {
       projectPath(id, slug, 'audit'),
   },
   {
-    key: 'approvals',
-    label: 'Approvals',
-    icon: ShieldCheck,
-    path: (id: string, slug?: string | null) =>
-      projectPath(id, slug, 'approvals'),
-  },
-  {
-    key: 'approval-rules',
-    label: 'Approval rules',
-    icon: ShieldCheck,
-    path: (id: string, slug?: string | null) =>
-      projectPath(id, slug, 'approval-rules'),
-  },
-  {
-    key: 'auth',
-    label: 'Auth',
-    icon: ShieldCheck,
-    path: (id: string, slug?: string | null) =>
-      projectPath(id, slug, 'auth'),
-  },
-  {
-    key: 'team',
-    label: 'Team',
-    icon: Users,
-    path: (id: string, slug?: string | null) =>
-      projectPath(id, slug, 'team'),
-  },
-  {
     key: 'tokens',
     label: 'API tokens',
     icon: KeyRound,
     path: (id: string, slug?: string | null) =>
       projectPath(id, slug, 'tokens'),
-  },
-  {
-    key: 'service-accounts',
-    label: 'Service accounts',
-    icon: KeyRound,
-    path: (id: string, slug?: string | null) =>
-      projectPath(id, slug, 'service-accounts'),
   },
 ]
 
@@ -112,17 +65,7 @@ export const Sidebar = ({
   environmentCount: number
   secretCount: number
   projectId: string
-  active:
-    | 'overview'
-    | 'environments'
-    | 'audit'
-    | 'approvals'
-    | 'approval-rules'
-    | 'auth'
-    | 'tokens'
-    | 'service-accounts'
-    | 'secrets'
-    | 'team'
+  active: 'overview' | 'environments' | 'audit' | 'tokens' | 'secrets'
   onNavigate: (path: string) => void
 }) => (
   <aside className="border-border/60 bg-card/70 shadow-soft space-y-4 rounded-3xl border p-6">

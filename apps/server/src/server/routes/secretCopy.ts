@@ -1,4 +1,4 @@
-import { ApprovalAction, Role } from '@prisma/client';
+import { Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { decryptSecret, encryptSecret, loadMasterKey, masterKeyVersion } from '../../crypto.js';
 import { prisma } from '../../db.js';
@@ -6,14 +6,8 @@ import {
   requireAuth,
   requireEnvironmentScope,
   requireProjectRole,
-  requireUserForApproval,
 } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
-import {
-  createApprovalRequest,
-  findMatchingApprovalRules,
-  findPendingApprovalRequest,
-} from '../services/approvals.js';
 import { logAudit } from '../services/audit.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -84,63 +78,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     if (targetEnvs.some((env) => env.projectId !== secret.environment.projectId)) {
       sendError(reply, 400, 'Targets must belong to the same project');
-      return;
-    }
-
-    const approvalRequestIds: string[] = [];
-    for (const targetEnv of targetEnvs) {
-      const rules = await findMatchingApprovalRules({
-        projectId: secret.environment.projectId,
-        environmentId: targetEnv.id,
-        action: ApprovalAction.COPY,
-        key: secret.key,
-      });
-      if (rules.length === 0) {
-        continue;
-      }
-      if (!requireUserForApproval(request, reply)) {
-        return;
-      }
-      const existing = await findPendingApprovalRequest({
-        projectId: secret.environment.projectId,
-        environmentId: targetEnv.id,
-        action: ApprovalAction.COPY,
-        key: secret.key,
-        secretId: secretId,
-        targetEnvironmentId: targetEnv.id,
-      });
-      if (existing) {
-        approvalRequestIds.push(existing.id);
-        continue;
-      }
-      const approval = await createApprovalRequest({
-        projectId: secret.environment.projectId,
-        environmentId: targetEnv.id,
-        action: ApprovalAction.COPY,
-        key: secret.key,
-        requestedBy: auth.user!.id,
-        secretId: secretId,
-        targetEnvironmentId: targetEnv.id,
-        expectedVersionId: activeVersion.id,
-      });
-      approvalRequestIds.push(approval.id);
-      await logAudit({
-        projectId: secret.environment.projectId,
-        actorUserId: auth.user?.id,
-        actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'approval.requested',
-        resourceType: 'approval_request',
-        resourceId: approval.id,
-        metadataJson: {
-          action: 'COPY',
-          key: secret.key,
-          secretId,
-          targetEnvironmentId: targetEnv.id,
-        },
-      });
-    }
-    if (approvalRequestIds.length > 0) {
-      reply.code(202).send({ status: 'pending', approvalRequestIds });
       return;
     }
 
@@ -304,64 +241,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const approvalRequestIds: string[] = [];
     for (const sourceSecret of sourceSecrets) {
-      const rules = await findMatchingApprovalRules({
-        projectId: targetEnv.projectId,
-        environmentId: targetEnv.id,
-        action: ApprovalAction.COPY_FROM,
-        key: sourceSecret.key,
-      });
-      if (rules.length === 0) {
-        continue;
-      }
-      if (!requireUserForApproval(request, reply)) {
-        return;
-      }
       const version = sourceSecret.versions[0];
-      const existing = await findPendingApprovalRequest({
-        projectId: targetEnv.projectId,
-        environmentId: targetEnv.id,
-        action: ApprovalAction.COPY_FROM,
-        key: sourceSecret.key,
-        secretId: sourceSecret.id,
-        targetEnvironmentId: targetEnv.id,
-      });
-      if (existing) {
-        approvalRequestIds.push(existing.id);
-        continue;
-      }
-      const approval = await createApprovalRequest({
-        projectId: targetEnv.projectId,
-        environmentId: targetEnv.id,
-        action: ApprovalAction.COPY_FROM,
-        key: sourceSecret.key,
-        requestedBy: auth.user!.id,
-        secretId: sourceSecret.id,
-        targetEnvironmentId: targetEnv.id,
-        expectedVersionId: version?.id,
-        metadataJson: { sourceEnvironmentId: sourceEnv.id, overwrite },
-      });
-      approvalRequestIds.push(approval.id);
-      await logAudit({
-        projectId: targetEnv.projectId,
-        actorUserId: auth.user?.id,
-        actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'approval.requested',
-        resourceType: 'approval_request',
-        resourceId: approval.id,
-        metadataJson: {
-          action: 'COPY_FROM',
-          key: sourceSecret.key,
-          secretId: sourceSecret.id,
-          targetEnvironmentId: targetEnv.id,
-          sourceEnvironmentId: sourceEnv.id,
-        },
-      });
-    }
-    if (approvalRequestIds.length > 0) {
-      reply.code(202).send({ status: 'pending', approvalRequestIds });
-      return;
     }
 
     const created: string[] = [];

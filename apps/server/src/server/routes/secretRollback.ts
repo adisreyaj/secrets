@@ -1,13 +1,8 @@
-import { ApprovalAction, Role } from '@prisma/client';
+import { Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../db.js';
-import { requireAuth, requireProjectRole, requireUserForApproval } from '../auth/guards.js';
+import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
-import {
-  createApprovalRequest,
-  findMatchingApprovalRules,
-  findPendingApprovalRequest,
-} from '../services/approvals.js';
 import { logAudit } from '../services/audit.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -60,50 +55,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     if (!target) {
       sendError(reply, 404, 'Version not found');
-      return;
-    }
-
-    const matchingRules = await findMatchingApprovalRules({
-      projectId: secret.environment.projectId,
-      environmentId: secret.environmentId,
-      action: ApprovalAction.ROLLBACK,
-      key: secret.key,
-    });
-    if (matchingRules.length > 0) {
-      if (!requireUserForApproval(request, reply)) {
-        return;
-      }
-      const existing = await findPendingApprovalRequest({
-        projectId: secret.environment.projectId,
-        environmentId: secret.environmentId,
-        action: ApprovalAction.ROLLBACK,
-        key: secret.key,
-        secretId: secretId,
-      });
-      if (existing) {
-        reply.code(202).send({ status: 'pending', approvalRequestId: existing.id });
-        return;
-      }
-      const approval = await createApprovalRequest({
-        projectId: secret.environment.projectId,
-        environmentId: secret.environmentId,
-        action: ApprovalAction.ROLLBACK,
-        key: secret.key,
-        requestedBy: auth.user!.id,
-        secretId: secretId,
-        expectedVersionId: target.id,
-        metadataJson: { versionId: target.id },
-      });
-      await logAudit({
-        projectId: secret.environment.projectId,
-        actorUserId: auth.user?.id,
-        actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'approval.requested',
-        resourceType: 'approval_request',
-        resourceId: approval.id,
-        metadataJson: { action: 'ROLLBACK', key: secret.key, secretId, versionId: target.id },
-      });
-      reply.code(202).send({ status: 'pending', approvalRequestId: approval.id });
       return;
     }
 

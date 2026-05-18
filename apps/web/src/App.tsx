@@ -13,15 +13,7 @@ import { Header } from './components/Header'
 import { ShortcutsHelpDialog } from './components/ShortcutsHelpDialog'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useAuth } from './lib/auth'
-import {
-  authEnvironmentsPath,
-  environmentPath,
-  environmentsPath,
-  flagEnvironmentPath,
-  flagEnvironmentsPath,
-  flagSdkKeysPath,
-  projectPath,
-} from './lib/paths'
+import { environmentPath, environmentsPath, projectPath } from './lib/paths'
 import {
   getEnvironmentId,
   getProjectId,
@@ -39,14 +31,6 @@ import {
   setLastEnvironmentId,
   setLastProjectId,
 } from './lib/shortcuts.utils'
-const ApprovalRulesPage = lazy(() =>
-  import('./pages/ApprovalRulesPage').then((m) => ({
-    default: m.ApprovalRulesPage,
-  })),
-)
-const ApprovalsPage = lazy(() =>
-  import('./pages/ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })),
-)
 const AuditPage = lazy(() =>
   import('./pages/AuditPage').then((m) => ({ default: m.AuditPage })),
 )
@@ -58,39 +42,10 @@ const EnvironmentPage = lazy(() =>
     default: m.EnvironmentPage,
   })),
 )
-const FlagSdkKeysPage = lazy(() =>
-  import('./pages/FlagSdkKeysPage').then((m) => ({
-    default: m.FlagSdkKeysPage,
-  })),
-)
-const FlagEnvironmentsPage = lazy(() =>
-  import('./pages/FlagEnvironmentsPage').then((m) => ({
-    default: m.FlagEnvironmentsPage,
-  })),
-)
-const AuthSettingsPage = lazy(() =>
-  import('./pages/AuthSettingsPage').then((m) => ({
-    default: m.AuthSettingsPage,
-  })),
-)
-const AuthEnvironmentsPage = lazy(() =>
-  import('./pages/AuthEnvironmentsPage').then((m) => ({
-    default: m.AuthEnvironmentsPage,
-  })),
-)
 const EnvironmentsPage = lazy(() =>
   import('./pages/EnvironmentsPage').then((m) => ({
     default: m.EnvironmentsPage,
   })),
-)
-const FlagsPage = lazy(() =>
-  import('./pages/FlagsPage').then((m) => ({ default: m.FlagsPage })),
-)
-const FlagsMatrixPage = lazy(() =>
-  import('./pages/FlagsMatrixPage').then((m) => ({ default: m.FlagsMatrixPage })),
-)
-const InvitePage = lazy(() =>
-  import('./pages/InvitePage').then((m) => ({ default: m.InvitePage })),
 )
 const LoginPage = lazy(() =>
   import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })),
@@ -98,21 +53,8 @@ const LoginPage = lazy(() =>
 const ProfilePage = lazy(() =>
   import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })),
 )
-const ProjectOverviewPage = lazy(() =>
-  import('./pages/ProjectOverviewPage').then((m) => ({
-    default: m.ProjectOverviewPage,
-  })),
-)
 const ProjectsPage = lazy(() =>
   import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })),
-)
-const ServiceAccountsPage = lazy(() =>
-  import('./pages/ServiceAccountsPage').then((m) => ({
-    default: m.ServiceAccountsPage,
-  })),
-)
-const TeamPage = lazy(() =>
-  import('./pages/TeamPage').then((m) => ({ default: m.TeamPage })),
 )
 const TokensPage = lazy(() =>
   import('./pages/TokensPage').then((m) => ({ default: m.TokensPage })),
@@ -129,12 +71,6 @@ const CliLoginRoute = () => {
   return <CliLoginPage code={searchParams.get('code')} navigate={navigate} />
 }
 
-const InviteRoute = () => {
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  return <InvitePage token={searchParams.get('token')} navigate={navigate} />
-}
-
 const ProfileRoute = () => {
   const navigate = useNavigate()
   return <ProfilePage navigate={navigate} />
@@ -146,10 +82,9 @@ const ProjectsRoute = () => {
 }
 
 const ProjectOverviewRoute = () => {
-  const navigate = useNavigate()
   const params = useParams()
   if (!params.projectId) return <Navigate to="/projects" replace />
-  return <ProjectOverviewPage projectId={params.projectId} navigate={navigate} />
+  return <Navigate to={projectPath(params.projectId, undefined, 'environments')} replace />
 }
 
 const EnvironmentsRoute = () => {
@@ -181,140 +116,11 @@ const AuditRoute = () => {
   return <AuditPage projectId={params.projectId} navigate={navigate} />
 }
 
-const ApprovalsRoute = () => {
-  const navigate = useNavigate()
-  const params = useParams()
-  if (!params.projectId) return <Navigate to="/projects" replace />
-  return <ApprovalsPage projectId={params.projectId} navigate={navigate} />
-}
-
-const ApprovalRulesRoute = () => {
-  const navigate = useNavigate()
-  const params = useParams()
-  if (!params.projectId) return <Navigate to="/projects" replace />
-  return <ApprovalRulesPage projectId={params.projectId} navigate={navigate} />
-}
-
-const FlagEnvironmentsRoute = () => {
-  const navigate = useNavigate()
-  const params = useParams()
-  if (!params.projectId) return <Navigate to="/projects" replace />
-  return <FlagEnvironmentsPage projectId={params.projectId} navigate={navigate} />
-}
-
-const FlagEnvironmentRoute = () => {
-  const navigate = useNavigate()
-  const params = useParams()
-  if (!params.projectId || !params.environmentId) {
-    return <Navigate to="/projects" replace />
-  }
-  return (
-    <FlagsPage
-      projectId={params.projectId}
-      environmentId={params.environmentId}
-      navigate={navigate}
-    />
-  )
-}
-
-const FlagsMatrixRoute = () => {
-  const navigate = useNavigate()
-  const params = useParams()
-  if (!params.projectId) return <Navigate to="/projects" replace />
-  return <FlagsMatrixPage projectId={params.projectId} navigate={navigate} />
-}
-
-const FlagsLegacyRoute = () => {
-  const params = useParams()
-  const projectId = params.projectId
-  if (!projectId) return <Navigate to="/projects" replace />
-  const environmentId = getLastEnvironmentId(projectId)
-  return (
-    <Navigate
-      to={
-        environmentId
-          ? flagEnvironmentPath(projectId, undefined, environmentId)
-          : flagEnvironmentsPath(projectId)
-      }
-      replace
-    />
-  )
-}
-
-const FlagsLegacyEnvironmentRoute = () => {
-  const params = useParams()
-  if (!params.projectId || !params.environmentId) {
-    return <Navigate to="/projects" replace />
-  }
-  return (
-    <Navigate
-      to={flagEnvironmentPath(params.projectId, undefined, params.environmentId)}
-      replace
-    />
-  )
-}
-
-const FlagSdkKeysRoute = () => {
-  const navigate = useNavigate()
-  const params = useParams()
-  if (!params.projectId) return <Navigate to="/projects" replace />
-  return (
-    <FlagSdkKeysPage
-      projectId={params.projectId}
-      environmentId={params.environmentId ?? null}
-      navigate={navigate}
-    />
-  )
-}
-
-const AuthSettingsRoute = () => {
-  const navigate = useNavigate()
-  const params = useParams()
-  if (!params.projectId || !params.environmentId) {
-    return <Navigate to="/projects" replace />
-  }
-  return (
-    <AuthSettingsPage
-      projectId={params.projectId}
-      environmentId={params.environmentId}
-      navigate={navigate}
-    />
-  )
-}
-
-const AuthEnvironmentsRoute = () => {
-  const navigate = useNavigate()
-  const params = useParams()
-  if (!params.projectId) return <Navigate to="/projects" replace />
-  return <AuthEnvironmentsPage projectId={params.projectId} navigate={navigate} />
-}
-
-const AuthLegacyRoute = () => {
-  const params = useParams()
-  const projectId = params.projectId
-  if (!projectId) return <Navigate to="/projects" replace />
-  return <Navigate to={authEnvironmentsPath(projectId)} replace />
-}
-
 const TokensRoute = () => {
   const navigate = useNavigate()
   const params = useParams()
   if (!params.projectId) return <Navigate to="/projects" replace />
   return <TokensPage projectId={params.projectId} navigate={navigate} />
-}
-
-const ServiceAccountsRoute = () => {
-  const navigate = useNavigate()
-  const params = useParams()
-  if (!params.projectId) return <Navigate to="/projects" replace />
-  return <ServiceAccountsPage projectId={params.projectId} navigate={navigate} />
-}
-
-const TeamRoute = () => {
-  const navigate = useNavigate()
-  const params = useParams()
-  if (!params.projectId) return <Navigate to="/projects" replace />
-  return <TeamPage projectId={params.projectId} navigate={navigate} />
 }
 
 const AppShell = () => {
@@ -332,14 +138,8 @@ const AppShell = () => {
   )
 
   const shortcutsEnabled =
-    !!user &&
-    match.name !== 'login' &&
-    match.name !== 'cli-login' &&
-    match.name !== 'invite'
-  const isPublicRoute =
-    match.name === 'login' ||
-    match.name === 'cli-login' ||
-    match.name === 'invite'
+    !!user && match.name !== 'login' && match.name !== 'cli-login'
+  const isPublicRoute = match.name === 'login' || match.name === 'cli-login'
   const shouldWaitForAuth = authLoading && !isPublicRoute
   const shouldBlockProtectedRoute = !isPublicRoute && !user
   const isProjectScoped = isProjectScopedRoute(match)
@@ -405,19 +205,6 @@ const AppShell = () => {
   )
 
   useRegisterShortcut(
-    'g s',
-    () => {
-      const projectId = resolveProjectId()
-      navigate(
-        projectId
-          ? projectPath(projectId, undefined, 'service-accounts')
-          : '/projects',
-      )
-    },
-    { enabled: shortcutsEnabled },
-  )
-
-  useRegisterShortcut(
     'g c',
     () => {
       const projectId = resolveProjectId()
@@ -435,50 +222,6 @@ const AppShell = () => {
     { enabled: shortcutsEnabled },
   )
 
-  useRegisterShortcut(
-    'g a',
-    () => {
-      const projectId = resolveProjectId()
-      navigate(
-        projectId ? projectPath(projectId, undefined, 'approvals') : '/projects',
-      )
-    },
-    { enabled: shortcutsEnabled },
-  )
-
-  useRegisterShortcut(
-    'g f',
-    () => {
-      const projectId = resolveProjectId()
-      navigate(
-        projectId ? flagEnvironmentsPath(projectId) : '/projects',
-      )
-    },
-    { enabled: shortcutsEnabled },
-  )
-
-  useRegisterShortcut(
-    'g k',
-    () => {
-      const projectId = resolveProjectId()
-      const environmentId = projectId ? resolveEnvironmentId(projectId) : null
-      navigate(
-        projectId
-          ? flagSdkKeysPath(projectId, undefined, environmentId)
-          : '/projects',
-      )
-    },
-    { enabled: shortcutsEnabled },
-  )
-
-  useRegisterShortcut(
-    'g h',
-    () => {
-      const projectId = resolveProjectId()
-      navigate(projectId ? authEnvironmentsPath(projectId) : '/projects')
-    },
-    { enabled: shortcutsEnabled },
-  )
 
   useRegisterShortcut(
     'g t',
@@ -518,9 +261,7 @@ const AppShell = () => {
       <div className="bg-background text-foreground flex min-h-screen flex-col">
         <div className="relative overflow-hidden">
           <div className="absolute inset-0" aria-hidden="true" />
-          {match.name !== 'login' &&
-          match.name !== 'cli-login' &&
-          match.name !== 'invite' ? (
+          {match.name !== 'login' && match.name !== 'cli-login' ? (
             <Header
               user={user}
               onLogout={logout}
@@ -561,7 +302,6 @@ const AppShell = () => {
                 <Route path="/" element={<Navigate to="/projects" replace />} />
                 <Route path="/login" element={<LoginRoute />} />
                 <Route path="/cli-login" element={<CliLoginRoute />} />
-                <Route path="/invite" element={<InviteRoute />} />
                 <Route path="/profile" element={<ProfileRoute />} />
                 <Route path="/projects" element={<ProjectsRoute />} />
                 <Route
@@ -581,64 +321,8 @@ const AppShell = () => {
                   element={<AuditRoute />}
                 />
                 <Route
-                  path="/projects/:projectId/approvals"
-                  element={<ApprovalsRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/approval-rules"
-                  element={<ApprovalRulesRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/flags"
-                  element={<FlagsLegacyRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/flags/environments"
-                  element={<FlagEnvironmentsRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/flags/environments/:environmentId"
-                  element={<FlagEnvironmentRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/flags/matrix"
-                  element={<FlagsMatrixRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/environments/:environmentId/flags"
-                  element={<FlagsLegacyEnvironmentRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/flag-sdk-keys"
-                  element={<FlagSdkKeysRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/environments/:environmentId/flag-sdk-keys"
-                  element={<FlagSdkKeysRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/auth"
-                  element={<AuthLegacyRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/auth/environments"
-                  element={<AuthEnvironmentsRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/auth/environments/:environmentId"
-                  element={<AuthSettingsRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/team"
-                  element={<TeamRoute />}
-                />
-                <Route
                   path="/projects/:projectId/tokens"
                   element={<TokensRoute />}
-                />
-                <Route
-                  path="/projects/:projectId/service-accounts"
-                  element={<ServiceAccountsRoute />}
                 />
                 <Route path="*" element={<Navigate to="/projects" replace />} />
               </Routes>

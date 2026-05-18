@@ -1,4 +1,4 @@
-import { ApprovalStatus, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../db.js';
 
 type ActorContext = {
@@ -33,17 +33,6 @@ export async function deleteProjectWithGuards(params: {
       ok: false,
       status: 400,
       error: 'Confirmation text must exactly match project name',
-    };
-  }
-
-  const pendingApprovals = await prisma.approvalRequest.count({
-    where: { projectId: params.projectId, status: ApprovalStatus.PENDING },
-  });
-  if (pendingApprovals > 0) {
-    return {
-      ok: false,
-      status: 409,
-      error: 'Cannot delete project with pending approvals',
     };
   }
 
@@ -102,20 +91,6 @@ export async function deleteEnvironmentWithGuards(params: {
       ok: false,
       status: 400,
       error: 'Confirmation text must exactly match environment name',
-    };
-  }
-
-  const pendingApprovals = await prisma.approvalRequest.count({
-    where: {
-      environmentId: params.environmentId,
-      status: ApprovalStatus.PENDING,
-    },
-  });
-  if (pendingApprovals > 0) {
-    return {
-      ok: false,
-      status: 409,
-      error: 'Cannot delete environment with pending approvals',
     };
   }
 

@@ -1,4 +1,4 @@
-import { ApprovalAction, AuthClientType, ProjectModuleKey, Role } from '@prisma/client';
+import { AuthClientType, ProjectModuleKey, Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { generateToken, hashPassword, hashToken, verifyPassword } from '../../auth.js';
 import { config } from '../../config.js';
@@ -18,19 +18,11 @@ import {
   rotateAuthProviderSecret,
   upsertAuthProviderConfig,
 } from '../services/auth/providerConfigs.js';
-import {
-  createApprovalRequest,
-  findPendingApprovalRequest,
-} from '../services/approvals.js';
 
 function globToRegExp(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
   const regex = `^${escaped.replace(/\*/g, '.*').replace(/\?/g, '.')}$`;
   return new RegExp(regex, 'i');
-}
-
-function actionsMatch(actionsJson: unknown, action: ApprovalAction): boolean {
-  return Array.isArray(actionsJson) && actionsJson.includes(action);
 }
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -78,102 +70,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     createdAt: provider.createdAt.toISOString(),
     updatedAt: provider.updatedAt.toISOString(),
   });
-
-  const maybeQueueAuthApproval = async (params: {
-    projectId: string;
-    action: ApprovalAction;
-    key: string;
-    requestedBy: string;
-    metadataJson: Record<string, unknown>;
-    actorServiceAccountId?: string | null;
-    payload?: {
-      ciphertext: Uint8Array<ArrayBuffer>;
-      iv: Uint8Array<ArrayBuffer>;
-      tag: Uint8Array<ArrayBuffer>;
-      keyVersion: string;
-    } | null;
-  }): Promise<string | null> => {
-    const approvalRuleModel = (prisma as unknown as {
-      approvalRule?: {
-        findMany: (args: unknown) => Promise<
-          { id: string; keyPattern: string; actionsJson: unknown }[]
-        >;
-      };
-    }).approvalRule;
-    if (!approvalRuleModel) {
-      return null;
-    }
-
-    const rules = await approvalRuleModel.findMany({
-      where: {
-        projectId: params.projectId,
-        isActive: true,
-        environmentId: null,
-      },
-      select: {
-        id: true,
-        keyPattern: true,
-        actionsJson: true,
-      },
-    });
-    const matchingRules = rules.filter((rule) => {
-      if (!actionsMatch(rule.actionsJson, params.action)) return false;
-      return globToRegExp(rule.keyPattern).test(params.key);
-    });
-    if (matchingRules.length === 0) {
-      return null;
-    }
-
-    const environment = await prisma.environment.findFirst({
-      where: { projectId: params.projectId },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    });
-    if (!environment) {
-      throw new Error(
-        'Auth approvals require at least one environment in the project',
-      );
-    }
-
-    const existing = await findPendingApprovalRequest({
-      projectId: params.projectId,
-      environmentId: environment.id,
-      action: params.action,
-      key: params.key,
-      secretId: null,
-      targetEnvironmentId: null,
-    });
-    if (existing) {
-      return existing.id;
-    }
-
-    const approval = await createApprovalRequest({
-      projectId: params.projectId,
-      environmentId: environment.id,
-      action: params.action,
-      key: params.key,
-      requestedBy: params.requestedBy,
-      payload: params.payload ?? null,
-      metadataJson: {
-        module: 'auth',
-        ...params.metadataJson,
-      },
-    });
-    await logAudit({
-      projectId: params.projectId,
-      actorUserId: params.requestedBy,
-      actorServiceAccountId: params.actorServiceAccountId ?? null,
-      action: 'approval.requested',
-      resourceType: 'approval_request',
-      resourceId: approval.id,
-      metadataJson: {
-        module: 'auth',
-        key: params.key,
-        action: params.action,
-      },
-    });
-    return approval.id;
-  };
 
   app.post(
     '/auth/register',
@@ -580,25 +476,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const configApprovalId = await maybeQueueAuthApproval({
-      projectId,
-      action: ApprovalAction.UPDATE,
-      key: 'auth.config',
-      requestedBy: auth.user.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      metadataJson: {
-        approvalKind: 'config.update',
-        nativeAuthEnabled: body.nativeAuthEnabled,
-        emailPasswordEnabled: body.emailPasswordEnabled,
-        accessTokenTtlMinutes: body.accessTokenTtlMinutes,
-        refreshTokenTtlDays: body.refreshTokenTtlDays,
-      },
-    });
-    if (configApprovalId) {
-      reply.code(202).send({ status: 'pending', approvalRequestId: configApprovalId });
-      return;
-    }
-
     const updated = await updateAuthProjectConfig(projectId, {
       nativeAuthEnabled: body.nativeAuthEnabled,
       emailPasswordEnabled: body.emailPasswordEnabled,
@@ -699,29 +576,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const encryptedSecret = encryptSecret(clientSecret, loadMasterKey());
-    const providerApprovalId = await maybeQueueAuthApproval({
-      projectId,
-      action: ApprovalAction.CREATE,
-      key: `auth.provider.${provider.toLowerCase()}`,
-      requestedBy: auth.user.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      payload: {
-        ...encryptedSecret,
-        keyVersion: masterKeyVersion(),
-      },
-      metadataJson: {
-        approvalKind: 'provider.upsert',
-        provider,
-        enabled: typeof body?.enabled === 'boolean' ? body.enabled : true,
-        clientId,
-        scopes: body?.scopes ?? [],
-      },
-    });
-    if (providerApprovalId) {
-      reply.code(202).send({ status: 'pending', approvalRequestId: providerApprovalId });
-      return;
-    }
-
     const saved = await upsertAuthProviderConfig({
       projectId,
       provider,
@@ -777,25 +631,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const body = request.body as
       | { enabled?: boolean; clientId?: string; scopes?: string[] }
       | undefined;
-    const providerPatchApprovalId = await maybeQueueAuthApproval({
-      projectId: current.projectId,
-      action: ApprovalAction.UPDATE,
-      key: `auth.provider.${current.provider.toLowerCase()}`,
-      requestedBy: auth.user.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      metadataJson: {
-        approvalKind: 'provider.update',
-        providerId: current.id,
-        enabled: body?.enabled,
-        clientId: body?.clientId?.trim(),
-        scopes: body?.scopes,
-      },
-    });
-    if (providerPatchApprovalId) {
-      reply.code(202).send({ status: 'pending', approvalRequestId: providerPatchApprovalId });
-      return;
-    }
-
     const updated = await prisma.authProviderConfig.update({
       where: { id: current.id },
       data: {
@@ -854,26 +689,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const encryptedSecret = encryptSecret(clientSecret, loadMasterKey());
-    const rotateApprovalId = await maybeQueueAuthApproval({
-      projectId: current.projectId,
-      action: ApprovalAction.UPDATE,
-      key: `auth.provider.${current.provider.toLowerCase()}`,
-      requestedBy: auth.user.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      payload: {
-        ...encryptedSecret,
-        keyVersion: masterKeyVersion(),
-      },
-      metadataJson: {
-        approvalKind: 'provider.rotate_secret',
-        providerId: current.id,
-      },
-    });
-    if (rotateApprovalId) {
-      reply.code(202).send({ status: 'pending', approvalRequestId: rotateApprovalId });
-      return;
-    }
-
     const rotated = await rotateAuthProviderSecret({
       projectId: current.projectId,
       provider: current.provider,
@@ -1047,24 +862,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       .map((uri) => uri?.trim())
       .filter((uri): uri is string => Boolean(uri));
 
-    const clientCreateApprovalId = await maybeQueueAuthApproval({
-      projectId,
-      action: ApprovalAction.CREATE,
-      key: `auth.client.${name}`,
-      requestedBy: auth.user.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      metadataJson: {
-        approvalKind: 'client.create',
-        name,
-        type,
-        redirectUris,
-      },
-    });
-    if (clientCreateApprovalId) {
-      reply.code(202).send({ status: 'pending', approvalRequestId: clientCreateApprovalId });
-      return;
-    }
-
     const clientId = `ac_${generateToken().slice(0, 24)}`;
     const rawSecret = type === 'CONFIDENTIAL' ? `acs_${generateToken()}` : null;
     const client = await prisma.authClient.create({
@@ -1134,25 +931,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         }
       | undefined;
 
-    const clientUpdateApprovalId = await maybeQueueAuthApproval({
-      projectId: current.projectId,
-      action: ApprovalAction.UPDATE,
-      key: `auth.client.${current.clientId}`,
-      requestedBy: auth.user.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      metadataJson: {
-        approvalKind: 'client.update',
-        clientId: current.id,
-        name: body?.name?.trim(),
-        redirectUris: body?.redirectUris,
-        rotateSecret: body?.rotateSecret === true,
-      },
-    });
-    if (clientUpdateApprovalId) {
-      reply.code(202).send({ status: 'pending', approvalRequestId: clientUpdateApprovalId });
-      return;
-    }
-
     const redirectUris = Array.isArray(body?.redirectUris)
       ? body.redirectUris
           .map((uri) => uri?.trim())
@@ -1220,22 +998,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
     const role = await requireProjectRole(request, reply, current.projectId, Role.ADMIN);
     if (!role) {
-      return;
-    }
-
-    const clientDeleteApprovalId = await maybeQueueAuthApproval({
-      projectId: current.projectId,
-      action: ApprovalAction.DELETE,
-      key: `auth.client.${current.clientId}`,
-      requestedBy: auth.user.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      metadataJson: {
-        approvalKind: 'client.delete',
-        clientId: current.id,
-      },
-    });
-    if (clientDeleteApprovalId) {
-      reply.code(202).send({ status: 'pending', approvalRequestId: clientDeleteApprovalId });
       return;
     }
 

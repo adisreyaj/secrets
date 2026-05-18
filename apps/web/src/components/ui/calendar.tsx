@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { DayPicker } from 'react-day-picker'
-import { cn } from '../../lib/utils'
-import { buttonVariants } from './button.variants'
+import { cn } from '@/lib/utils'
+import { buttonVariants } from '@/components/ui/button.variants'
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>
 
@@ -19,7 +19,7 @@ function Calendar({
         months: 'flex flex-col gap-4 sm:flex-row',
         month: 'space-y-4',
         caption: 'flex justify-center pt-1 relative items-center',
-        caption_label: 'text-sm ',
+        caption_label: 'text-sm font-medium',
         nav: 'space-x-1 flex items-center',
         nav_button: cn(
           buttonVariants({ variant: 'outline', size: 'icon' }),

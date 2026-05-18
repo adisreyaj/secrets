@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApprovalStatus } from '@prisma/client';
 
 const {
   projectFindUnique,
@@ -9,7 +8,6 @@ const {
   secretCount,
   tokenCount,
   serviceAccountCount,
-  approvalCount,
   auditCreate,
 } = vi.hoisted(() => ({
   projectFindUnique: vi.fn(),
@@ -19,7 +17,6 @@ const {
   secretCount: vi.fn(),
   tokenCount: vi.fn(),
   serviceAccountCount: vi.fn(),
-  approvalCount: vi.fn(),
   auditCreate: vi.fn(),
 }));
 
@@ -41,9 +38,6 @@ vi.mock('../src/db.js', () => ({
     serviceAccount: {
       count: serviceAccountCount,
     },
-    approvalRequest: {
-      count: approvalCount,
-    },
     $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
       callback({
         auditLog: { create: auditCreate },
@@ -64,13 +58,11 @@ describe('deleteProjectWithGuards', () => {
     secretCount.mockReset();
     tokenCount.mockReset();
     serviceAccountCount.mockReset();
-    approvalCount.mockReset();
     auditCreate.mockReset();
   });
 
   it('deletes a project for admin flow with matching confirmation', async () => {
     projectFindUnique.mockResolvedValueOnce({ id: 'project_1', name: 'Alpha' });
-    approvalCount.mockResolvedValueOnce(0);
     environmentCount.mockResolvedValueOnce(2);
     secretCount.mockResolvedValueOnce(5);
     tokenCount.mockResolvedValueOnce(1);
@@ -83,9 +75,6 @@ describe('deleteProjectWithGuards', () => {
     });
 
     expect(result).toEqual({ ok: true });
-    expect(approvalCount).toHaveBeenCalledWith({
-      where: { projectId: 'project_1', status: ApprovalStatus.PENDING },
-    });
     expect(auditCreate).toHaveBeenCalled();
     expect(projectDelete).toHaveBeenCalledWith({ where: { id: 'project_1' } });
   });
@@ -103,24 +92,6 @@ describe('deleteProjectWithGuards', () => {
       ok: false,
       status: 400,
       error: 'Confirmation text must exactly match project name',
-    });
-    expect(projectDelete).not.toHaveBeenCalled();
-  });
-
-  it('returns 409 when pending approvals exist', async () => {
-    projectFindUnique.mockResolvedValueOnce({ id: 'project_1', name: 'Alpha' });
-    approvalCount.mockResolvedValueOnce(2);
-
-    const result = await deleteProjectWithGuards({
-      projectId: 'project_1',
-      confirmText: 'Alpha',
-      actorUserId: 'user_1',
-    });
-
-    expect(result).toEqual({
-      ok: false,
-      status: 409,
-      error: 'Cannot delete project with pending approvals',
     });
     expect(projectDelete).not.toHaveBeenCalled();
   });

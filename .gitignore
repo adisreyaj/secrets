@@ -3,10 +3,12 @@
 **/.env*
 !**/.env.example
 
+# OS/editor noise
+**/.DS_Store
 .vscode
 .cursor/plans
+
+# package artifacts
 *.tgz
-
-
 .yalc
 yalc.lock

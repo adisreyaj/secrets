@@ -93,21 +93,7 @@ export const useEnvironmentData = ({
     ? secretsValuesErrorRaw ?? secretsKeysErrorRaw
     : secretsKeysErrorRaw
 
-  const {
-    data: approvalsData,
-    isLoading: approvalsLoading,
-    error: approvalsErrorRaw,
-  } = useQuery<ApprovalRequestDto[]>({
-    queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
-    queryFn: () =>
-      api.listApprovals(projectId, {
-        status: 'PENDING',
-        environmentId: resolvedEnvironmentId,
-      }),
-    enabled: enabled && Boolean(projectId) && Boolean(resolvedEnvironmentId),
-  })
-
-  const approvals = asArray(approvalsData)
+  const approvals: ApprovalRequestDto[] = []
 
   const {
     data: secretCoverageData,
@@ -135,9 +121,8 @@ export const useEnvironmentData = ({
     : null
   const envError = envErrorRaw ? getErrorMessage(envErrorRaw) : null
   const secretsError = secretsErrorRaw ? getErrorMessage(secretsErrorRaw) : null
-  const approvalsError = approvalsErrorRaw
-    ? getErrorMessage(approvalsErrorRaw)
-    : null
+  const approvalsLoading = false
+  const approvalsError = null
   const coverageError = coverageErrorRaw
     ? getErrorMessage(coverageErrorRaw)
     : null
@@ -260,11 +245,7 @@ export const useEnvironmentData = ({
     })
   }
 
-  const loadApprovals = async () => {
-    await queryClient.invalidateQueries({
-      queryKey: queryKeys.approvals(projectId, 'PENDING', resolvedEnvironmentId),
-    })
-  }
+  const loadApprovals = async () => {}
 
   return {
     projects,

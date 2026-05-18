@@ -4,8 +4,8 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import CodeMirror from '@uiw/react-codemirror'
 import * as React from 'react'
 
-import { useTheme } from '../../lib/theme'
-import { cn } from '../../lib/utils'
+import { useTheme } from '@/lib/theme'
+import { cn } from '@/lib/utils'
 
 type JsonCodeEditorProps = {
   id?: string
