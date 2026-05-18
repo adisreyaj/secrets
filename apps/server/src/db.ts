@@ -14,6 +14,9 @@ const adapter = new PrismaMariaDb({
   user: decodeURIComponent(url.username),
   password: decodeURIComponent(url.password),
   database: url.pathname.replace(/^\//, ''),
+  connectionLimit: 20,
+  idleTimeout: 60_000,
+  acquireTimeout: 15_000,
 });
 
 export const prisma = new PrismaClient({ adapter });

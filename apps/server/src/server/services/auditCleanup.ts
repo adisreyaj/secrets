@@ -13,30 +13,14 @@ export function scheduleAuditRetentionCleanup(
     }
     auditCleanupRunning = true;
     try {
-      const projects = await prisma.project.findMany({
-        where: { auditRetentionDays: { not: null } },
-        select: { id: true, auditRetentionDays: true },
-      });
-
-      const now = new Date();
-      for (const project of projects) {
-        if (project.auditRetentionDays === null) continue;
-        const cutoff = new Date(
-          now.getTime() - project.auditRetentionDays * 24 * 60 * 60 * 1000,
-        );
-        const result = await prisma.auditLog.deleteMany({
-          where: { projectId: project.id, createdAt: { lt: cutoff } },
-        });
-        if (result.count > 0) {
-          app.log.info(
-            {
-              projectId: project.id,
-              deleted: result.count,
-              cutoff: cutoff.toISOString(),
-            },
-            'audit retention cleanup',
-          );
-        }
+      const result = await prisma.$executeRaw`
+        DELETE al FROM audit_logs al
+        INNER JOIN projects p ON al.project_id = p.id
+        WHERE p.audit_retention_days IS NOT NULL
+          AND al.created_at < DATE_SUB(NOW(), INTERVAL p.audit_retention_days DAY)
+      `;
+      if (result > 0) {
+        app.log.info({ deleted: result }, 'audit retention cleanup');
       }
     } catch (error) {
       await logDispatcher.emit({
