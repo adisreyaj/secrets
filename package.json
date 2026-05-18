@@ -38,8 +38,8 @@
     "yalc:push:all": "pnpm yalc:push:sdk && pnpm yalc:push:cli"
   },
   "devDependencies": {
-    "oxc": "^0.0.0",
-    "oxlint": "^0.0.0",
+    "oxc": "^1.0.1",
+    "oxlint": "^0.16.0",
     "yalc": "1.0.0-pre.53"
   }
 }

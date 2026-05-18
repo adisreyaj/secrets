@@ -24,7 +24,6 @@ import {
   requireProjectAuthSession,
   requireProjectModuleEnabled,
   requireProjectRole,
-  requireUserForApproval,
 } from '../src/server/auth/guards.js';
 
 const createReply = () => {
@@ -57,16 +56,6 @@ describe('auth guards', () => {
       { auth: { viaToken: true, scopeEnvironmentIds: ['env_1'] } } as any,
       reply,
       'env_2',
-    );
-    expect(allowed).toBe(false);
-    expect(reply.code).toHaveBeenCalledWith(403);
-  });
-
-  it('requireUserForApproval denies service-account-only auth', () => {
-    const reply = createReply();
-    const allowed = requireUserForApproval(
-      { auth: { viaToken: true, serviceAccountId: 'sa_1' } } as any,
-      reply,
     );
     expect(allowed).toBe(false);
     expect(reply.code).toHaveBeenCalledWith(403);

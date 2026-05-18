@@ -25,37 +25,21 @@ describe('router helpers', () => {
     expect(getEnvironmentId(match)).toBe('e1')
   })
 
-  it('resolves environment id for canonical flags route', () => {
-    const match = getRouteMatch(
-      '/projects/p1/flags/environments/e1',
-      '',
-    )
-    expect(match).toEqual({ name: 'flag-environment', projectId: 'p1', environmentId: 'e1' })
-    expect(getEnvironmentId(match)).toBe('e1')
-  })
-
-  it('resolves auth environments route', () => {
-    const match = getRouteMatch('/projects/p1/auth/environments/e1', '')
-    expect(match).toEqual({
-      name: 'auth-environment',
+  it('resolves core routes only', () => {
+    expect(getRouteMatch('/projects/p1/environments/e1', '')).toEqual({
+      name: 'environment',
       projectId: 'p1',
       environmentId: 'e1',
     })
-    expect(getEnvironmentId(match)).toBe('e1')
-  })
-
-  it('resolves module environment list routes', () => {
-    expect(getRouteMatch('/projects/p1/auth/environments', '')).toEqual({
-      name: 'auth-environments',
+    expect(getRouteMatch('/projects/p1/tokens', '')).toEqual({
+      name: 'tokens',
       projectId: 'p1',
     })
-    expect(getRouteMatch('/projects/p1/flags/environments', '')).toEqual({
-      name: 'flag-environments',
-      projectId: 'p1',
+    expect(getRouteMatch('/projects/p1/flags/environments/e1', '')).toEqual({
+      name: 'projects',
     })
-    expect(getRouteMatch('/projects/p1/flags/matrix', '')).toEqual({
-      name: 'flags-matrix',
-      projectId: 'p1',
+    expect(getRouteMatch('/projects/p1/auth/environments/e1', '')).toEqual({
+      name: 'projects',
     })
   })
 

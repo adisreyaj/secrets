@@ -1,4 +1,4 @@
-import { ApprovalAction, Role } from '@prisma/client';
+import { Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { encryptSecret, loadMasterKey, masterKeyVersion } from '../../crypto.js';
 import { prisma } from '../../db.js';
@@ -6,15 +6,9 @@ import {
   requireAuth,
   requireEnvironmentScope,
   requireProjectRole,
-  requireUserForApproval,
 } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { normalizeIdentifier } from '../services/identifiers.js';
-import {
-  createApprovalRequest,
-  findMatchingApprovalRules,
-  findPendingApprovalRequest,
-} from '../services/approvals.js';
 import { logAudit } from '../services/audit.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -74,59 +68,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const activeVersion = secret.versions[0];
     const requestedKey = nextKey ?? secret.key;
-    const matchingRules = await findMatchingApprovalRules({
-      projectId: secret.environment.projectId,
-      environmentId: secret.environmentId,
-      action: ApprovalAction.UPDATE,
-      key: requestedKey,
-    });
-    if (matchingRules.length > 0) {
-      if (!requireUserForApproval(request, reply)) {
-        return;
-      }
-      const existing = await findPendingApprovalRequest({
-        projectId: secret.environment.projectId,
-        environmentId: secret.environmentId,
-        action: ApprovalAction.UPDATE,
-        key: requestedKey,
-        secretId: secretId,
-      });
-      if (existing) {
-        reply.code(202).send({ status: 'pending', approvalRequestId: existing.id });
-        return;
-      }
-      let payload:
-        | { ciphertext: Uint8Array<ArrayBuffer>; iv: Uint8Array<ArrayBuffer>; tag: Uint8Array<ArrayBuffer>; keyVersion: string }
-        | null = null;
-      if (nextValue) {
-        const encrypted = encryptSecret(nextValue, masterKey);
-        payload = { ...encrypted, keyVersion: masterKeyVersion() };
-      }
-      const approval = await createApprovalRequest({
-        projectId: secret.environment.projectId,
-        environmentId: secret.environmentId,
-        action: ApprovalAction.UPDATE,
-        key: requestedKey,
-        requestedBy: auth.user!.id,
-        secretId: secretId,
-        expectedVersionId: activeVersion?.id,
-        payload,
-      });
-      await logAudit({
-        projectId: secret.environment.projectId,
-        actorUserId: auth.user?.id,
-        actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'approval.requested',
-        resourceType: 'approval_request',
-        resourceId: approval.id,
-        metadataJson: { action: 'UPDATE', key: requestedKey, secretId },
-      });
-      reply.code(202).send({ status: 'pending', approvalRequestId: approval.id });
-      return;
-    }
-
     const keyChanged = nextKey && nextKey !== secret.key;
     const normalizedKeyChanged =
       nextKey && normalizeIdentifier(nextKey) !== normalizeIdentifier(secret.key);

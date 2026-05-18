@@ -3,8 +3,6 @@ import { ErrorBanner } from './ErrorBanner'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Input } from './ui/input'
-import { useFlagEnabled } from '../lib/feature-flags'
-import { FEATURE_FLAGS } from '../lib/feature-flags/keys'
 
 export const AuthPanel = ({
   loading,
@@ -23,7 +21,7 @@ export const AuthPanel = ({
 }) => {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [form, setForm] = useState({ name: '', email: '', password: '' })
-  const signupAllowed = useFlagEnabled(FEATURE_FLAGS.SIGNUP_ALLOW, false)
+  const signupAllowed = true
   const passwordAutoComplete =
     mode === 'login' ? 'current-password' : 'new-password'
 

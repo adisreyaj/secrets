@@ -4,7 +4,6 @@ import { hashToken } from '../../auth.js';
 import { prisma } from '../../db.js';
 import type { AuthContext } from '../types/auth.js';
 import {
-  approvalsRequireUser,
   forbidden,
   globalBootstrapScopeDenied,
   insufficientRole,
@@ -53,17 +52,6 @@ export function requireEnvironmentScope(
   const scope = request.auth?.scopeEnvironmentIds;
   if (request.auth?.viaToken && scope && !scope.includes(environmentId)) {
     tokenScopeDenied(reply);
-    return false;
-  }
-  return true;
-}
-
-export function requireUserForApproval(
-  request: FastifyRequest,
-  reply: FastifyReply,
-): boolean {
-  if (request.auth?.serviceAccountId && !request.auth.user) {
-    approvalsRequireUser(reply);
     return false;
   }
   return true;

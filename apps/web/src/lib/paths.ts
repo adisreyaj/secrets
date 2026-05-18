@@ -21,6 +21,7 @@ export const environmentPath = (
   projectId: string,
   _projectSlug: string | null | undefined,
   environmentId: string,
+  _environmentSlug?: string | null,
 ) => `${environmentsPath(projectId)}/${pickSegment(environmentId)}`
 
 export const flagsPath = (

@@ -6,7 +6,6 @@ import App from './App'
 import './index.css'
 import { AuthProvider } from './lib/auth'
 import { ErrorBoundary, ErrorTrackingProvider } from './lib/error-tracking'
-import { FeatureFlagProvider } from './lib/feature-flags'
 import { ThemeProvider, useTheme } from './lib/theme'
 
 const queryClient = new QueryClient({
@@ -55,11 +54,9 @@ createRoot(rootElement).render(
         <AppToaster />
         <AuthProvider>
           <ErrorTrackingProvider>
-            <FeatureFlagProvider>
-              <ErrorBoundary>
-                <App />
-              </ErrorBoundary>
-            </FeatureFlagProvider>
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
           </ErrorTrackingProvider>
         </AuthProvider>
       </ThemeProvider>

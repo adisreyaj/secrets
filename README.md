@@ -1,8 +1,15 @@
-# Secrets Manager MVP
+# Secrets Manager
 
-A lightweight secrets manager built with Fastify (TypeScript), Prisma/MySQL, and a React web app. Focused on simple, secure secret storage for Node.js workflows with zero-friction injection and optional `.env` export.
+A focused secrets management platform built with Fastify (TypeScript), Prisma/MySQL, and a React web app.
 
-## Quick Start
+Core capabilities:
+- organize secrets by project and environment
+- create, update, copy, rollback, and delete secrets
+- export secrets as `.env` or CSV
+- manage API tokens for CLI/SDK access
+- view audit history for secret changes
+
+## Quick start
 
 1. Install dependencies:
 
@@ -41,9 +48,9 @@ pnpm dev:server
 pnpm dev:web
 ```
 
-## Zero-Friction CLI Usage
+## CLI usage
 
-Run any command with injected secrets (no setup required):
+Run a command with injected secrets:
 
 ```bash
 SECRETS_TOKEN=... SECRETS_ENV=dev secrets run -- npm run dev
@@ -65,7 +72,7 @@ SECRETS_TOKEN=... SECRETS_ENV=dev secrets export --format dotenv --out .env.loca
 Optional config file (`.secretsrc.json`) is supported but not required.
 See `docs/cli.md` for CLI details and `.secretsrc.example.json` for a sample config.
 
-## Environment Variables
+## Environment variables
 
 Required in `apps/server/.env`:
 
@@ -83,7 +90,6 @@ CLI/SDK environment variables:
 - `SECRETS_ENV` environment id or slug
 - `SECRETS_PROJECT` project id or slug (required when env is a slug)
 - `SECRETS_API_BASE_URL` API base URL (default `http://localhost:3001`)
-- `SECRETS_FLAG_SDK_KEY` feature flags runtime SDK key (for `@secrets/sdk` flag evaluation client)
 
 Web app environment variables (Vite):
 
@@ -93,7 +99,7 @@ Web app environment variables (Vite):
 - `VITE_ERROR_TRACKING_DEBUG` set to `true` to enable PostHog debug logs
 - Error tracking is enabled only in production (`import.meta.env.PROD`)
 
-## Project Structure
+## Project structure
 
 - `apps/server` Fastify API + Prisma schema
 - `apps/web` React app
@@ -101,36 +107,9 @@ Web app environment variables (Vite):
 - `packages/cli` Secrets CLI
 - `packages/sdk` Node SDK
 
-## Feature Flags Runtime SDK
-
-The shared SDK now includes a typed feature flags runtime client for JS/TS apps.
-
-```ts
-import { createFeatureFlagRuntimeClient } from '@secrets/sdk'
-
-const flags = createFeatureFlagRuntimeClient({
-  baseUrl: 'http://localhost:3001',
-  sdkKey: process.env.SECRETS_FLAG_SDK_KEY!,
-})
-
-const checkoutEnabled = await flags.isEnabled({
-  environmentId: 'env_123',
-  flagKey: 'checkout-redesign',
-  subjectKey: 'user_42',
-})
-
-const batch = await flags.evaluateBatch({
-  environmentId: 'env_123',
-  subjectKey: 'user_42',
-  flagKeys: ['checkout-redesign', 'search-v2'],
-})
-```
-
 ## Notes
 
 - API tokens are shown only once on creation.
 - `.env` export is available for editors/admins.
 - Role enforcement: Admin, Editor, Viewer.
-- Roadmap and parity plan: see `docs/roadmap.md`.
-- Phase 1 feature flags readiness: see `docs/releases/phase1-feature-flags-readiness.md`.
-- Feature flags integration test guide: see `docs/testing/feature-flags-integration.md`.
+- The product scope is intentionally limited to secrets management.
