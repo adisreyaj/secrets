@@ -17,6 +17,7 @@ const adapter = new PrismaMariaDb({
   connectionLimit: 20,
   idleTimeout: 60_000,
   acquireTimeout: 15_000,
+  allowPublicKeyRetrieval: true,
 });
 
 export const prisma = new PrismaClient({ adapter });
