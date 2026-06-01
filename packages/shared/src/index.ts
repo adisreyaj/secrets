@@ -169,6 +169,10 @@ export interface CreateProjectRequest {
   organizationId?: string;
 }
 
+export interface UpdateProjectRequest {
+  name: string;
+}
+
 export interface CreateEnvironmentRequest {
   name: string;
   copyFromEnvironmentId?: string;

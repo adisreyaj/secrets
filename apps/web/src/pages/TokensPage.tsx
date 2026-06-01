@@ -10,7 +10,6 @@ import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
 import { runMutationWithToast } from '../lib/mutationFeedback'
-import { projectPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
 import { asArray } from '../lib/queryResult'
 import { useRegisterShortcut } from '../lib/shortcuts'
@@ -46,9 +45,7 @@ export const TokensPage = ({ projectId, navigate }: TokensPageProps) => {
     [projects, projectId],
   )
 
-  useRegisterShortcut('b', () =>
-    navigate(projectPath(projectId, selectedProject?.slug)),
-  )
+  useRegisterShortcut('b', () => navigate('/projects'))
 
   const handleCreateToken = useCallback(
     async (name: string, readOnly: boolean) =>
@@ -95,9 +92,7 @@ export const TokensPage = ({ projectId, navigate }: TokensPageProps) => {
         actions={
           <Button
             variant="outline"
-            onClick={() =>
-              navigate(projectPath(projectId, selectedProject?.slug))
-            }
+            onClick={() => navigate('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview

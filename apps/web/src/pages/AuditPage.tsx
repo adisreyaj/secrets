@@ -27,7 +27,6 @@ import {
 import { humanizeAction, humanizeResourceType } from '../features/audit/labels'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
-import { projectPath } from '../lib/paths'
 import { runMutationWithToast } from '../lib/mutationFeedback'
 import { queryKeys } from '../lib/queryKeys'
 import { asArray } from '../lib/queryResult'
@@ -208,9 +207,7 @@ export const AuditPage = ({ projectId, navigate }: AuditPageProps) => {
   )
   const isAdmin = selectedProject?.role === 'ADMIN'
 
-  useRegisterShortcut('b', () =>
-    navigate(projectPath(projectId, selectedProject?.slug)),
-  )
+  useRegisterShortcut('b', () => navigate('/projects'))
 
   const auditError = auditErrorRaw ? getErrorMessage(auditErrorRaw) : null
   const projectsError = projectsErrorRaw
@@ -228,9 +225,7 @@ export const AuditPage = ({ projectId, navigate }: AuditPageProps) => {
         actions={
           <Button
             variant="outline"
-            onClick={() =>
-              navigate(projectPath(projectId, selectedProject?.slug))
-            }
+            onClick={() => navigate('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview

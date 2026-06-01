@@ -13,6 +13,7 @@ import type {
   ProjectMemberDto,
   ProjectModuleDto,
   UpdateProjectModuleRequest,
+  UpdateProjectRequest,
 } from '@secrets/shared'
 import type { ApiFetchFn } from '../apiBase'
 
@@ -21,6 +22,11 @@ export const createProjectsClient = (apiFetch: ApiFetchFn) => ({
   createProject: (payload: CreateProjectRequest) =>
     apiFetch<ProjectDto>('/projects', {
       method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateProject: (projectId: string, payload: UpdateProjectRequest) =>
+    apiFetch<ProjectDto>(`/projects/${projectId}`, {
+      method: 'PUT',
       body: JSON.stringify(payload),
     }),
   deleteProject: (projectId: string, payload: DeleteProjectRequest) =>

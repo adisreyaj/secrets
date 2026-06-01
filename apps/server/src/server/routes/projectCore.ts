@@ -10,6 +10,7 @@ import { normalizeIdentifier } from '../services/identifiers.js';
 import { isPrismaUniqueError } from '../services/prismaErrors.js';
 import { logAudit } from '../services/audit.js';
 import { ensureUniqueProjectSlug } from '../services/slugs.js';
+import { renameProjectWithGuards } from '../services/projectUpdates.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post('/projects', async (request, reply) => {
@@ -115,6 +116,39 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
 
     reply.send(memberships.map((membership) => toProjectDto(membership.project, membership.role)));
+  });
+
+  app.put('/projects/:id', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth?.user) {
+      return;
+    }
+
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
+
+    const body = request.body as { name?: string } | undefined;
+    if (!body?.name?.trim()) {
+      sendError(reply, 400, 'Name is required');
+      return;
+    }
+
+    const result = await renameProjectWithGuards({
+      projectId,
+      nextName: body.name.trim(),
+      actorUserId: auth.user.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+    });
+
+    if (!result.ok) {
+      sendError(reply, result.status, result.error);
+      return;
+    }
+
+    reply.send(toProjectDto(result.project, role));
   });
 
   app.put('/projects/:id/organization', async (request, reply) => {

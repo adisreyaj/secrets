@@ -1,16 +1,17 @@
 import type { EnvironmentDto, ProjectDto } from '@secrets/shared'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
-import { useCallback, useMemo } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Pencil } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { EnvironmentsSection } from '../components/EnvironmentsSection'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
+import { EditProjectDialog } from '../components/projects/EditProjectDialog'
 import { ShortcutHint } from '../components/ShortcutHint'
 import { Button } from '../components/ui/button'
 import { api } from '../lib/api'
 import { getErrorMessage } from '../lib/errors'
-import { environmentPath, projectPath } from '../lib/paths'
+import { environmentPath } from '../lib/paths'
 import { queryKeys } from '../lib/queryKeys'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
@@ -24,6 +25,7 @@ export const EnvironmentsPage = ({
 }) => {
   const { user } = useRequireAuth(navigate)
   const queryClient = useQueryClient()
+  const [renameOpen, setRenameOpen] = useState(false)
   const { data: projectsData, error: projectsErrorRaw } = useQuery<ProjectDto[]>({
     queryKey: queryKeys.projects(),
     queryFn: () => api.listProjects(),
@@ -46,9 +48,19 @@ export const EnvironmentsPage = ({
     [projects, projectId],
   )
 
-  useRegisterShortcut('b', () =>
-    navigate(projectPath(projectId, selectedProject?.slug)),
-  )
+  useRegisterShortcut('b', () => navigate('/projects'))
+
+  const renameMutation = useMutation({
+    mutationFn: async (name: string) => api.updateProject(projectId, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() })
+      setRenameOpen(false)
+      toast.success('Project renamed.')
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error))
+    },
+  })
 
   const handleCreateEnvironment = useCallback(
     async (payload: {
@@ -77,13 +89,25 @@ export const EnvironmentsPage = ({
     <section className="flex flex-col gap-6">
       <PageHeader
         title="Environments"
-        subtitle={`Project: ${selectedProject?.name ?? projectId.slice(0, 6)}`}
+        subtitle={
+          <span className="flex items-center gap-2">
+            <span>Project: {selectedProject?.name ?? projectId.slice(0, 6)}</span>
+            {selectedProject?.role === 'ADMIN' ? (
+              <button
+                type="button"
+                onClick={() => setRenameOpen(true)}
+                className="text-muted-foreground hover:text-foreground inline-flex items-center justify-center rounded p-0.5 transition-colors"
+                aria-label="Rename project"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            ) : null}
+          </span>
+        }
         actions={
           <Button
             variant="outline"
-            onClick={() =>
-              navigate(projectPath(projectId, selectedProject?.slug))
-            }
+            onClick={() => navigate('/projects')}
           >
             <ArrowLeft className="h-4 w-4" />
             Back to overview
@@ -116,6 +140,17 @@ export const EnvironmentsPage = ({
           )
         }
         onCreate={handleCreateEnvironment}
+      />
+
+      <EditProjectDialog
+        open={renameOpen}
+        project={selectedProject}
+        saving={renameMutation.isPending}
+        error={renameMutation.error ? getErrorMessage(renameMutation.error) : null}
+        onOpenChange={setRenameOpen}
+        onSubmit={async (name) => {
+          await renameMutation.mutateAsync(name)
+        }}
       />
     </section>
   )

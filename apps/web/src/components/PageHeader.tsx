@@ -6,7 +6,7 @@ export const PageHeader = ({
   actions,
 }: {
   title: string
-  subtitle?: string
+  subtitle?: ReactNode
   actions?: ReactNode
 }) => (
   <header className="flex flex-wrap items-end justify-between gap-4">
