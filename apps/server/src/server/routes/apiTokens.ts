@@ -1,5 +1,6 @@
 import { Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { generateToken, hashToken } from '../../auth.js';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
@@ -8,7 +9,18 @@ import { sendError } from '../http/replies.js';
 import { logAudit } from '../services/audit.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/projects/:id/api-tokens', async (request, reply) => {
+  app.post(
+    '/projects/:id/api-tokens',
+    {
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+      schema: {
+        body: z.object({
+          name: z.string().min(1, 'Name is required'),
+          readOnly: z.boolean().optional(),
+        }),
+      },
+    },
+    async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
       return;
@@ -65,35 +77,59 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  app.get('/projects/:id/api-tokens', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
+  app.get(
+    '/projects/:id/api-tokens',
+    {
+      schema: {
+        querystring: z.object({
+          limit: z.coerce.number().int().min(1).max(100).default(20),
+          cursor: z.string().optional(),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const auth = requireAuth(request, reply);
+      if (!auth) {
+        return;
+      }
 
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
+      const { id: projectId } = request.params as { id: string };
+      const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+      if (!role) {
+        return;
+      }
 
-    const tokens = await prisma.apiToken.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-    });
+      const query = request.query as { limit: number; cursor?: string };
+      const limit = query.limit;
+      const cursor = query.cursor;
 
-    reply.send(
-      tokens.map((token) => ({
-        id: token.id,
-        projectId: token.projectId,
-        name: token.name,
-        readOnly: token.readOnly,
-        createdAt: token.createdAt.toISOString(),
-        lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
-        expiresAt: token.expiresAt?.toISOString() ?? null,
-      })),
-    );
-  });
+      const tokens = await prisma.apiToken.findMany({
+        where: { projectId },
+        take: limit + 1,
+        cursor: cursor ? { id: cursor } : undefined,
+        orderBy: { createdAt: 'desc' },
+      });
+
+      let nextCursor: string | undefined = undefined;
+      if (tokens.length > limit) {
+        const nextItem = tokens.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      reply.send({
+        data: tokens.map((token) => ({
+          id: token.id,
+          projectId: token.projectId,
+          name: token.name,
+          readOnly: token.readOnly,
+          createdAt: token.createdAt.toISOString(),
+          lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+          expiresAt: token.expiresAt?.toISOString() ?? null,
+        })),
+        nextCursor,
+      });
+    },
+  );
 
   app.delete('/projects/:id/api-tokens/:tokenId', async (request, reply) => {
     const auth = requireAuth(request, reply);

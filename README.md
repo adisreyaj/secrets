@@ -113,3 +113,9 @@ Web app environment variables (Vite):
 - `.env` export is available for editors/admins.
 - Role enforcement: Admin, Editor, Viewer.
 - The product scope is intentionally limited to secrets management.
+
+## Recovery
+
+See [`docs/recovery.md`](docs/recovery.md) for detailed recovery procedures —
+covering lost secrets, lost tokens, lost MASTER_KEY, disaster recovery, backup
+recipes, and prevention checklists.

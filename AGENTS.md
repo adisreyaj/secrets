@@ -32,6 +32,7 @@ pnpm format:check:web      # Check formatting
 # Database
 pnpm prisma:generate       # Generate Prisma client
 pnpm prisma:migrate        # Run migrations
+pnpm -C apps/server migrate:envelope  # One-time: re-encrypt existing secrets under DEK + AAD (run after deploy)
 ```
 
 ### Tech Stack
@@ -193,3 +194,23 @@ className={cn('base-classes', conditional && 'conditional-class', className)}
 - Web: `.env` in `apps/web/` (Vite: `import.meta.env.VITE_*`)
 - Server: `.env` in `apps/server/` (dotenv)
 - Never commit secrets - use `.env.example` as template
+
+### Encryption (Envelope + AAD)
+
+All secret ciphertexts are AES-256-GCM with a 12-byte IV, 16-byte auth tag, and a
+mandatory AAD string that binds the ciphertext to its context.
+
+- `MASTER_KEY` (env var, 32 raw bytes / 64 hex chars) is the **KEK** — it never
+  touches secret data directly.
+- Each `Environment` has a 32-byte **DEK** stored in `Environment.encryptedDek`,
+  encrypted with the KEK under AAD `env:<envId>;secret_id:dek`.
+- Secrets inside an environment are encrypted with that environment's DEK under
+  AAD `env:<envId>;secret_key:<key>`.
+- When a secret's key is renamed, every historical `SecretVersion` is re-encrypted
+  with the new AAD to keep the binding deterministic.
+- Auth provider configs use `aadForGeneric({ provider, projectId, scope: 'auth_provider_config' })`.
+- JWT signing keys use `auth:signing_key:<kid>`.
+- All decrypt paths throw `DecryptionError`; `apps/server/src/server/http/middleware.ts`
+  maps that to a 500 with no ciphertext leak.
+- Key rotation: just re-encrypt the DEK under a new KEK version. Secret ciphertexts
+  stay the same. See `envCrypto.ts` and the `migrate:envelope` script.

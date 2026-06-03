@@ -65,27 +65,30 @@ enum AuthClientType {
 }
 
 model User {
-  id                      String                     @id @default(cuid())
-  email                   String                     @unique
-  passwordHash            String                     @map("password_hash")
-  name                    String?
-  createdAt               DateTime                   @default(now()) @map("created_at")
-  updatedAt               DateTime                   @updatedAt @map("updated_at")
-  sessions                UserSession[]
-  cliLoginSessions        CliLoginSession[]
-  memberships             ProjectMember[]
-  organizationMemberships OrganizationMember[]
-  createdTokens           ApiToken[]                 @relation("ApiTokenCreator")
-  globalCliTokens         GlobalCliToken[]           @relation("GlobalCliTokenCreator")
-  serviceAccounts         ServiceAccount[]           @relation("ServiceAccountCreator")
-  secretVersions          SecretVersion[]            @relation("SecretVersionCreator")
-  auditLogs               AuditLog[]                 @relation("AuditActor")
-  projectInvites          ProjectInvite[]            @relation("ProjectInviteCreator")
-  approvalRules           ApprovalRule[]             @relation("ApprovalRuleCreator")
-  approvalRequests        ApprovalRequest[]          @relation("ApprovalRequestRequester")
-  approvalApprovals       ApprovalRequest[]          @relation("ApprovalRequestApprover")
-  featureFlagSdkKeys      FeatureFlagSdkKey[]        @relation("FeatureFlagSdkKeyCreator")
-  featureFlagChanges      FeatureFlagChangeHistory[] @relation("FeatureFlagChangeActor")
+  id                           String                     @id @default(cuid())
+  email                        String                     @unique
+  passwordHash                 String                     @map("password_hash")
+  name                         String?
+  emailVerifiedAt              DateTime?                  @map("email_verified_at")
+  emailVerificationToken       String?                    @unique @map("email_verification_token")
+  emailVerificationTokenExpiry DateTime?                  @map("email_verification_token_expiry")
+  createdAt                    DateTime                   @default(now()) @map("created_at")
+  updatedAt                    DateTime                   @updatedAt @map("updated_at")
+  sessions                     UserSession[]
+  cliLoginSessions             CliLoginSession[]
+  memberships                  ProjectMember[]
+  organizationMemberships      OrganizationMember[]
+  createdTokens                ApiToken[]                 @relation("ApiTokenCreator")
+  globalCliTokens              GlobalCliToken[]           @relation("GlobalCliTokenCreator")
+  serviceAccounts              ServiceAccount[]           @relation("ServiceAccountCreator")
+  secretVersions               SecretVersion[]            @relation("SecretVersionCreator")
+  auditLogs                    AuditLog[]                 @relation("AuditActor")
+  projectInvites               ProjectInvite[]            @relation("ProjectInviteCreator")
+  approvalRules                ApprovalRule[]             @relation("ApprovalRuleCreator")
+  approvalRequests             ApprovalRequest[]          @relation("ApprovalRequestRequester")
+  approvalApprovals            ApprovalRequest[]          @relation("ApprovalRequestApprover")
+  featureFlagSdkKeys           FeatureFlagSdkKey[]        @relation("FeatureFlagSdkKeyCreator")
+  featureFlagChanges           FeatureFlagChangeHistory[] @relation("FeatureFlagChangeActor")
 
   @@map("users")
 }
@@ -239,12 +242,14 @@ model ProjectInvite {
 }
 
 model Environment {
-  id        String   @id @default(cuid())
-  projectId String   @map("project_id")
-  name      String
-  slug      String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id                  String   @id @default(cuid())
+  projectId           String   @map("project_id")
+  name                String
+  slug                String?
+  encryptedDek        Bytes?   @map("encrypted_dek")
+  encryptedDekBackup  Bytes?   @map("encrypted_dek_backup")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   project                         Project                          @relation(fields: [projectId], references: [id], onDelete: Cascade)
   secrets                         Secret[]
@@ -637,6 +642,7 @@ model ServiceAccountToken {
   id               String    @id @default(cuid())
   serviceAccountId String    @map("service_account_id")
   name             String
+  role             Role      @default(VIEWER)
   tokenHash        String    @map("token_hash")
   readOnly         Boolean   @default(false) @map("read_only")
   createdAt        DateTime  @default(now()) @map("created_at")

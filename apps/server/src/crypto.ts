@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 
 const KEY_LENGTH = 32;
 const IV_LENGTH = 12;
@@ -14,6 +14,13 @@ type DecryptablePayload = {
   iv: Buffer | Uint8Array;
   tag: Buffer | Uint8Array;
 };
+
+export class DecryptionError extends Error {
+  constructor(cause?: unknown) {
+    super('Failed to decrypt payload', { cause });
+    this.name = 'DecryptionError';
+  }
+}
 
 function toBytes(input: Uint8Array): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(input.byteLength);
@@ -42,9 +49,50 @@ export function loadMasterKey(): Buffer {
   return key;
 }
 
-export function encryptSecret(plaintext: string, key: Buffer): EncryptedPayload {
+export function masterKeyVersion(): string {
+  return process.env.MASTER_KEY_VERSION ?? 'v1';
+}
+
+export function generateDek(): Buffer {
+  return crypto.randomBytes(KEY_LENGTH);
+}
+
+export function aadForEnvironmentDek(environmentId: string): string {
+  return `env:dek:${environmentId}`;
+}
+
+export function aadForSecret(
+  environmentId: string,
+  identifier: string | undefined,
+  kind: 'id' | 'key' = 'id',
+): string {
+  const safe = identifier ?? '_';
+  return `env:${environmentId};secret_${kind}:${safe}`;
+}
+
+export function aadForProviderConfig(providerConfigId: string): string {
+  return `auth:provider:${providerConfigId}`;
+}
+
+export function aadForSigningKey(signingKeyId: string): string {
+  return `auth:signing_key:${signingKeyId}`;
+}
+
+export function aadForGeneric(parts: Record<string, string>): string {
+  return Object.entries(parts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join(';');
+}
+
+export function encryptSecret(
+  plaintext: string,
+  key: Buffer,
+  aad: string | Buffer,
+): EncryptedPayload {
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  cipher.setAAD(typeof aad === 'string' ? Buffer.from(aad, 'utf8') : aad);
   const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
 
@@ -55,13 +103,18 @@ export function encryptSecret(plaintext: string, key: Buffer): EncryptedPayload 
   };
 }
 
-export function decryptSecret(payload: DecryptablePayload, key: Buffer): string {
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, payload.iv);
-  decipher.setAuthTag(payload.tag);
-  const plaintext = Buffer.concat([decipher.update(payload.ciphertext), decipher.final()]);
-  return plaintext.toString('utf8');
-}
-
-export function masterKeyVersion(): string {
-  return process.env.MASTER_KEY_VERSION ?? 'v1';
+export function decryptSecret(
+  payload: DecryptablePayload,
+  key: Buffer,
+  aad: string | Buffer,
+): string {
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, payload.iv);
+    decipher.setAAD(typeof aad === 'string' ? Buffer.from(aad, 'utf8') : aad);
+    decipher.setAuthTag(payload.tag);
+    const plaintext = Buffer.concat([decipher.update(payload.ciphertext), decipher.final()]);
+    return plaintext.toString('utf8');
+  } catch (cause) {
+    throw new DecryptionError(cause);
+  }
 }

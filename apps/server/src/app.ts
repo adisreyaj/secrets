@@ -1,8 +1,13 @@
+import {
+  serializerCompiler,
+  validatorCompiler,
+  ZodTypeProvider,
+} from '@fastify/type-provider-zod';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
-import Fastify, { FastifyInstance } from 'fastify';
+import Fastify from 'fastify';
 import { config } from './config.js';
 import { registerCoreHttpMiddleware } from './server/http/middleware.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
@@ -18,11 +23,12 @@ import { registerRoutes as registerSecretDeleteRoutes } from './server/routes/se
 import { registerRoutes as registerSecretPatchRoutes } from './server/routes/secretPatch.js';
 import { registerRoutes as registerSecretReadRoutes } from './server/routes/secretReads.js';
 import { registerRoutes as registerSecretRollbackRoutes } from './server/routes/secretRollback.js';
+import { registerRoutes as registerServiceAccountRoutes } from './server/routes/serviceAccounts.js';
 import { scheduleAuditRetentionCleanup } from './server/services/auditCleanup.js';
 import { createLogDispatcher } from './server/logging/dispatcher.js';
 import './types.js';
 
-export async function buildApp(): Promise<FastifyInstance> {
+export async function buildApp() {
   const app = Fastify({
     logger:
       config.logFormat === 'pretty'
@@ -34,7 +40,11 @@ export async function buildApp(): Promise<FastifyInstance> {
           }
         : true,
     disableRequestLogging: true,
-  });
+  }).withTypeProvider<ZodTypeProvider>();
+
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
+
   const logDispatcher = await createLogDispatcher(app.log, {
     service: 'server',
     env: config.env,
@@ -79,6 +89,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerSecretPatchRoutes(app);
   await registerSecretReadRoutes(app);
   await registerSecretRollbackRoutes(app);
+  await registerServiceAccountRoutes(app);
   scheduleAuditRetentionCleanup(app, logDispatcher);
 
   return app;

@@ -1,14 +1,12 @@
 import { Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
-import { decryptSecret, loadMasterKey } from '../../crypto.js';
 import { prisma } from '../../db.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { formatDotenvValue } from '../services/format.js';
+import { decryptSecretWithKey, withEnvironmentDek } from '../services/envCrypto.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  const masterKey = loadMasterKey();
-
   app.get('/environments/:id/export', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
@@ -45,15 +43,18 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       orderBy: { key: 'asc' },
     });
 
+    const dek = await withEnvironmentDek(envId, (d) => d);
     const lines: string[] = [];
     for (const secret of secrets) {
       const version = secret.versions[0];
       if (!version) {
         continue;
       }
-      const value = decryptSecret(
+      const value = decryptSecretWithKey(
         { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
-        masterKey,
+        dek,
+        envId,
+        secret.key,
       );
       lines.push(`${secret.key}=${formatDotenvValue(value)}`);
     }

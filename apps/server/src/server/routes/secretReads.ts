@@ -1,6 +1,6 @@
 import { Prisma, Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
-import { decryptSecret, loadMasterKey } from '../../crypto.js';
+import { z } from 'zod';
 import { prisma } from '../../db.js';
 import {
   requireAuth,
@@ -10,10 +10,12 @@ import {
 import { tokenScopeDenied } from '../http/errors.js';
 import { sendError } from '../http/replies.js';
 import { ROLE_RANK } from '../auth/policies.js';
+import {
+  decryptSecretWithKey,
+  withEnvironmentDek,
+} from '../services/envCrypto.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  const masterKey = loadMasterKey();
-
   app.get('/projects/:id/secrets/search', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
@@ -72,88 +74,141 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const canViewValues =
       query.includeValues === 'true' && ROLE_RANK[role] >= ROLE_RANK.EDITOR;
 
-    const data = secrets.map((secret) => {
-      const version = secret.versions[0];
-      let value: string | undefined;
-      if (canViewValues && version) {
-        value = decryptSecret(
-          { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
-          masterKey,
-        );
-      }
-      return {
-        id: secret.id,
-        key: secret.key,
-        environmentId: secret.environmentId,
-        environmentName: secret.environment.name,
-        updatedAt: secret.updatedAt.toISOString(),
-        value,
-      };
-    });
+    const envDekCache = new Map<string, Buffer>();
+    const data = await Promise.all(
+      secrets.map(async (secret) => {
+        const version = secret.versions[0];
+        let value: string | undefined;
+        if (canViewValues && version) {
+          let dek = envDekCache.get(secret.environmentId);
+          if (!dek) {
+            dek = await withEnvironmentDek(secret.environmentId, (d) => d);
+            envDekCache.set(secret.environmentId, dek);
+          }
+          value = decryptSecretWithKey(
+            { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
+            dek,
+            secret.environmentId,
+            secret.key,
+          );
+        }
+        return {
+          id: secret.id,
+          key: secret.key,
+          environmentId: secret.environmentId,
+          environmentName: secret.environment.name,
+          updatedAt: secret.updatedAt.toISOString(),
+          value,
+        };
+      }),
+    );
 
     reply.send(data);
   });
 
-  app.get('/environments/:id/secrets', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: envId } = request.params as { id: string };
-    const includeValues =
-      request.query && (request.query as { includeValues?: string }).includeValues === 'true';
-
-    const env = await prisma.environment.findUnique({ where: { id: envId } });
-    if (!env) {
-      sendError(reply, 404, 'Environment not found');
-      return;
-    }
-    if (!requireEnvironmentScope(request, reply, envId)) {
-      return;
-    }
-
-    const role = await requireProjectRole(request, reply, env.projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    const secrets = await prisma.secret.findMany({
-      where: { environmentId: envId, deletedAt: null },
-      include: {
-        versions: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
+  app.get(
+    '/environments/:id/secrets',
+    {
+      schema: {
+        querystring: z.object({
+          limit: z.coerce.number().int().min(1).max(100).default(20),
+          cursor: z.string().optional(),
+          includeValues: z.string().optional(),
+        }),
       },
-      orderBy: { key: 'asc' },
-    });
-
-    const canViewValues = includeValues && ROLE_RANK[role] >= ROLE_RANK.EDITOR;
-
-    const data = secrets.map((secret) => {
-      const version = secret.versions[0];
-      let value: string | undefined;
-      if (canViewValues && version) {
-        value = decryptSecret(
-          { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
-          masterKey,
-        );
+    },
+    async (request, reply) => {
+      const auth = requireAuth(request, reply);
+      if (!auth) {
+        return;
       }
 
-      return {
-        id: secret.id,
-        environmentId: secret.environmentId,
-        key: secret.key,
-        updatedAt: secret.updatedAt.toISOString(),
-        versionId: version?.id,
-        value,
-      };
-    });
+      const { id: envId } = request.params as { id: string };
+      const query = request.query as { limit: number; cursor?: string; includeValues?: string };
+      const includeValues = query.includeValues === 'true';
 
-    reply.send(data);
-  });
+      const env = await prisma.environment.findUnique({ where: { id: envId } });
+      if (!env) {
+        sendError(reply, 404, 'Environment not found');
+        return;
+      }
+      if (!requireEnvironmentScope(request, reply, envId)) {
+        return;
+      }
+
+      const role = await requireProjectRole(request, reply, env.projectId, Role.VIEWER);
+      if (!role) {
+        return;
+      }
+
+      const limit = query.limit;
+      const cursor = query.cursor;
+
+      const secrets = await prisma.secret.findMany({
+        where: { environmentId: envId, deletedAt: null },
+        include: {
+          versions: {
+            where: { isActive: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
+        take: limit + 1,
+        cursor: cursor ? { id: cursor } : undefined,
+        orderBy: { key: 'asc' },
+      });
+
+      let nextCursor: string | undefined = undefined;
+      if (secrets.length > limit) {
+        const nextItem = secrets.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      const canViewValues = includeValues && ROLE_RANK[role] >= ROLE_RANK.EDITOR;
+
+      const data = await (async () => {
+        if (!canViewValues) {
+          return secrets.map((secret) => {
+            const version = secret.versions[0];
+            return {
+              id: secret.id,
+              environmentId: secret.environmentId,
+              key: secret.key,
+              updatedAt: secret.updatedAt.toISOString(),
+              versionId: version?.id,
+              value: undefined as string | undefined,
+            };
+          });
+        }
+        const dek = await withEnvironmentDek(envId, (d) => d);
+        return secrets.map((secret) => {
+          const version = secret.versions[0];
+          let value: string | undefined;
+          if (version) {
+            value = decryptSecretWithKey(
+              { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
+              dek,
+              envId,
+              secret.key,
+            );
+          }
+          return {
+            id: secret.id,
+            environmentId: secret.environmentId,
+            key: secret.key,
+            updatedAt: secret.updatedAt.toISOString(),
+            versionId: version?.id,
+            value,
+          };
+        });
+      })();
+
+      reply.send({
+        data,
+        nextCursor,
+      });
+    },
+  );
 
   app.get('/secrets/:id/diff', async (request, reply) => {
     const auth = requireAuth(request, reply);
@@ -193,13 +248,18 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const [current, previous] = versions;
-    const currentValue = decryptSecret(
+    const dek = await withEnvironmentDek(secret.environmentId, (d) => d);
+    const currentValue = decryptSecretWithKey(
       { ciphertext: current.ciphertext, iv: current.iv, tag: current.tag },
-      masterKey,
+      dek,
+      secret.environmentId,
+      secret.key,
     );
-    const previousValue = decryptSecret(
+    const previousValue = decryptSecretWithKey(
       { ciphertext: previous.ciphertext, iv: previous.iv, tag: previous.tag },
-      masterKey,
+      dek,
+      secret.environmentId,
+      secret.key,
     );
 
     reply.send({
@@ -329,13 +389,18 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const current = from && to ? versions.find((v) => v.id === to)! : first;
     const previous = from && to ? versions.find((v) => v.id === from)! : second;
 
-    const currentValue = decryptSecret(
+    const dek = await withEnvironmentDek(secret.environmentId, (d) => d);
+    const currentValue = decryptSecretWithKey(
       { ciphertext: current.ciphertext, iv: current.iv, tag: current.tag },
-      masterKey,
+      dek,
+      secret.environmentId,
+      secret.key,
     );
-    const previousValue = decryptSecret(
+    const previousValue = decryptSecretWithKey(
       { ciphertext: previous.ciphertext, iv: previous.iv, tag: previous.tag },
-      masterKey,
+      dek,
+      secret.environmentId,
+      secret.key,
     );
 
     reply.send({

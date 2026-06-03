@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import {
+  aadForSigningKey,
   decryptSecret,
   encryptSecret,
   loadMasterKey,
@@ -59,19 +60,29 @@ export async function ensureActiveAuthSigningKey(projectId: string) {
       format: 'pem',
     },
   });
-  const encrypted = encryptSecret(pair.privateKey, loadMasterKey());
 
-  return prisma.authSigningKey.create({
+  const masterKey = loadMasterKey();
+  const created = await prisma.authSigningKey.create({
     data: {
       projectId,
       kid: `ask_${crypto.randomUUID().replace(/-/g, '')}`,
       algorithm: 'RS256',
       publicKeyPem: pair.publicKey,
+      privateKeyCiphertext: Buffer.alloc(0),
+      privateKeyIv: Buffer.alloc(0),
+      privateKeyTag: Buffer.alloc(0),
+      keyVersion: masterKeyVersion(),
+      active: true,
+    },
+  });
+  const encrypted = encryptSecret(pair.privateKey, masterKey, aadForSigningKey(created.id));
+
+  return prisma.authSigningKey.update({
+    where: { id: created.id },
+    data: {
       privateKeyCiphertext: Buffer.from(encrypted.ciphertext),
       privateKeyIv: Buffer.from(encrypted.iv),
       privateKeyTag: Buffer.from(encrypted.tag),
-      keyVersion: masterKeyVersion(),
-      active: true,
     },
   });
 }
@@ -83,13 +94,15 @@ export async function signProjectAccessToken(params: {
   expiresInMinutes: number;
 }) {
   const key = await ensureActiveAuthSigningKey(params.projectId);
+  const masterKey = loadMasterKey();
   const privateKey = decryptSecret(
     {
-      ciphertext: Buffer.from(key.privateKeyCiphertext),
-      iv: Buffer.from(key.privateKeyIv),
-      tag: Buffer.from(key.privateKeyTag),
+      ciphertext: key.privateKeyCiphertext,
+      iv: key.privateKeyIv,
+      tag: key.privateKeyTag,
     },
-    loadMasterKey(),
+    masterKey,
+    aadForSigningKey(key.id),
   );
 
   const now = Math.floor(Date.now() / 1000);

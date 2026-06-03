@@ -51,8 +51,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     if (body.auditRetentionDays !== null) {
       const value = Number(body.auditRetentionDays);
-      if (!Number.isFinite(value) || value < 1) {
-        sendError(reply, 400, 'auditRetentionDays must be >= 1 or null');
+      if (!Number.isFinite(value) || value < 1 || value > 3650) {
+        sendError(reply, 400, 'auditRetentionDays must be between 1 and 3650, or null');
         return;
       }
     }

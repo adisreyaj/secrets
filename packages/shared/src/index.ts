@@ -356,6 +356,7 @@ export interface ServiceAccountTokenDto {
   id: string;
   serviceAccountId: string;
   name: string;
+  role: Role;
   readOnly: boolean;
   createdAt: string;
   lastUsedAt?: string | null;
@@ -369,6 +370,7 @@ export interface CreateServiceAccountRequest {
 
 export interface CreateServiceAccountTokenRequest {
   name: string;
+  role: Role;
   readOnly?: boolean;
   environmentIds: string[];
   expiresAt?: string | null;

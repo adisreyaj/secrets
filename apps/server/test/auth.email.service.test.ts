@@ -61,7 +61,7 @@ describe('auth email provider', () => {
         subject: 'Verify',
         text: 'token',
       }),
-    ).rejects.toThrow(/Resend request failed/);
+    ).rejects.toThrow(/Email service request failed/);
   });
 
   it('builds reset and verify templates', () => {

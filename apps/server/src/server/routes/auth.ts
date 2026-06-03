@@ -1,8 +1,8 @@
 import { AuthClientType, ProjectModuleKey, Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { generateToken, hashPassword, hashToken, verifyPassword } from '../../auth.js';
 import { config } from '../../config.js';
-import { encryptSecret, loadMasterKey, masterKeyVersion } from '../../crypto.js';
 import { prisma } from '../../db.js';
 import { toUserDto } from '../mappers/users.js';
 import {
@@ -18,6 +18,7 @@ import {
   rotateAuthProviderSecret,
   upsertAuthProviderConfig,
 } from '../services/auth/providerConfigs.js';
+import { createAuthEmailProvider, buildEmailVerificationEmail } from '../services/auth/email.js';
 
 function globToRegExp(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
@@ -73,71 +74,138 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post(
     '/auth/register',
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    {
+      config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+      schema: {
+        body: z.object({
+          email: z.string().email(),
+          password: z.string().min(8),
+          name: z.string().optional(),
+        }),
+      },
+    },
     async (request, reply) => {
-      const body = request.body as { email?: string; password?: string; name?: string } | undefined;
-      if (!body?.email || !body?.password) {
-        reply.code(400).send({ error: 'Email and password are required' });
-        return;
-      }
+      const { email, password, name } = request.body as { email: string; password: string; name?: string };
 
-      const existing = await prisma.user.findUnique({ where: { email: body.email } });
+      const existing = await prisma.user.findUnique({ where: { email } });
       if (existing) {
         reply.code(409).send({ error: 'Email already registered' });
         return;
       }
 
-      const passwordHash = await hashPassword(body.password);
-      const user = await prisma.user.create({
-        data: { email: body.email, passwordHash, name: body.name ?? null },
-      });
+      const passwordHash = await hashPassword(password);
+      const verificationToken = generateToken();
+      const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-      const token = generateToken();
-      await prisma.userSession.create({
+      const user = await prisma.user.create({
         data: {
-          userId: user.id,
-          tokenHash: hashToken(token),
-          expiresAt: new Date(Date.now() + config.sessionTtlHours * 60 * 60 * 1000),
+          email,
+          passwordHash,
+          name: name ?? null,
+          emailVerificationToken: hashToken(verificationToken),
+          emailVerificationTokenExpiry: verificationTokenExpiry,
         },
       });
 
-      const csrfToken = generateToken();
-      reply.setCookie(SESSION_COOKIE_NAME, token, {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: config.cookieSecure,
-        path: '/',
-        maxAge: config.sessionTtlHours * 60 * 60,
-      });
-      reply.setCookie(CSRF_COOKIE_NAME, csrfToken, {
-        httpOnly: false,
-        sameSite: 'lax',
-        secure: config.cookieSecure,
-        path: '/',
-        maxAge: config.sessionTtlHours * 60 * 60,
+      const emailProvider = createAuthEmailProvider();
+      const emailContent = buildEmailVerificationEmail({
+        verificationToken,
+        appName: 'Secrets Manager',
       });
 
-      reply.code(201).send({ user: toUserDto(user) });
+      try {
+        await emailProvider.send({
+          to: email,
+          subject: emailContent.subject,
+          text: emailContent.text,
+        });
+      } catch (error) {
+        // Log error but don't fail registration, user can request a new token
+        request.log.error({ err: error, email }, 'Failed to send verification email');
+      }
+
+      reply.code(201).send({
+        message: 'Registration successful. Please check your email to verify your account.',
+        email: user.email,
+      });
     },
   );
 
   app.post(
-    '/auth/login',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    '/auth/verify-email',
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const body = request.body as { email?: string; password?: string } | undefined;
-      if (!body?.email || !body?.password) {
-        reply.code(400).send({ error: 'Email and password are required' });
+      const body = request.body as { email?: string; token?: string } | undefined;
+      if (!body?.email || !body?.token) {
+        reply.code(400).send({ error: 'Email and token are required' });
         return;
       }
 
       const user = await prisma.user.findUnique({ where: { email: body.email } });
       if (!user) {
+        reply.code(400).send({ error: 'Invalid email or token' });
+        return;
+      }
+
+      if (user.emailVerifiedAt) {
+        reply.code(400).send({ error: 'Email already verified' });
+        return;
+      }
+
+      if (!user.emailVerificationToken || !user.emailVerificationTokenExpiry) {
+        reply.code(400).send({ error: 'No verification token found' });
+        return;
+      }
+
+      if (new Date() > user.emailVerificationTokenExpiry) {
+        reply.code(400).send({ error: 'Verification token expired' });
+        return;
+      }
+
+      if (user.emailVerificationToken !== hashToken(body.token)) {
+        reply.code(400).send({ error: 'Invalid email or token' });
+        return;
+      }
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          emailVerifiedAt: new Date(),
+          emailVerificationToken: null,
+          emailVerificationTokenExpiry: null,
+        },
+      });
+
+      reply.send({ message: 'Email verified successfully' });
+    },
+  );
+
+  app.post(
+    '/auth/login',
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      schema: {
+        body: z.object({
+          email: z.string().email(),
+          password: z.string().min(1, 'Password is required'),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const { email, password } = request.body as { email: string; password: string };
+
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
         reply.code(401).send({ error: 'Invalid credentials' });
         return;
       }
 
-      const valid = await verifyPassword(body.password, user.passwordHash);
+      if (!user.emailVerifiedAt) {
+        reply.code(401).send({ error: 'Email not verified. Please check your email.' });
+        return;
+      }
+
+      const valid = await verifyPassword(password, user.passwordHash);
       if (!valid) {
         reply.code(401).send({ error: 'Invalid credentials' });
         return;
@@ -162,7 +230,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       });
       reply.setCookie(CSRF_COOKIE_NAME, csrfToken, {
         httpOnly: false,
-        sameSite: 'lax',
+        sameSite: 'strict',
         secure: config.cookieSecure,
         path: '/',
         maxAge: config.sessionTtlHours * 60 * 60,
@@ -385,7 +453,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (!request.cookies[CSRF_COOKIE_NAME]) {
       reply.setCookie(CSRF_COOKIE_NAME, csrfToken, {
         httpOnly: false,
-        sameSite: 'lax',
+        sameSite: 'strict',
         secure: config.cookieSecure,
         path: '/',
         maxAge: config.sessionTtlHours * 60 * 60,
@@ -503,32 +571,59 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  app.get('/projects/:projectId/auth/providers', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { projectId } = request.params as { projectId: string };
-    const moduleEnabled = await requireProjectModuleEnabled(
-      request,
-      reply,
-      projectId,
-      ProjectModuleKey.AUTH,
-    );
-    if (!moduleEnabled) {
-      return;
-    }
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
+  app.get(
+    '/projects/:projectId/auth/providers',
+    {
+      schema: {
+        querystring: z.object({
+          limit: z.coerce.number().int().min(1).max(100).default(20),
+          cursor: z.string().optional(),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const auth = requireAuth(request, reply);
+      if (!auth) {
+        return;
+      }
+      const { projectId } = request.params as { projectId: string };
+      const moduleEnabled = await requireProjectModuleEnabled(
+        request,
+        reply,
+        projectId,
+        ProjectModuleKey.AUTH,
+      );
+      if (!moduleEnabled) {
+        return;
+      }
+      const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+      if (!role) {
+        return;
+      }
 
-    const providers = await prisma.authProviderConfig.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'desc' },
-    });
-    reply.send(providers.map(toAuthProviderDto));
-  });
+      const query = request.query as { limit: number; cursor?: string };
+      const limit = query.limit;
+      const cursor = query.cursor;
+
+      const providers = await prisma.authProviderConfig.findMany({
+        where: { projectId },
+        take: limit + 1,
+        cursor: cursor ? { id: cursor } : undefined,
+        orderBy: { createdAt: 'desc' },
+      });
+
+      let nextCursor: string | undefined = undefined;
+      if (providers.length > limit) {
+        const nextItem = providers.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      reply.send({
+        data: providers.map(toAuthProviderDto),
+        nextCursor,
+      });
+    },
+  );
 
   app.post('/projects/:projectId/auth/providers', async (request, reply) => {
     const auth = requireAuth(request, reply);
@@ -575,7 +670,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const encryptedSecret = encryptSecret(clientSecret, loadMasterKey());
     const saved = await upsertAuthProviderConfig({
       projectId,
       provider,
@@ -688,7 +782,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const encryptedSecret = encryptSecret(clientSecret, loadMasterKey());
     const rotated = await rotateAuthProviderSecret({
       projectId: current.projectId,
       provider: current.provider,
@@ -714,115 +807,153 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     reply.send({ user: auth.user });
   });
 
-  app.patch('/me', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
+  app.patch(
+    '/me',
+    {
+      schema: {
+        body: z.object({
+          name: z.string().min(1).optional(),
+          email: z.string().email().optional(),
+          currentPassword: z.string().optional(),
+          newPassword: z.string().min(8).optional(),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const auth = requireAuth(request, reply);
+      if (!auth) {
+        return;
+      }
 
-    if (auth.viaToken) {
-      reply.code(403).send({ error: 'Token sessions cannot update profile' });
-      return;
-    }
+      if (auth.viaToken) {
+        reply.code(403).send({ error: 'Token sessions cannot update profile' });
+        return;
+      }
 
-    const body = request.body as
-      | {
-          name?: string;
-          email?: string;
-          currentPassword?: string;
-          newPassword?: string;
+      const body = request.body as {
+        name?: string;
+        email?: string;
+        currentPassword?: string;
+        newPassword?: string;
+      };
+
+      const name = body.name?.trim();
+      const newPassword = body.newPassword?.trim();
+      const currentPassword = body.currentPassword;
+
+      const wantsName = typeof body.name !== 'undefined';
+      const wantsPassword = typeof body.newPassword !== 'undefined';
+
+      if (typeof body.email !== 'undefined') {
+        reply.code(400).send({ error: 'Email updates are not supported' });
+        return;
+      }
+
+      if (!wantsName && !wantsPassword) {
+        reply.code(400).send({ error: 'No changes provided' });
+        return;
+      }
+
+      if (wantsName && !name) {
+        reply.code(400).send({ error: 'Name is required' });
+        return;
+      }
+
+      if (wantsPassword && !newPassword) {
+        reply.code(400).send({ error: 'New password is required' });
+        return;
+      }
+
+      if (wantsPassword && !currentPassword) {
+        reply.code(400).send({ error: 'Current password is required' });
+        return;
+      }
+
+      if (wantsPassword) {
+        const userRecord = await prisma.user.findUnique({
+          where: { id: auth.user!.id },
+        });
+        if (!userRecord) {
+          reply.code(404).send({ error: 'User not found' });
+          return;
         }
-      | undefined;
+        const valid = await verifyPassword(currentPassword ?? '', userRecord.passwordHash);
+        if (!valid) {
+          reply.code(401).send({ error: 'Invalid credentials' });
+          return;
+        }
+      }
 
-    const name = body?.name?.trim();
-    const newPassword = body?.newPassword?.trim();
-    const currentPassword = body?.currentPassword;
+      const data: { name?: string; passwordHash?: string } = {};
+      if (wantsName && name) {
+        data.name = name;
+      }
+      if (wantsPassword && newPassword) {
+        data.passwordHash = await hashPassword(newPassword);
+      }
 
-    const wantsName = typeof body?.name !== 'undefined';
-    const wantsPassword = typeof body?.newPassword !== 'undefined';
-
-    if (typeof body?.email !== 'undefined') {
-      reply.code(400).send({ error: 'Email updates are not supported' });
-      return;
-    }
-
-    if (!wantsName && !wantsPassword) {
-      reply.code(400).send({ error: 'No changes provided' });
-      return;
-    }
-
-    if (wantsName && !name) {
-      reply.code(400).send({ error: 'Name is required' });
-      return;
-    }
-
-    if (wantsPassword && !newPassword) {
-      reply.code(400).send({ error: 'New password is required' });
-      return;
-    }
-
-    if (wantsPassword && !currentPassword) {
-      reply.code(400).send({ error: 'Current password is required' });
-      return;
-    }
-
-    if (wantsPassword) {
-      const userRecord = await prisma.user.findUnique({
+      const updated = await prisma.user.update({
         where: { id: auth.user!.id },
+        data,
       });
-      if (!userRecord) {
-        reply.code(404).send({ error: 'User not found' });
+
+      reply.send({ user: toUserDto(updated) });
+    },
+  );
+
+  app.get(
+    '/projects/:projectId/auth/clients',
+    {
+      schema: {
+        querystring: z.object({
+          limit: z.coerce.number().int().min(1).max(100).default(20),
+          cursor: z.string().optional(),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const auth = requireAuth(request, reply);
+      if (!auth) {
         return;
       }
-      const valid = await verifyPassword(currentPassword ?? '', userRecord.passwordHash);
-      if (!valid) {
-        reply.code(401).send({ error: 'Invalid credentials' });
+      const { projectId } = request.params as { projectId: string };
+      const moduleEnabled = await requireProjectModuleEnabled(
+        request,
+        reply,
+        projectId,
+        ProjectModuleKey.AUTH,
+      );
+      if (!moduleEnabled) {
         return;
       }
-    }
+      const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+      if (!role) {
+        return;
+      }
 
-    const data: { name?: string; passwordHash?: string } = {};
-    if (wantsName && name) {
-      data.name = name;
-    }
-    if (wantsPassword && newPassword) {
-      data.passwordHash = await hashPassword(newPassword);
-    }
+      const query = request.query as { limit: number; cursor?: string };
+      const limit = query.limit;
+      const cursor = query.cursor;
 
-    const updated = await prisma.user.update({
-      where: { id: auth.user!.id },
-      data,
-    });
+      const clients = await prisma.authClient.findMany({
+        where: { projectId, deletedAt: null },
+        take: limit + 1,
+        cursor: cursor ? { id: cursor } : undefined,
+        orderBy: { createdAt: 'desc' },
+      });
 
-    reply.send({ user: toUserDto(updated) });
-  });
+      let nextCursor: string | undefined = undefined;
+      if (clients.length > limit) {
+        const nextItem = clients.pop();
+        nextCursor = nextItem?.id;
+      }
 
-  app.get('/projects/:projectId/auth/clients', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-    const { projectId } = request.params as { projectId: string };
-    const moduleEnabled = await requireProjectModuleEnabled(
-      request,
-      reply,
-      projectId,
-      ProjectModuleKey.AUTH,
-    );
-    if (!moduleEnabled) {
-      return;
-    }
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    const clients = await prisma.authClient.findMany({
-      where: { projectId, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-    });
-    reply.send(clients.map(toAuthClientDto));
-  });
+      reply.send({
+        data: clients.map(toAuthClientDto),
+        nextCursor,
+      });
+    },
+  );
 
   app.post('/projects/:projectId/auth/clients', async (request, reply) => {
     const auth = requireAuth(request, reply);
@@ -882,9 +1013,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       action: 'auth.client.create',
       resourceType: 'auth_client',
       resourceId: client.id,
+      // SECURITY: rawSecret is intentionally excluded from metadataJson to prevent log leakage.
       metadataJson: { module: 'auth', type: client.type, clientId: client.clientId },
     });
 
+    // SECURITY: The raw clientSecret is returned exactly once upon creation. 
+    // It is hashed before database storage and cannot be retrieved again. 
+    // Clients must securely store this value immediately, as it will not be exposed in any future API responses.
     reply.code(201).send({
       client: toAuthClientDto(client),
       ...(rawSecret ? { clientSecret: rawSecret } : {}),
@@ -956,6 +1091,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       action: shouldRotate ? 'auth.client.rotate_secret' : 'auth.client.update',
       resourceType: 'auth_client',
       resourceId: updated.id,
+      // SECURITY: rawSecret is intentionally excluded from metadataJson to prevent log leakage.
       metadataJson: {
         module: 'auth',
         clientId: updated.clientId,
@@ -963,6 +1099,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
+    // SECURITY: The raw clientSecret is returned exactly once on rotation.
+    // It is hashed before database storage and cannot be retrieved again.
+    // The caller must securely store it immediately.
     reply.send({
       client: toAuthClientDto(updated),
       ...(rawSecret ? { clientSecret: rawSecret } : {}),

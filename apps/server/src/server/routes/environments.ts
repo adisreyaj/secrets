@@ -1,6 +1,6 @@
 import { Prisma, Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
-import { decryptSecret, encryptSecret, loadMasterKey, masterKeyVersion } from '../../crypto.js';
+import { z } from 'zod';
 import { prisma } from '../../db.js';
 import {
   requireAuth,
@@ -13,9 +13,13 @@ import { deleteEnvironmentWithGuards } from '../services/deletions.js';
 import { isPrismaUniqueError } from '../services/prismaErrors.js';
 import { logAudit } from '../services/audit.js';
 import { ensureUniqueEnvironmentSlug } from '../services/slugs.js';
+import {
+  decryptSecretWithKey,
+  encryptSecretWithKey,
+  withEnvironmentDek,
+} from '../services/envCrypto.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  const masterKey = loadMasterKey();
 
   app.post('/projects/:id/environments', async (request, reply) => {
     const auth = requireAuth(request, reply);
@@ -70,8 +74,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       throw error;
     }
 
+    await withEnvironmentDek(env.id, () => undefined);
+
     let copiedCount = 0;
     if (sourceEnv) {
+      const sourceDek = await withEnvironmentDek(sourceEnv.id, (dek) => dek);
+      const targetDek = await withEnvironmentDek(env.id, (dek) => dek);
       const secrets = await prisma.secret.findMany({
         where: { environmentId: sourceEnv.id, deletedAt: null },
         include: {
@@ -100,12 +108,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             continue;
           }
 
-          const value = decryptSecret(
+          const value = decryptSecretWithKey(
             { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
-            masterKey,
+            sourceDek,
+            sourceEnv.id,
+            secret.key,
           );
-          const payload = encryptSecret(value, masterKey);
-          const keyVersion = masterKeyVersion();
+          const payload = encryptSecretWithKey(value, targetDek, env.id, secret.key);
 
           operations.push(
             prisma.secret.create({
@@ -117,7 +126,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
                     ciphertext: payload.ciphertext,
                     iv: payload.iv,
                     tag: payload.tag,
-                    keyVersion,
+                    keyVersion: version.keyVersion,
                     createdBy: auth.user?.id,
                     isActive: true,
                   },
@@ -217,29 +226,55 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     reply.code(201).send(toEnvironmentDto(env));
   });
 
-  app.get('/projects/:id/environments', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
-
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-    if (!role) {
-      return;
-    }
-
-    const scopedEnvIds = request.auth?.scopeEnvironmentIds;
-    const envs = await prisma.environment.findMany({
-      where: {
-        projectId,
-        ...(request.auth?.viaToken && scopedEnvIds ? { id: { in: scopedEnvIds } } : {}),
+  app.get(
+    '/projects/:id/environments',
+    {
+      schema: {
+        querystring: z.object({
+          limit: z.coerce.number().int().min(1).max(100).default(20),
+          cursor: z.string().optional(),
+        }),
       },
-      orderBy: { createdAt: 'desc' },
-    });
+    },
+    async (request, reply) => {
+      const auth = requireAuth(request, reply);
+      if (!auth) {
+        return;
+      }
 
-    reply.send(envs.map(toEnvironmentDto));
-  });
+      const { id: projectId } = request.params as { id: string };
+      const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+      if (!role) {
+        return;
+      }
+
+      const query = request.query as { limit: number; cursor?: string };
+      const limit = query.limit;
+      const cursor = query.cursor;
+      const scopedEnvIds = request.auth?.scopeEnvironmentIds;
+
+      const envs = await prisma.environment.findMany({
+        where: {
+          projectId,
+          ...(request.auth?.viaToken && scopedEnvIds ? { id: { in: scopedEnvIds } } : {}),
+        },
+        take: limit + 1,
+        cursor: cursor ? { id: cursor } : undefined,
+        orderBy: { createdAt: 'desc' },
+      });
+
+      let nextCursor: string | undefined = undefined;
+      if (envs.length > limit) {
+        const nextItem = envs.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      reply.send({
+        data: envs.map(toEnvironmentDto),
+        nextCursor,
+      });
+    },
+  );
 
   app.get('/projects/:id/environments/slug/:slug', async (request, reply) => {
     const auth = requireAuth(request, reply);

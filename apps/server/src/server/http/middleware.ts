@@ -2,6 +2,7 @@ import { Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { generateToken, hashToken } from '../../auth.js';
 import { config } from '../../config.js';
+import { DecryptionError } from '../../crypto.js';
 import { prisma } from '../../db.js';
 import { enforceGlobalBootstrapScope } from '../auth/guards.js';
 import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME } from '../auth/session.js';
@@ -97,7 +98,7 @@ export function registerCoreHttpMiddleware(
             viaToken: true,
             tokenScopeType: 'service_account',
             projectId: serviceToken.serviceAccount.projectId,
-            role: Role.EDITOR,
+            role: serviceToken.role,
             readOnly: serviceToken.readOnly,
             serviceAccountId: serviceToken.serviceAccountId,
             scopeEnvironmentIds,
@@ -137,17 +138,26 @@ export function registerCoreHttpMiddleware(
   });
 
   app.setErrorHandler(async (error: { statusCode?: number }, request, reply) => {
-    const statusCode = error.statusCode ?? reply.statusCode ?? 500;
+    const isDecryptionFailure = error instanceof DecryptionError;
+    const statusCode = isDecryptionFailure ? 500 : error.statusCode ?? reply.statusCode ?? 500;
     if (shouldLogStatus(statusCode) && !request.errorLogged) {
       await logDispatcher.emit({
         event: statusCode >= 500 ? 'request.failed' : 'request.denied',
         level: statusCode >= 500 ? 'error' : 'warn',
         category: request.errorCategory ?? (statusCode >= 500 ? 'internal' : 'domain'),
-        message: statusCode >= 500 ? 'request failed' : 'request denied',
+        message: isDecryptionFailure
+          ? 'decryption failure - ciphertext tampering or wrong key suspected'
+          : statusCode >= 500
+            ? 'request failed'
+            : 'request denied',
         context: buildRequestLogContext(request, statusCode),
         err: statusCode >= 500 ? error : undefined,
       });
       request.errorLogged = true;
+    }
+    if (isDecryptionFailure) {
+      reply.code(500).send({ error: 'Failed to decrypt secret' });
+      return;
     }
     reply.send(error);
   });

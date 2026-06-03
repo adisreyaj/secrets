@@ -1,5 +1,31 @@
 import { config } from '../../../config.js';
 
+function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  fetcher: typeof fetch = globalThis.fetch,
+  timeoutMs = 5000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = options.signal
+    ? combineSignals(options.signal, controller.signal)
+    : controller.signal;
+  return fetcher(url, { ...options, signal }).finally(() => clearTimeout(timeout));
+}
+
+function combineSignals(...signals: AbortSignal[]): AbortSignal {
+  const controller = new AbortController();
+  for (const signal of signals) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      return controller.signal;
+    }
+    signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true });
+  }
+  return controller.signal;
+}
+
 export type AuthEmailMessage = {
   to: string;
   subject: string;
@@ -34,23 +60,26 @@ export class ResendAuthEmailProvider implements AuthEmailProvider {
       throw new Error('No fetch implementation available for Resend provider');
     }
 
-    const response = await this.fetcher('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
+    const response = await fetchWithTimeout(
+      'https://api.resend.com/emails',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: `${this.fromName} <${this.from}>`,
+          to: [message.to],
+          subject: message.subject,
+          text: message.text,
+        }),
       },
-      body: JSON.stringify({
-        from: `${this.fromName} <${this.from}>`,
-        to: [message.to],
-        subject: message.subject,
-        text: message.text,
-      }),
-    });
+      this.fetcher,
+    );
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Resend request failed (${response.status}): ${body}`);
+      throw new Error(`Email service request failed (${response.status})`);
     }
   }
 }

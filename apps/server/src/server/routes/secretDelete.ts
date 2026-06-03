@@ -1,18 +1,31 @@
 import { Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { logAudit } from '../services/audit.js';
 
-export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  app.delete('/secrets/:id', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
+const deleteSecretParamsSchema = z.object({
+  id: z.string().uuid('Invalid secret ID'),
+});
 
-    const { id: secretId } = request.params as { id: string };
+export async function registerRoutes(app: FastifyInstance): Promise<void> {
+  app.delete(
+    '/secrets/:id',
+    {
+      schema: {
+        params: deleteSecretParamsSchema,
+      },
+    },
+    async (request, reply) => {
+      const auth = requireAuth(request, reply);
+      if (!auth) {
+        return;
+      }
+
+      const params = request.params as z.infer<typeof deleteSecretParamsSchema>;
+      const { id: secretId } = params;
     const secret = await prisma.secret.findUnique({
       include: {
         environment: true,

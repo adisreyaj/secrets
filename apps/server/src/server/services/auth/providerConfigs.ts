@@ -1,6 +1,19 @@
 import { AuthIdentityProvider } from '@prisma/client';
-import { decryptSecret, encryptSecret, loadMasterKey, masterKeyVersion } from '../../../crypto.js';
+import {
+  aadForGeneric,
+  decryptSecret,
+  encryptSecret,
+  loadMasterKey,
+  masterKeyVersion,
+} from '../../../crypto.js';
 import { prisma } from '../../../db.js';
+
+function aadForProviderConfigKey(
+  projectId: string,
+  provider: AuthIdentityProvider,
+): string {
+  return aadForGeneric({ provider, projectId, scope: 'auth_provider_config' });
+}
 
 export async function upsertAuthProviderConfig(params: {
   projectId: string;
@@ -10,7 +23,9 @@ export async function upsertAuthProviderConfig(params: {
   enabled?: boolean;
   scopes?: string[];
 }) {
-  const encrypted = encryptSecret(params.clientSecret, loadMasterKey());
+  const masterKey = loadMasterKey();
+  const aad = aadForProviderConfigKey(params.projectId, params.provider);
+  const encrypted = encryptSecret(params.clientSecret, masterKey, aad);
 
   return prisma.authProviderConfig.upsert({
     where: {
@@ -47,7 +62,9 @@ export async function rotateAuthProviderSecret(params: {
   provider: AuthIdentityProvider;
   clientSecret: string;
 }) {
-  const encrypted = encryptSecret(params.clientSecret, loadMasterKey());
+  const masterKey = loadMasterKey();
+  const aad = aadForProviderConfigKey(params.projectId, params.provider);
+  const encrypted = encryptSecret(params.clientSecret, masterKey, aad);
   return prisma.authProviderConfig.update({
     where: {
       projectId_provider: {
@@ -65,6 +82,8 @@ export async function rotateAuthProviderSecret(params: {
 }
 
 export function decryptProviderSecret(config: {
+  projectId: string;
+  provider: AuthIdentityProvider;
   clientSecretCiphertext: Buffer | Uint8Array;
   clientSecretIv: Buffer | Uint8Array;
   clientSecretTag: Buffer | Uint8Array;
@@ -76,5 +95,6 @@ export function decryptProviderSecret(config: {
       tag: config.clientSecretTag,
     },
     loadMasterKey(),
+    aadForProviderConfigKey(config.projectId, config.provider),
   );
 }

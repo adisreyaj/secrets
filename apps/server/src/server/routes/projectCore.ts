@@ -1,5 +1,6 @@
 import { Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { ROLE_RANK } from '../auth/policies.js';
@@ -104,19 +105,46 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     reply.code(201).send(toProjectDto(project, Role.ADMIN));
   });
 
-  app.get('/projects', async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
+  app.get(
+    '/projects',
+    {
+      schema: {
+        querystring: z.object({
+          limit: z.coerce.number().int().min(1).max(100).default(20),
+          cursor: z.string().optional(),
+        }),
+      },
+    },
+    async (request, reply) => {
+      const auth = requireAuth(request, reply);
+      if (!auth) {
+        return;
+      }
 
-    const memberships = await prisma.projectMember.findMany({
-      where: { userId: auth.user!.id },
-      include: { project: true },
-    });
+      const query = request.query as { limit: number; cursor?: string };
+      const limit = query.limit;
+      const cursor = query.cursor;
 
-    reply.send(memberships.map((membership) => toProjectDto(membership.project, membership.role)));
-  });
+      const memberships = await prisma.projectMember.findMany({
+        where: { userId: auth.user!.id },
+        include: { project: true },
+        take: limit + 1,
+        cursor: cursor ? { id: cursor } : undefined,
+        orderBy: { project: { createdAt: 'desc' } },
+      });
+
+      let nextCursor: string | undefined = undefined;
+      if (memberships.length > limit) {
+        const nextItem = memberships.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      reply.send({
+        data: memberships.map((membership) => toProjectDto(membership.project, membership.role)),
+        nextCursor,
+      });
+    },
+  );
 
   app.put('/projects/:id', async (request, reply) => {
     const auth = requireAuth(request, reply);

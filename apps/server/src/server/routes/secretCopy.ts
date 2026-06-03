@@ -1,6 +1,5 @@
 import { Role } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
-import { decryptSecret, encryptSecret, loadMasterKey, masterKeyVersion } from '../../crypto.js';
 import { prisma } from '../../db.js';
 import {
   requireAuth,
@@ -9,10 +8,13 @@ import {
 } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { logAudit } from '../services/audit.js';
+import {
+  decryptSecretWithKey,
+  encryptSecretWithKey,
+  withEnvironmentDek,
+} from '../services/envCrypto.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
-  const masterKey = loadMasterKey();
-
   app.post('/secrets/:id/copy', async (request, reply) => {
     const auth = requireAuth(request, reply);
     if (!auth) {
@@ -81,11 +83,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const value = decryptSecret(
+    const sourceDek = await withEnvironmentDek(secret.environmentId, (d) => d);
+    const value = decryptSecretWithKey(
       { ciphertext: activeVersion.ciphertext, iv: activeVersion.iv, tag: activeVersion.tag },
-      masterKey,
+      sourceDek,
+      secret.environmentId,
+      secret.key,
     );
-    const keyVersion = masterKeyVersion();
     const overwrite = body?.overwrite === true;
 
     const created: string[] = [];
@@ -94,6 +98,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     await prisma.$transaction(async (tx) => {
       for (const env of targetEnvs) {
+        const targetDek = await withEnvironmentDek(env.id, (d) => d);
         const existing = await tx.secret.findUnique({
           where: { environmentId_key: { environmentId: env.id, key: secret.key } },
         });
@@ -114,7 +119,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           updated.push(env.id);
         }
 
-        const payload = encryptSecret(value, masterKey);
+        const payload = encryptSecretWithKey(value, targetDek, env.id, secret.key);
 
         await tx.secretVersion.updateMany({
           where: { secretId: targetSecretId },
@@ -126,7 +131,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             ciphertext: payload.ciphertext,
             iv: payload.iv,
             tag: payload.tag,
-            keyVersion,
+            keyVersion: activeVersion.keyVersion,
             createdBy: auth.user?.id,
             isActive: true,
           },
@@ -241,15 +246,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    for (const sourceSecret of sourceSecrets) {
-      const version = sourceSecret.versions[0];
-    }
-
     const created: string[] = [];
     const updated: string[] = [];
     const skipped: string[] = [];
     const skippedDetails: { key: string; reason: string; code: string }[] = [];
-    const keyVersion = masterKeyVersion();
 
     const requestedKeys = keys?.length ? new Set(keys) : null;
     if (requestedKeys) {
@@ -265,6 +265,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         }
       }
     }
+
+    const sourceDek = await withEnvironmentDek(sourceEnv.id, (d) => d);
 
     await prisma.$transaction(async (tx) => {
       for (const sourceSecret of sourceSecrets) {
@@ -303,6 +305,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           continue;
         }
 
+        const targetDek = await withEnvironmentDek(targetEnv.id, (d) => d);
+
         let targetSecretId = existing?.id;
         if (!targetSecretId) {
           const createdSecret = await tx.secret.create({
@@ -314,11 +318,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           updated.push(sourceSecret.key);
         }
 
-        const value = decryptSecret(
+        const value = decryptSecretWithKey(
           { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
-          masterKey,
+          sourceDek,
+          sourceEnv.id,
+          sourceSecret.key,
         );
-        const payload = encryptSecret(value, masterKey);
+        const payload = encryptSecretWithKey(value, targetDek, targetEnv.id, sourceSecret.key);
 
         await tx.secretVersion.updateMany({
           where: { secretId: targetSecretId },
@@ -330,7 +336,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
             ciphertext: payload.ciphertext,
             iv: payload.iv,
             tag: payload.tag,
-            keyVersion,
+            keyVersion: version.keyVersion,
             createdBy: auth.user?.id,
             isActive: true,
           },
