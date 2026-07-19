@@ -1,8 +1,8 @@
-import { Role } from '@prisma/client';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { masterKeyVersion } from '../../crypto.js';
-import { prisma } from '../../db.js';
+import { db, Role, secrets, secretVersions } from '../../db/index.js';
 import {
   requireAuth,
   requireEnvironmentScope,
@@ -18,7 +18,7 @@ import {
 } from '../services/envCrypto.js';
 
 const patchSecretParamsSchema = z.object({
-  id: z.string().uuid('Invalid secret ID'),
+  id: z.string().min(1, 'Invalid secret ID'),
 });
 
 const patchSecretBodySchema = z
@@ -51,135 +51,132 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const nextKey = body.key;
       const nextValue = body.value;
 
-    const secret = await prisma.secret.findUnique({
-      include: {
-        environment: true,
-        versions: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
+      const secret = await db.query.secrets.findFirst({
+        where: eq(secrets.id, secretId),
+        with: {
+          environment: true,
+          versions: {
+            where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
+            orderBy: (fields, { desc: descOp }) => [descOp(fields.createdAt)],
+            limit: 1,
+          },
         },
-      },
-      where: { id: secretId },
-    });
-    if (!secret) {
-      sendError(reply, 404, 'Secret not found');
-      return;
-    }
-    if (!requireEnvironmentScope(request, reply, secret.environmentId)) {
-      return;
-    }
-
-    const role = await requireProjectRole(
-      request,
-      reply,
-      secret.environment.projectId,
-      Role.EDITOR,
-    );
-    if (!role) {
-      return;
-    }
-
-    const keyChanged = nextKey && nextKey !== secret.key;
-    const normalizedKeyChanged =
-      nextKey && normalizeIdentifier(nextKey) !== normalizeIdentifier(secret.key);
-    if (normalizedKeyChanged && nextKey) {
-      const siblings = await prisma.secret.findMany({
-        where: { environmentId: secret.environmentId, deletedAt: null },
-        select: { id: true, key: true },
       });
-      const existing = siblings.find(
-        (candidate) =>
-          candidate.id !== secretId &&
-          normalizeIdentifier(candidate.key) === normalizeIdentifier(nextKey),
-      );
-      if (existing) {
-        sendError(reply, 409, 'Key already exists in this environment');
+      if (!secret) {
+        sendError(reply, 404, 'Secret not found');
         return;
       }
-    }
-
-    const valueChanged = body.value !== undefined;
-    const finalKey = nextKey ?? secret.key;
-
-    const dek = await withEnvironmentDek(secret.environmentId, (d) => d);
-    const keyVersion = masterKeyVersion();
-    const transactionOps: Array<ReturnType<typeof prisma.secretVersion.updateMany> | ReturnType<typeof prisma.secretVersion.create> | ReturnType<typeof prisma.secretVersion.update> | ReturnType<typeof prisma.secret.update>> = [];
-
-    if (keyChanged && nextKey) {
-      const allVersions = await prisma.secretVersion.findMany({
-        where: { secretId },
-        orderBy: { createdAt: 'desc' },
-      });
-      for (const version of allVersions) {
-        const plaintext = decryptSecretWithKey(
-          { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
-          dek,
-          secret.environmentId,
-          secret.key,
-        );
-        const rewritten = encryptSecretWithKey(plaintext, dek, secret.environmentId, nextKey);
-        transactionOps.push(
-          prisma.secretVersion.update({
-            where: { id: version.id },
-            data: {
-              ciphertext: rewritten.ciphertext,
-              iv: rewritten.iv,
-              tag: rewritten.tag,
-            },
-          }),
-        );
+      if (!requireEnvironmentScope(request, reply, secret.environmentId)) {
+        return;
       }
-    }
 
-    if (valueChanged && nextValue) {
-      const payload = encryptSecretWithKey(nextValue, dek, secret.environmentId, finalKey);
-      transactionOps.push(
-        prisma.secretVersion.updateMany({
-          where: { secretId },
-          data: { isActive: false },
-        }),
-        prisma.secretVersion.create({
-          data: {
+      const role = await requireProjectRole(
+        request,
+        reply,
+        secret.environment.projectId,
+        Role.EDITOR,
+      );
+      if (!role) {
+        return;
+      }
+
+      const keyChanged = nextKey && nextKey !== secret.key;
+      const normalizedKeyChanged =
+        nextKey && normalizeIdentifier(nextKey) !== normalizeIdentifier(secret.key);
+      if (normalizedKeyChanged && nextKey) {
+        const siblings = await db.query.secrets.findMany({
+          where: and(eq(secrets.environmentId, secret.environmentId), isNull(secrets.deletedAt)),
+          columns: { id: true, key: true },
+        });
+        const existing = siblings.find(
+          (candidate) =>
+            candidate.id !== secretId &&
+            normalizeIdentifier(candidate.key) === normalizeIdentifier(nextKey),
+        );
+        if (existing) {
+          sendError(reply, 409, 'Key already exists in this environment');
+          return;
+        }
+      }
+
+      const valueChanged = body.value !== undefined;
+      const finalKey = nextKey ?? secret.key;
+
+      const dek = await withEnvironmentDek(secret.environmentId, (d) => d);
+      const keyVersion = masterKeyVersion();
+
+      await db.transaction(async (tx) => {
+        if (keyChanged && nextKey) {
+          const allVersions = await tx.query.secretVersions.findMany({
+            where: eq(secretVersions.secretId, secretId),
+            orderBy: [desc(secretVersions.createdAt)],
+          });
+          for (const version of allVersions) {
+            const plaintext = decryptSecretWithKey(
+              { ciphertext: version.ciphertext, iv: version.iv, tag: version.tag },
+              dek,
+              secret.environmentId,
+              secret.key,
+            );
+            const rewritten = encryptSecretWithKey(
+              plaintext,
+              dek,
+              secret.environmentId,
+              nextKey,
+            );
+            await tx
+              .update(secretVersions)
+              .set({
+                ciphertext: Buffer.from(rewritten.ciphertext),
+                iv: Buffer.from(rewritten.iv),
+                tag: Buffer.from(rewritten.tag),
+              })
+              .where(eq(secretVersions.id, version.id));
+          }
+        }
+
+        if (valueChanged && nextValue !== undefined) {
+          const payload = encryptSecretWithKey(nextValue, dek, secret.environmentId, finalKey);
+          await tx
+            .update(secretVersions)
+            .set({ isActive: false })
+            .where(eq(secretVersions.secretId, secretId));
+          await tx.insert(secretVersions).values({
             secretId,
-            ciphertext: payload.ciphertext,
-            iv: payload.iv,
-            tag: payload.tag,
+            ciphertext: Buffer.from(payload.ciphertext),
+            iv: Buffer.from(payload.iv),
+            tag: Buffer.from(payload.tag),
             keyVersion,
             createdBy: auth.user?.id,
             isActive: true,
-          },
-        }),
-      );
-    }
+          });
+        }
 
-    transactionOps.push(
-      prisma.secret.update({
-        where: { id: secretId },
-        data: {
-          ...(keyChanged && nextKey ? { key: nextKey } : {}),
-          updatedAt: new Date(),
-          deletedAt: null,
+        await tx
+          .update(secrets)
+          .set({
+            ...(keyChanged && nextKey ? { key: nextKey } : {}),
+            updatedAt: new Date(),
+            deletedAt: null,
+          })
+          .where(eq(secrets.id, secretId));
+      });
+
+      await logAudit({
+        projectId: secret.environment.projectId,
+        actorUserId: auth.user?.id,
+        actorServiceAccountId: auth.serviceAccountId ?? null,
+        action: 'secret.update',
+        resourceType: 'secret',
+        resourceId: secretId,
+        metadataJson: {
+          previousKey: secret.key,
+          updatedKey: finalKey,
+          updatedValue: valueChanged,
         },
-      }),
-    );
+      });
 
-    await prisma.$transaction(transactionOps);
-
-    await logAudit({
-      projectId: secret.environment.projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'secret.update',
-      resourceType: 'secret',
-      resourceId: secretId,
-      metadataJson: {
-        previousKey: secret.key,
-        updatedKey: finalKey,
-        updatedValue: valueChanged,
-      },
-    });
-
-    reply.send({ ok: true });
-  });
+      reply.send({ ok: true });
+    },
+  );
 }

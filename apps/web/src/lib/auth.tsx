@@ -76,8 +76,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true)
     setError(null)
     try {
-      const data = await api.register(payload)
-      setUser(data.user)
+      await api.register(payload)
+      // Email verification required — no session until verified.
+      setUser(null)
     } catch (err) {
       setError(getErrorMessage(err))
       throw err

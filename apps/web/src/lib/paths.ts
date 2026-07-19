@@ -17,6 +17,16 @@ export const environmentsPath = (
   projectSlug?: string | null,
 ) => projectPath(projectId, projectSlug, 'environments')
 
+export const auditPath = (
+  projectId: string,
+  projectSlug?: string | null,
+) => projectPath(projectId, projectSlug, 'audit')
+
+export const tokensPath = (
+  projectId: string,
+  projectSlug?: string | null,
+) => projectPath(projectId, projectSlug, 'tokens')
+
 export const environmentPath = (
   projectId: string,
   _projectSlug: string | null | undefined,

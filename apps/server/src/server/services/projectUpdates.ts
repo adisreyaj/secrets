@@ -1,5 +1,5 @@
-import type { Prisma } from '@prisma/client';
-import { prisma } from '../../db.js';
+import { and, eq, ne } from 'drizzle-orm';
+import { auditLogs, db, projectMembers, projects } from '../../db/index.js';
 import { normalizeIdentifier } from './identifiers.js';
 
 type ActorContext = {
@@ -36,46 +36,55 @@ export async function renameProjectWithGuards(params: {
     return { ok: false, status: 400, error: 'Name is required' };
   }
 
-  const existing = await prisma.project.findUnique({
-    where: { id: params.projectId },
-    select: { name: true },
+  const existing = await db.query.projects.findFirst({
+    where: eq(projects.id, params.projectId),
+    columns: { name: true },
   });
   if (!existing) {
     return { ok: false, status: 404, error: 'Project not found' };
   }
 
   if (existing.name !== nextName) {
-    const conflicts = await prisma.projectMember.findMany({
-      where: { userId: params.actorUserId, NOT: { projectId: params.projectId } },
-      select: { project: { select: { name: true } } },
+    const memberships = await db.query.projectMembers.findMany({
+      where: and(
+        eq(projectMembers.userId, params.actorUserId),
+        ne(projectMembers.projectId, params.projectId),
+      ),
+      with: {
+        project: {
+          columns: { name: true },
+        },
+      },
     });
-    const conflict = conflicts.some(
+    const conflict = memberships.some(
       (membership) =>
-        normalizeIdentifier(membership.project.name) ===
-        normalizeIdentifier(nextName),
+        normalizeIdentifier(membership.project.name) === normalizeIdentifier(nextName),
     );
     if (conflict) {
       return { ok: false, status: 409, error: 'Project name already exists' };
     }
   }
 
-  const project = await prisma.project.update({
-    where: { id: params.projectId },
-    data: { name: nextName },
-  });
+  const [project] = await db
+    .update(projects)
+    .set({ name: nextName })
+    .where(eq(projects.id, params.projectId))
+    .returning();
 
-  await prisma.auditLog.create({
-    data: {
-      projectId: params.projectId,
-      actorUserId: params.actorUserId ?? null,
-      actorServiceAccountId: params.actorServiceAccountId ?? null,
-      action: 'project.update',
-      resourceType: 'project',
-      resourceId: params.projectId,
-      metadataJson: {
-        oldName: existing.name,
-        newName: project.name,
-      } as Prisma.InputJsonValue,
+  if (!project) {
+    return { ok: false, status: 404, error: 'Project not found' };
+  }
+
+  await db.insert(auditLogs).values({
+    projectId: params.projectId,
+    actorUserId: params.actorUserId ?? null,
+    actorServiceAccountId: params.actorServiceAccountId ?? null,
+    action: 'project.update',
+    resourceType: 'project',
+    resourceId: params.projectId,
+    metadataJson: {
+      oldName: existing.name,
+      newName: project.name,
     },
   });
 

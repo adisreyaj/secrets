@@ -1,16 +1,27 @@
-import { Role } from '@prisma/client';
+import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { generateToken, hashToken } from '../../auth.js';
+import { getDashboardSession } from '../../betterAuth.js';
 import { config } from '../../config.js';
 import { DecryptionError } from '../../crypto.js';
-import { prisma } from '../../db.js';
+import {
+  apiTokens,
+  db,
+  globalCliTokens,
+  projectMembers,
+  serviceAccountTokens,
+} from '../../db/index.js';
 import { enforceGlobalBootstrapScope } from '../auth/guards.js';
-import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME } from '../auth/session.js';
+import { CSRF_COOKIE_NAME } from '../auth/session.js';
 import { toUserDto } from '../mappers/users.js';
 import { shouldLogStatus } from '../logging/policy.js';
 import type { LogDispatcher } from '../logging/dispatcher.js';
 import { buildRequestLogContext, logHandledError, sendLoggedError } from './logging.js';
 import { getRequestOrigin, parseHeaderValue } from './validators.js';
+
+function isBetterAuthPath(path: string): boolean {
+  return path === '/api/auth' || path.startsWith('/api/auth/');
+}
 
 export function registerCoreHttpMiddleware(
   app: FastifyInstance,
@@ -22,23 +33,17 @@ export function registerCoreHttpMiddleware(
   });
 
   app.addHook('preHandler', async (request) => {
-    const sessionToken = request.cookies[SESSION_COOKIE_NAME];
-    if (sessionToken) {
-      const tokenHash = hashToken(sessionToken);
-      const session = await prisma.userSession.findFirst({
-        where: {
-          tokenHash,
-          expiresAt: { gt: new Date() },
-        },
-        include: { user: true },
-      });
-      if (session) {
-        request.auth = {
-          user: toUserDto(session.user),
-          viaToken: false,
-        };
-        return;
-      }
+    const dashboardSession = await getDashboardSession(request.headers);
+    if (dashboardSession?.user) {
+      request.auth = {
+        user: toUserDto({
+          id: dashboardSession.user.id,
+          email: dashboardSession.user.email,
+          name: dashboardSession.user.name ?? null,
+        }),
+        viaToken: false,
+      };
+      return;
     }
 
     const authHeader = request.headers.authorization;
@@ -46,21 +51,20 @@ export function registerCoreHttpMiddleware(
       const raw = authHeader.slice('Bearer '.length).trim();
       if (raw) {
         const tokenHash = hashToken(raw);
-        const token = await prisma.apiToken.findFirst({
-          where: {
-            tokenHash,
-            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-          },
-          include: { creator: true },
+        const now = new Date();
+        const token = await db.query.apiTokens.findFirst({
+          where: and(
+            eq(apiTokens.tokenHash, tokenHash),
+            or(isNull(apiTokens.expiresAt), gt(apiTokens.expiresAt, now)),
+          ),
+          with: { creator: true },
         });
         if (token) {
-          const membership = await prisma.projectMember.findUnique({
-            where: {
-              projectId_userId: {
-                projectId: token.projectId,
-                userId: token.createdBy,
-              },
-            },
+          const membership = await db.query.projectMembers.findFirst({
+            where: and(
+              eq(projectMembers.projectId, token.projectId),
+              eq(projectMembers.userId, token.createdBy),
+            ),
           });
 
           request.auth = {
@@ -72,19 +76,19 @@ export function registerCoreHttpMiddleware(
             readOnly: token.readOnly,
           };
 
-          await prisma.apiToken.update({
-            where: { id: token.id },
-            data: { lastUsedAt: new Date() },
-          });
+          await db
+            .update(apiTokens)
+            .set({ lastUsedAt: now })
+            .where(eq(apiTokens.id, token.id));
           return;
         }
 
-        const serviceToken = await prisma.serviceAccountToken.findFirst({
-          where: {
-            tokenHash,
-            OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-          },
-          include: {
+        const serviceToken = await db.query.serviceAccountTokens.findFirst({
+          where: and(
+            eq(serviceAccountTokens.tokenHash, tokenHash),
+            or(isNull(serviceAccountTokens.expiresAt), gt(serviceAccountTokens.expiresAt, now)),
+          ),
+          with: {
             serviceAccount: true,
             environments: true,
           },
@@ -104,21 +108,21 @@ export function registerCoreHttpMiddleware(
             scopeEnvironmentIds,
           };
 
-          await prisma.serviceAccountToken.update({
-            where: { id: serviceToken.id },
-            data: { lastUsedAt: new Date() },
-          });
+          await db
+            .update(serviceAccountTokens)
+            .set({ lastUsedAt: now })
+            .where(eq(serviceAccountTokens.id, serviceToken.id));
           return;
         }
 
-        const globalToken = await prisma.globalCliToken.findFirst({
-          where: {
-            tokenHash,
-            revokedAt: null,
-            deletedAt: null,
-            expiresAt: { gt: new Date() },
-          },
-          include: { creator: true },
+        const globalToken = await db.query.globalCliTokens.findFirst({
+          where: and(
+            eq(globalCliTokens.tokenHash, tokenHash),
+            isNull(globalCliTokens.revokedAt),
+            isNull(globalCliTokens.deletedAt),
+            gt(globalCliTokens.expiresAt, now),
+          ),
+          with: { creator: true },
         });
         if (globalToken) {
           request.auth = {
@@ -128,10 +132,10 @@ export function registerCoreHttpMiddleware(
             readOnly: false,
           };
 
-          await prisma.globalCliToken.update({
-            where: { id: globalToken.id },
-            data: { lastUsedAt: new Date() },
-          });
+          await db
+            .update(globalCliTokens)
+            .set({ lastUsedAt: now })
+            .where(eq(globalCliTokens.id, globalToken.id));
         }
       }
     }
@@ -187,8 +191,8 @@ export function registerCoreHttpMiddleware(
       });
     };
 
-    const sessionToken = request.cookies[SESSION_COOKIE_NAME];
-    if (sessionToken && !request.cookies[CSRF_COOKIE_NAME]) {
+    const hasDashboardSession = Boolean(request.auth?.user && !request.auth.viaToken);
+    if (hasDashboardSession && !request.cookies[CSRF_COOKIE_NAME]) {
       setCsrfCookie();
     }
 
@@ -196,7 +200,12 @@ export function registerCoreHttpMiddleware(
       (request.routeOptions && request.routeOptions.url) ||
       (request as { routerPath?: string }).routerPath ||
       request.url.split('?')[0];
-    if (routePath === '/auth/cli-login' || routePath === '/auth/cli-login/complete') {
+    const requestPath = request.url.split('?')[0] ?? routePath;
+    if (
+      routePath === '/auth/cli-login' ||
+      routePath === '/auth/cli-login/complete' ||
+      isBetterAuthPath(requestPath)
+    ) {
       return;
     }
 
@@ -242,7 +251,7 @@ export function registerCoreHttpMiddleware(
       return sendLoggedError(reply, request, 403, 'Invalid origin', 'security');
     }
 
-    if (sessionToken) {
+    if (hasDashboardSession) {
       const csrfCookie = request.cookies[CSRF_COOKIE_NAME];
       const csrfHeader = parseHeaderValue(request.headers['x-csrf-token']);
 
@@ -252,7 +261,7 @@ export function registerCoreHttpMiddleware(
         return;
       }
 
-      if (!csrfCookie || !csrfHeader || csrfHeader !== csrfCookie) {
+      if (!csrfHeader || csrfHeader !== csrfCookie) {
         request.errorCategory = 'security';
         return sendLoggedError(reply, request, 403, 'Invalid CSRF token', 'security');
       }

@@ -1,5 +1,4 @@
-import type { Prisma } from '@prisma/client';
-import { prisma } from '../../db.js';
+import { auditLogs, db } from '../../db/index.js';
 
 export async function logAudit(params: {
   projectId: string;
@@ -10,15 +9,13 @@ export async function logAudit(params: {
   resourceId?: string | null;
   metadataJson?: Record<string, unknown> | null;
 }) {
-  await prisma.auditLog.create({
-    data: {
-      projectId: params.projectId,
-      actorUserId: params.actorUserId ?? null,
-      actorServiceAccountId: params.actorServiceAccountId ?? null,
-      action: params.action,
-      resourceType: params.resourceType,
-      resourceId: params.resourceId ?? null,
-      metadataJson: (params.metadataJson as Prisma.InputJsonValue) ?? undefined,
-    },
+  await db.insert(auditLogs).values({
+    projectId: params.projectId,
+    actorUserId: params.actorUserId ?? null,
+    actorServiceAccountId: params.actorServiceAccountId ?? null,
+    action: params.action,
+    resourceType: params.resourceType,
+    resourceId: params.resourceId ?? null,
+    metadataJson: params.metadataJson ?? null,
   });
 }

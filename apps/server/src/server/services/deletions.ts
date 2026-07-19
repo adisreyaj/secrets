@@ -1,5 +1,13 @@
-import { Prisma } from '@prisma/client';
-import { prisma } from '../../db.js';
+import { and, count, eq } from 'drizzle-orm';
+import {
+  apiTokens,
+  auditLogs,
+  db,
+  environments,
+  projects,
+  secrets,
+  serviceAccounts,
+} from '../../db/index.js';
 
 type ActorContext = {
   actorUserId?: string | null;
@@ -16,13 +24,21 @@ type DeleteSuccess = {
   ok: true;
 };
 
+async function countWhere(
+  table: typeof environments | typeof apiTokens | typeof serviceAccounts | typeof secrets,
+  where: ReturnType<typeof eq> | ReturnType<typeof and>,
+): Promise<number> {
+  const [row] = await db.select({ value: count() }).from(table).where(where);
+  return Number(row?.value ?? 0);
+}
+
 export async function deleteProjectWithGuards(params: {
   projectId: string;
   confirmText: string;
 } & ActorContext): Promise<DeleteFailure | DeleteSuccess> {
-  const project = await prisma.project.findUnique({
-    where: { id: params.projectId },
-    select: { id: true, name: true },
+  const project = await db.query.projects.findFirst({
+    where: eq(projects.id, params.projectId),
+    columns: { id: true, name: true },
   });
   if (!project) {
     return { ok: false, status: 404, error: 'Project not found' };
@@ -36,37 +52,35 @@ export async function deleteProjectWithGuards(params: {
     };
   }
 
-  const [environmentCount, secretCount, tokenCount, serviceAccountCount] =
-    await Promise.all([
-      prisma.environment.count({ where: { projectId: params.projectId } }),
-      prisma.secret.count({
-        where: { environment: { projectId: params.projectId } },
-      }),
-      prisma.apiToken.count({ where: { projectId: params.projectId } }),
-      prisma.serviceAccount.count({ where: { projectId: params.projectId } }),
-    ]);
+  const [environmentCount, secretCount, tokenCount, serviceAccountCount] = await Promise.all([
+    countWhere(environments, eq(environments.projectId, params.projectId)),
+    db
+      .select({ value: count() })
+      .from(secrets)
+      .innerJoin(environments, eq(secrets.environmentId, environments.id))
+      .where(eq(environments.projectId, params.projectId))
+      .then((rows) => Number(rows[0]?.value ?? 0)),
+    countWhere(apiTokens, eq(apiTokens.projectId, params.projectId)),
+    countWhere(serviceAccounts, eq(serviceAccounts.projectId, params.projectId)),
+  ]);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.auditLog.create({
-      data: {
-        projectId: params.projectId,
-        actorUserId: params.actorUserId ?? null,
-        actorServiceAccountId: params.actorServiceAccountId ?? null,
-        action: 'project.delete',
-        resourceType: 'project',
-        resourceId: params.projectId,
-        metadataJson: {
-          environmentCount,
-          secretCount,
-          tokenCount,
-          serviceAccountCount,
-        } as Prisma.InputJsonValue,
+  await db.transaction(async (tx) => {
+    await tx.insert(auditLogs).values({
+      projectId: params.projectId,
+      actorUserId: params.actorUserId ?? null,
+      actorServiceAccountId: params.actorServiceAccountId ?? null,
+      action: 'project.delete',
+      resourceType: 'project',
+      resourceId: params.projectId,
+      metadataJson: {
+        environmentCount,
+        secretCount,
+        tokenCount,
+        serviceAccountCount,
       },
     });
 
-    await tx.project.delete({
-      where: { id: params.projectId },
-    });
+    await tx.delete(projects).where(eq(projects.id, params.projectId));
   });
 
   return { ok: true };
@@ -78,9 +92,12 @@ export async function deleteEnvironmentWithGuards(params: {
   confirmText: string;
   forceLastEnvironment?: boolean;
 } & ActorContext): Promise<DeleteFailure | DeleteSuccess> {
-  const environment = await prisma.environment.findFirst({
-    where: { id: params.environmentId, projectId: params.projectId },
-    select: { id: true, projectId: true, name: true },
+  const environment = await db.query.environments.findFirst({
+    where: and(
+      eq(environments.id, params.environmentId),
+      eq(environments.projectId, params.projectId),
+    ),
+    columns: { id: true, projectId: true, name: true },
   });
   if (!environment) {
     return { ok: false, status: 404, error: 'Environment not found' };
@@ -95,8 +112,8 @@ export async function deleteEnvironmentWithGuards(params: {
   }
 
   const [environmentCount, secretCount] = await Promise.all([
-    prisma.environment.count({ where: { projectId: params.projectId } }),
-    prisma.secret.count({ where: { environmentId: params.environmentId } }),
+    countWhere(environments, eq(environments.projectId, params.projectId)),
+    countWhere(secrets, eq(secrets.environmentId, params.environmentId)),
   ]);
   const isLastEnvironment = environmentCount === 1;
   if (isLastEnvironment && params.forceLastEnvironment !== true) {
@@ -107,25 +124,21 @@ export async function deleteEnvironmentWithGuards(params: {
     };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.auditLog.create({
-      data: {
-        projectId: params.projectId,
-        actorUserId: params.actorUserId ?? null,
-        actorServiceAccountId: params.actorServiceAccountId ?? null,
-        action: 'environment.delete',
-        resourceType: 'environment',
-        resourceId: params.environmentId,
-        metadataJson: {
-          secretCount,
-          isLastEnvironment,
-        } as Prisma.InputJsonValue,
+  await db.transaction(async (tx) => {
+    await tx.insert(auditLogs).values({
+      projectId: params.projectId,
+      actorUserId: params.actorUserId ?? null,
+      actorServiceAccountId: params.actorServiceAccountId ?? null,
+      action: 'environment.delete',
+      resourceType: 'environment',
+      resourceId: params.environmentId,
+      metadataJson: {
+        secretCount,
+        isLastEnvironment,
       },
     });
 
-    await tx.environment.delete({
-      where: { id: params.environmentId },
-    });
+    await tx.delete(environments).where(eq(environments.id, params.environmentId));
   });
 
   return { ok: true };

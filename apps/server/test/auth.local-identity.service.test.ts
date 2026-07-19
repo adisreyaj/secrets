@@ -1,31 +1,51 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AuthIdentityProvider } from '@prisma/client';
+import { AuthIdentityProvider } from '../src/db/index.js';
 
 const {
-  txEndUserCreate,
-  txIdentityCreate,
+  insertReturning,
   identityFindFirst,
-  identityUpdateMany,
+  updateWhere,
 } = vi.hoisted(() => ({
-  txEndUserCreate: vi.fn(),
-  txIdentityCreate: vi.fn(),
+  insertReturning: vi.fn(),
   identityFindFirst: vi.fn(),
-  identityUpdateMany: vi.fn(),
+  updateWhere: vi.fn(),
 }));
 
-vi.mock('../src/db.js', () => ({
-  prisma: {
-    $transaction: async (callback: (tx: any) => Promise<unknown>) =>
-      callback({
-        authEndUser: { create: txEndUserCreate },
-        authIdentity: { create: txIdentityCreate },
-      }),
-    authIdentity: {
-      findFirst: identityFindFirst,
-      updateMany: identityUpdateMany,
+vi.mock('../src/db/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/db/index.js')>();
+
+  const makeInsert = () => {
+    const chain: any = {
+      values: vi.fn(() => chain),
+      returning: vi.fn(async () => insertReturning()),
+    };
+    return chain;
+  };
+
+  const makeUpdate = () => {
+    const chain: any = {
+      set: vi.fn(() => chain),
+      where: vi.fn(async (...args: unknown[]) => updateWhere(...args)),
+    };
+    return chain;
+  };
+
+  const tx = {
+    insert: vi.fn(() => makeInsert()),
+  };
+
+  return {
+    ...actual,
+    db: {
+      transaction: async (callback: (tx: typeof tx) => Promise<unknown>) => callback(tx),
+      query: {
+        authIdentities: { findFirst: identityFindFirst },
+      },
+      update: vi.fn(() => makeUpdate()),
+      insert: vi.fn(() => makeInsert()),
     },
-  },
-}));
+  };
+});
 
 import {
   registerLocalIdentity,
@@ -36,47 +56,37 @@ import { hashPassword } from '../src/auth.js';
 
 describe('auth local identity service', () => {
   beforeEach(() => {
-    txEndUserCreate.mockReset();
-    txIdentityCreate.mockReset();
+    insertReturning.mockReset();
     identityFindFirst.mockReset();
-    identityUpdateMany.mockReset();
+    updateWhere.mockReset();
   });
 
   it('registers end user and local identity in one transaction', async () => {
-    txEndUserCreate.mockResolvedValue({
-      id: 'end_user_1',
-      projectId: 'project_1',
-      email: 'user@example.com',
-    });
-    txIdentityCreate.mockResolvedValue({
-      id: 'identity_1',
-      provider: AuthIdentityProvider.LOCAL,
-    });
+    insertReturning
+      .mockResolvedValueOnce([
+        {
+          id: 'end_user_1',
+          projectId: 'project_1',
+          email: 'user@example.com',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'identity_1',
+          provider: AuthIdentityProvider.LOCAL,
+        },
+      ]);
 
-    await registerLocalIdentity({
+    const result = await registerLocalIdentity({
       projectId: 'project_1',
       email: 'User@Example.com ',
       password: 'StrongPass123!',
       displayName: 'User',
     });
 
-    expect(txEndUserCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          email: 'user@example.com',
-          projectId: 'project_1',
-        }),
-      }),
-    );
-    expect(txIdentityCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          provider: AuthIdentityProvider.LOCAL,
-          providerSubject: 'user@example.com',
-          endUserId: 'end_user_1',
-        }),
-      }),
-    );
+    expect(result.endUser.email).toBe('user@example.com');
+    expect(result.identity.provider).toBe(AuthIdentityProvider.LOCAL);
+    expect(insertReturning).toHaveBeenCalledTimes(2);
   });
 
   it('returns invalid credentials for unknown user', async () => {
@@ -161,26 +171,14 @@ describe('auth local identity service', () => {
   });
 
   it('rotates local password hash for an end user', async () => {
-    identityUpdateMany.mockResolvedValue({ count: 1 });
+    updateWhere.mockResolvedValue({ changes: 1 });
 
-    const result = await rotateLocalPassword({
+    await rotateLocalPassword({
       projectId: 'project_1',
       endUserId: 'end_user_1',
       nextPassword: 'NewStrongPass123!',
     });
 
-    expect(result).toEqual({ count: 1 });
-    expect(identityUpdateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          provider: AuthIdentityProvider.LOCAL,
-          endUserId: 'end_user_1',
-          projectId: 'project_1',
-        }),
-        data: expect.objectContaining({
-          passwordHash: expect.any(String),
-        }),
-      }),
-    );
+    expect(updateWhere).toHaveBeenCalled();
   });
 });

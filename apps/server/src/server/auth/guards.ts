@@ -1,7 +1,15 @@
-import { ProjectModuleKey, Role } from '@prisma/client';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { hashToken } from '../../auth.js';
-import { prisma } from '../../db.js';
+import {
+  authSessions,
+  db,
+  ProjectModuleKey,
+  projectModules,
+  Role,
+  type ProjectModuleKey as ProjectModuleKeyType,
+  type Role as RoleType,
+} from '../../db/index.js';
 import type { AuthContext } from '../types/auth.js';
 import {
   forbidden,
@@ -28,8 +36,8 @@ export async function requireProjectRole(
   request: FastifyRequest,
   reply: FastifyReply,
   projectId: string,
-  minRole: Role,
-): Promise<Role | null> {
+  minRole: RoleType,
+): Promise<RoleType | null> {
   const role = await getProjectRole(request, projectId);
   if (!role) {
     forbidden(reply);
@@ -61,15 +69,10 @@ export async function requireProjectModuleEnabled(
   _request: FastifyRequest,
   reply: FastifyReply,
   projectId: string,
-  module: ProjectModuleKey,
+  module: ProjectModuleKeyType,
 ): Promise<boolean> {
-  const moduleConfig = await prisma.projectModule.findUnique({
-    where: {
-      projectId_module: {
-        projectId,
-        module,
-      },
-    },
+  const moduleConfig = await db.query.projectModules.findFirst({
+    where: and(eq(projectModules.projectId, projectId), eq(projectModules.module, module)),
   });
 
   if (!moduleConfig?.enabled) {
@@ -97,16 +100,16 @@ export async function requireProjectAuthSession(
     return null;
   }
 
-  const session = await prisma.authSession.findFirst({
-    where: {
-      projectId,
-      sessionTokenHash: hashToken(rawToken),
-      revokedAt: null,
-      expiresAt: { gt: new Date() },
-    },
-    include: {
+  const session = await db.query.authSessions.findFirst({
+    where: and(
+      eq(authSessions.projectId, projectId),
+      eq(authSessions.sessionTokenHash, hashToken(rawToken)),
+      isNull(authSessions.revokedAt),
+      gt(authSessions.expiresAt, new Date()),
+    ),
+    with: {
       endUser: {
-        select: {
+        columns: {
           id: true,
           email: true,
           disabledAt: true,
@@ -125,10 +128,10 @@ export async function requireProjectAuthSession(
     return null;
   }
 
-  await prisma.authSession.update({
-    where: { id: session.id },
-    data: { lastSeenAt: new Date() },
-  });
+  await db
+    .update(authSessions)
+    .set({ lastSeenAt: new Date() })
+    .where(eq(authSessions.id, session.id));
 
   return {
     sessionId: session.id,
@@ -164,3 +167,5 @@ export function enforceGlobalBootstrapScope(
   globalBootstrapScopeDenied(reply);
   return false;
 }
+
+export { ProjectModuleKey, Role };

@@ -1,5 +1,6 @@
+import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '../../db.js';
+import { db } from '../../db/index.js';
 import type { LogDispatcher } from '../logging/dispatcher.js';
 
 export function scheduleAuditRetentionCleanup(
@@ -13,14 +14,20 @@ export function scheduleAuditRetentionCleanup(
     }
     auditCleanupRunning = true;
     try {
-      const result = await prisma.$executeRaw`
-        DELETE al FROM audit_logs al
-        INNER JOIN projects p ON al.project_id = p.id
-        WHERE p.audit_retention_days IS NOT NULL
-          AND al.created_at < DATE_SUB(NOW(), INTERVAL p.audit_retention_days DAY)
-      `;
-      if (result > 0) {
-        app.log.info({ deleted: result }, 'audit retention cleanup');
+      // created_at is stored as unix ms; retention is days on the project.
+      const result = await db.run(sql`
+        DELETE FROM audit_logs
+        WHERE id IN (
+          SELECT al.id
+          FROM audit_logs al
+          INNER JOIN projects p ON al.project_id = p.id
+          WHERE p.audit_retention_days IS NOT NULL
+            AND al.created_at < (unixepoch('now') * 1000 - p.audit_retention_days * 86400000)
+        )
+      `);
+      const deleted = Number(result.rowsAffected ?? 0);
+      if (deleted > 0) {
+        app.log.info({ deleted }, 'audit retention cleanup');
       }
     } catch (error) {
       await logDispatcher.emit({

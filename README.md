@@ -1,6 +1,6 @@
 # Secrets Manager
 
-A focused secrets management platform built with Fastify (TypeScript), Prisma/MySQL, and a React web app.
+A focused secrets management platform built with Fastify (TypeScript), Drizzle/Turso (libSQL), and a React web app.
 
 Core capabilities:
 - organize secrets by project and environment
@@ -23,10 +23,13 @@ pnpm install
 cp apps/server/.env.example apps/server/.env
 ```
 
-3. Run Prisma migrations:
+3. Apply the database schema (local file DB or Turso):
 
 ```bash
-pnpm prisma:migrate
+# Ensure apps/server/.env has DATABASE_URL (e.g. file:./data/local.db)
+mkdir -p apps/server/data
+pnpm db:migrate   # applies drizzle/0000_init.sql
+# or: pnpm db:push  # push schema without migration journal (dev)
 ```
 
 4. Start the API server:
@@ -76,7 +79,8 @@ See `docs/cli.md` for CLI details and `.secretsrc.example.json` for a sample con
 
 Required in `apps/server/.env`:
 
-- `DATABASE_URL` MySQL connection string
+- `DATABASE_URL` Turso/libSQL URL (`file:./data/local.db` or `libsql://...`)
+- `DATABASE_AUTH_TOKEN` Turso auth token (cloud only)
 - `MASTER_KEY` 32-byte key (64 hex chars or 32-byte base64)
 - `MASTER_KEY_VERSION` optional key version (default `v1`)
 - `APP_ORIGIN` app origin (or comma-separated origins) allowed for browser writes, e.g. `https://app.example.com,https://www.app.example.com`
@@ -101,7 +105,7 @@ Web app environment variables (Vite):
 
 ## Project structure
 
-- `apps/server` Fastify API + Prisma schema
+- `apps/server` Fastify API + Drizzle/Turso schema
 - `apps/web` React app
 - `packages/shared` Shared DTO types
 - `packages/cli` Secrets CLI

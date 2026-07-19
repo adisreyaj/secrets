@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import {
   aadForSigningKey,
   decryptSecret,
@@ -6,7 +7,7 @@ import {
   loadMasterKey,
   masterKeyVersion,
 } from '../../../crypto.js';
-import { prisma } from '../../../db.js';
+import { authSigningKeys, db } from '../../../db/index.js';
 
 type Jwk = {
   kty: string;
@@ -38,12 +39,12 @@ function signJwt(params: {
 }
 
 export async function ensureActiveAuthSigningKey(projectId: string) {
-  const existing = await prisma.authSigningKey.findFirst({
-    where: {
-      projectId,
-      active: true,
-      retiredAt: null,
-    },
+  const existing = await db.query.authSigningKeys.findFirst({
+    where: and(
+      eq(authSigningKeys.projectId, projectId),
+      eq(authSigningKeys.active, true),
+      isNull(authSigningKeys.retiredAt),
+    ),
   });
   if (existing) {
     return existing;
@@ -62,8 +63,9 @@ export async function ensureActiveAuthSigningKey(projectId: string) {
   });
 
   const masterKey = loadMasterKey();
-  const created = await prisma.authSigningKey.create({
-    data: {
+  const [created] = await db
+    .insert(authSigningKeys)
+    .values({
       projectId,
       kid: `ask_${crypto.randomUUID().replace(/-/g, '')}`,
       algorithm: 'RS256',
@@ -73,18 +75,21 @@ export async function ensureActiveAuthSigningKey(projectId: string) {
       privateKeyTag: Buffer.alloc(0),
       keyVersion: masterKeyVersion(),
       active: true,
-    },
-  });
+    })
+    .returning();
   const encrypted = encryptSecret(pair.privateKey, masterKey, aadForSigningKey(created.id));
 
-  return prisma.authSigningKey.update({
-    where: { id: created.id },
-    data: {
+  const [updated] = await db
+    .update(authSigningKeys)
+    .set({
       privateKeyCiphertext: Buffer.from(encrypted.ciphertext),
       privateKeyIv: Buffer.from(encrypted.iv),
       privateKeyTag: Buffer.from(encrypted.tag),
-    },
-  });
+    })
+    .where(eq(authSigningKeys.id, created.id))
+    .returning();
+
+  return updated;
 }
 
 export async function signProjectAccessToken(params: {
@@ -128,12 +133,9 @@ export async function signProjectAccessToken(params: {
 }
 
 export async function buildProjectJwks(projectId: string) {
-  const keys = await prisma.authSigningKey.findMany({
-    where: {
-      projectId,
-      retiredAt: null,
-    },
-    orderBy: { createdAt: 'desc' },
+  const keys = await db.query.authSigningKeys.findMany({
+    where: and(eq(authSigningKeys.projectId, projectId), isNull(authSigningKeys.retiredAt)),
+    orderBy: [desc(authSigningKeys.createdAt)],
   });
 
   return {

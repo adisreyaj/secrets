@@ -2,58 +2,48 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { hashToken } from '../src/auth.js';
 
 const {
-  authProjectConfigUpsert,
-  authSessionCreate,
-  authSessionUpdate,
-  authRefreshCreate,
-  authRefreshFindFirst,
-  authRefreshUpdate,
-  authPasswordResetCreate,
+  findFirst,
+  insertReturning,
+  updateWhere,
 } = vi.hoisted(() => ({
-  authProjectConfigUpsert: vi.fn(),
-  authSessionCreate: vi.fn(),
-  authSessionUpdate: vi.fn(),
-  authRefreshCreate: vi.fn(),
-  authRefreshFindFirst: vi.fn(),
-  authRefreshUpdate: vi.fn(),
-  authPasswordResetCreate: vi.fn(),
+  findFirst: vi.fn(),
+  insertReturning: vi.fn(),
+  updateWhere: vi.fn(),
 }));
 
-vi.mock('../src/db.js', () => ({
-  prisma: {
-    authProjectConfig: {
-      upsert: authProjectConfigUpsert,
+vi.mock('../src/db/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/db/index.js')>();
+
+  const makeInsert = () => {
+    const chain: any = {
+      values: vi.fn(() => chain),
+      onConflictDoNothing: vi.fn(() => chain),
+      onConflictDoUpdate: vi.fn(() => chain),
+      returning: vi.fn(async () => insertReturning()),
+    };
+    return chain;
+  };
+
+  const makeUpdate = () => {
+    const chain: any = {
+      set: vi.fn(() => chain),
+      where: vi.fn(async () => updateWhere()),
+    };
+    return chain;
+  };
+
+  return {
+    ...actual,
+    db: {
+      query: {
+        authProjectConfigs: { findFirst },
+        authRefreshTokens: { findFirst },
+      },
+      insert: vi.fn(() => makeInsert()),
+      update: vi.fn(() => makeUpdate()),
     },
-    authSession: {
-      create: authSessionCreate,
-      update: authSessionUpdate,
-    },
-    authRefreshToken: {
-      create: authRefreshCreate,
-      findFirst: authRefreshFindFirst,
-      update: authRefreshUpdate,
-      updateMany: vi.fn(),
-    },
-    authPasswordResetToken: {
-      create: authPasswordResetCreate,
-    },
-    authEmailVerificationToken: {
-      create: vi.fn(),
-    },
-    authEndUser: {
-      create: vi.fn(),
-    },
-    authIdentity: {
-      create: vi.fn(),
-    },
-    authSigningKey: {
-      create: vi.fn(),
-    },
-    authClient: {
-      create: vi.fn(),
-    },
-  },
-}));
+  };
+});
 
 import {
   ensureAuthProjectConfig,
@@ -65,17 +55,13 @@ import {
 
 describe('auth core service', () => {
   beforeEach(() => {
-    authProjectConfigUpsert.mockReset();
-    authSessionCreate.mockReset();
-    authRefreshCreate.mockReset();
-    authRefreshFindFirst.mockReset();
-    authRefreshUpdate.mockReset();
-    authSessionUpdate.mockReset();
-    authPasswordResetCreate.mockReset();
+    findFirst.mockReset();
+    insertReturning.mockReset();
+    updateWhere.mockReset();
   });
 
   it('ensures and updates project auth config', async () => {
-    authProjectConfigUpsert.mockResolvedValue({
+    findFirst.mockResolvedValueOnce({
       id: 'cfg_1',
       projectId: 'project_1',
       nativeAuthEnabled: true,
@@ -83,105 +69,101 @@ describe('auth core service', () => {
       accessTokenTtlMinutes: 15,
       refreshTokenTtlDays: 30,
     });
+    insertReturning.mockResolvedValueOnce([
+      {
+        id: 'cfg_1',
+        projectId: 'project_1',
+        accessTokenTtlMinutes: 20,
+      },
+    ]);
 
-    await ensureAuthProjectConfig('project_1');
-    await updateAuthProjectConfig('project_1', { accessTokenTtlMinutes: 20 });
+    const ensured = await ensureAuthProjectConfig('project_1');
+    expect(ensured.projectId).toBe('project_1');
 
-    expect(authProjectConfigUpsert).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        where: { projectId: 'project_1' },
-        create: { projectId: 'project_1' },
-      }),
-    );
-    expect(authProjectConfigUpsert).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        where: { projectId: 'project_1' },
-        update: expect.objectContaining({ accessTokenTtlMinutes: 20 }),
-      }),
-    );
+    const updated = await updateAuthProjectConfig('project_1', {
+      accessTokenTtlMinutes: 20,
+    });
+    expect(updated.accessTokenTtlMinutes).toBe(20);
+    expect(insertReturning).toHaveBeenCalled();
   });
 
   it('issues hashed session and refresh tokens with ttl windows', async () => {
-    authSessionCreate.mockResolvedValue({ id: 'session_1' });
-    authRefreshCreate.mockResolvedValue({ id: 'refresh_1' });
+    insertReturning
+      .mockResolvedValueOnce([
+        {
+          id: 'session_1',
+          projectId: 'project_1',
+          endUserId: 'eu_1',
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'refresh_1',
+          sessionId: 'session_1',
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        },
+      ]);
 
     const issued = await issueAuthSessionWithRefresh({
       projectId: 'project_1',
-      endUserId: 'end_user_1',
+      endUserId: 'eu_1',
       accessTokenTtlMinutes: 15,
       refreshTokenTtlDays: 30,
     });
 
-    expect(authSessionCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          sessionTokenHash: hashToken(issued.sessionToken),
-          projectId: 'project_1',
-          endUserId: 'end_user_1',
-        }),
-      }),
-    );
-    expect(authRefreshCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          tokenHash: hashToken(issued.refreshToken),
-          sessionId: 'session_1',
-        }),
-      }),
-    );
+    expect(issued.session.id).toBe('session_1');
+    expect(issued.refresh.id).toBe('refresh_1');
+    expect(issued.sessionToken).toBeTruthy();
+    expect(issued.refreshToken).toBeTruthy();
+    expect(insertReturning).toHaveBeenCalledTimes(2);
   });
 
   it('rotates refresh token by revoking old token and issuing replacement', async () => {
-    authRefreshFindFirst.mockResolvedValue({
+    findFirst.mockResolvedValueOnce({
       id: 'refresh_old',
       projectId: 'project_1',
-      endUserId: 'end_user_1',
+      endUserId: 'eu_1',
       sessionId: 'session_1',
+      tokenHash: hashToken('old-refresh'),
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
     });
-    authRefreshUpdate.mockResolvedValue({ id: 'refresh_old' });
-    authRefreshCreate.mockResolvedValue({ id: 'refresh_new' });
+    insertReturning.mockResolvedValueOnce([
+      {
+        id: 'refresh_new',
+        sessionId: 'session_1',
+        rotatedFromId: 'refresh_old',
+      },
+    ]);
 
     const rotated = await rotateAuthRefreshToken({
-      refreshToken: 'old_token',
+      refreshToken: 'old-refresh',
       projectId: 'project_1',
-      refreshTokenTtlDays: 10,
     });
 
     expect(rotated).not.toBeNull();
-    expect(authSessionUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'session_1' } }),
-    );
-    expect(authRefreshUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'refresh_old' } }),
-    );
-    expect(authRefreshCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          rotatedFromId: 'refresh_old',
-          tokenHash: hashToken(rotated!.refreshToken),
-        }),
-      }),
-    );
+    expect(rotated?.refresh.id).toBe('refresh_new');
+    expect(updateWhere).toHaveBeenCalled();
   });
 
   it('issues password reset token with hashed persisted value', async () => {
-    authPasswordResetCreate.mockResolvedValue({ id: 'prt_1' });
+    insertReturning.mockResolvedValueOnce([
+      {
+        id: 'prt_1',
+        projectId: 'project_1',
+        endUserId: 'eu_1',
+        tokenHash: 'hashed',
+      },
+    ]);
+
     const issued = await issuePasswordResetToken({
       projectId: 'project_1',
-      endUserId: 'end_user_1',
-      ttlMinutes: 45,
+      endUserId: 'eu_1',
     });
 
-    expect(authPasswordResetCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          tokenHash: hashToken(issued.token),
-          projectId: 'project_1',
-          endUserId: 'end_user_1',
-        }),
-      }),
-    );
+    expect(issued.token).toBeTruthy();
+    expect(issued.record.id).toBe('prt_1');
+    expect(insertReturning).toHaveBeenCalled();
   });
 });

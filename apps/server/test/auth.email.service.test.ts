@@ -67,10 +67,15 @@ describe('auth email provider', () => {
   it('builds reset and verify templates', () => {
     const reset = buildPasswordResetEmail({ resetToken: 'reset-token' });
     const verify = buildEmailVerificationEmail({ verificationToken: 'verify-token' });
+    const verifyWithUrl = buildEmailVerificationEmail({
+      verificationToken: 'verify-token',
+      verificationUrl: 'https://example.com/verify?token=verify-token',
+    });
 
     expect(reset.subject).toContain('Reset your password');
     expect(reset.text).toContain('reset-token');
     expect(verify.subject).toContain('Verify your email');
     expect(verify.text).toContain('verify-token');
+    expect(verifyWithUrl.text).toContain('https://example.com/verify?token=verify-token');
   });
 });
