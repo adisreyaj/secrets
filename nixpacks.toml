@@ -25,5 +25,6 @@ paths = ['/app/node_modules/.bin']
 dependsOn = ['install']
 cmds = ['pnpm run build:server']
 
+# migrate before start so Turso/libSQL schema stays in sync with drizzle/
 [start]
 cmd = 'pnpm run start:server'

@@ -30,11 +30,15 @@ export function scheduleAuditRetentionCleanup(
         app.log.info({ deleted }, 'audit retention cleanup');
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const missingTable = /no such table:\s*audit_logs/i.test(message);
       await logDispatcher.emit({
         event: 'audit.cleanup.failed',
         level: 'error',
         category: 'internal',
-        message: 'audit retention cleanup failed',
+        message: missingTable
+          ? 'audit retention cleanup failed: audit_logs table missing — run pnpm db:migrate (or db:push) against this database'
+          : 'audit retention cleanup failed',
         err: error,
       });
     } finally {
