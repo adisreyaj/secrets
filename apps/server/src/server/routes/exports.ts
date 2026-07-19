@@ -1,6 +1,6 @@
-import { Role } from '@prisma/client';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '../../db.js';
+import { db, environments, Role, secrets } from '../../db/index.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { formatDotenvValue } from '../services/format.js';
@@ -20,7 +20,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const env = await prisma.environment.findUnique({ where: { id: envId } });
+    const env = await db.query.environments.findFirst({
+      where: eq(environments.id, envId),
+    });
     if (!env) {
       sendError(reply, 404, 'Environment not found');
       return;
@@ -31,21 +33,21 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const secrets = await prisma.secret.findMany({
-      where: { environmentId: envId, deletedAt: null },
-      include: {
+    const secretRows = await db.query.secrets.findMany({
+      where: and(eq(secrets.environmentId, envId), isNull(secrets.deletedAt)),
+      with: {
         versions: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
+          where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
+          orderBy: (fields, { desc }) => [desc(fields.createdAt)],
+          limit: 1,
         },
       },
-      orderBy: { key: 'asc' },
+      orderBy: [asc(secrets.key)],
     });
 
     const dek = await withEnvironmentDek(envId, (d) => d);
     const lines: string[] = [];
-    for (const secret of secrets) {
+    for (const secret of secretRows) {
       const version = secret.versions[0];
       if (!version) {
         continue;

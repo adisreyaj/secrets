@@ -1,7 +1,7 @@
-import { Prisma, Role } from '@prisma/client';
+import { and, asc, desc, eq, inArray, isNull, like } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { prisma } from '../../db.js';
+import { db, environments, Role, secrets, secretVersions } from '../../db/index.js';
 import {
   requireAuth,
   requireEnvironmentScope,
@@ -40,35 +40,49 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const where: Prisma.SecretWhereInput = {
-      deletedAt: null,
-      environment: { projectId },
-      key: { contains: q },
-    };
-
     const scopedEnvIds = request.auth?.scopeEnvironmentIds;
+    let environmentIdFilter: string[] | string | null = null;
     if (query.environmentId) {
       if (request.auth?.viaToken && scopedEnvIds && !scopedEnvIds.includes(query.environmentId)) {
         tokenScopeDenied(reply);
         return;
       }
-      where.environmentId = query.environmentId;
+      environmentIdFilter = query.environmentId;
     } else if (request.auth?.viaToken && scopedEnvIds) {
-      where.environmentId = { in: scopedEnvIds };
+      environmentIdFilter = scopedEnvIds;
     }
 
-    const secrets = await prisma.secret.findMany({
-      where,
-      include: {
+    const projectEnvs = await db.query.environments.findMany({
+      where: eq(environments.projectId, projectId),
+      columns: { id: true },
+    });
+    let envIds = projectEnvs.map((e) => e.id);
+    if (typeof environmentIdFilter === 'string') {
+      envIds = envIds.filter((id) => id === environmentIdFilter);
+    } else if (Array.isArray(environmentIdFilter)) {
+      envIds = envIds.filter((id) => environmentIdFilter.includes(id));
+    }
+    if (envIds.length === 0) {
+      reply.send([]);
+      return;
+    }
+
+    const secretRows = await db.query.secrets.findMany({
+      where: and(
+        isNull(secrets.deletedAt),
+        inArray(secrets.environmentId, envIds),
+        like(secrets.key, `%${q.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`),
+      ),
+      with: {
         environment: true,
         versions: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
+          where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
+          orderBy: (fields, { desc: descOp }) => [descOp(fields.createdAt)],
+          limit: 1,
         },
       },
-      orderBy: { key: 'asc' },
-      take: 200,
+      orderBy: [asc(secrets.key)],
+      limit: 200,
     });
 
     const canViewValues =
@@ -76,7 +90,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const envDekCache = new Map<string, Buffer>();
     const data = await Promise.all(
-      secrets.map(async (secret) => {
+      secretRows.map(async (secret) => {
         const version = secret.versions[0];
         let value: string | undefined;
         if (canViewValues && version) {
@@ -127,7 +141,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const query = request.query as { limit: number; cursor?: string; includeValues?: string };
       const includeValues = query.includeValues === 'true';
 
-      const env = await prisma.environment.findUnique({ where: { id: envId } });
+      const env = await db.query.environments.findFirst({
+        where: eq(environments.id, envId),
+      });
       if (!env) {
         sendError(reply, 404, 'Environment not found');
         return;
@@ -144,23 +160,27 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const limit = query.limit;
       const cursor = query.cursor;
 
-      const secrets = await prisma.secret.findMany({
-        where: { environmentId: envId, deletedAt: null },
-        include: {
+      const allSecrets = await db.query.secrets.findMany({
+        where: and(eq(secrets.environmentId, envId), isNull(secrets.deletedAt)),
+        with: {
           versions: {
-            where: { isActive: true },
-            orderBy: { createdAt: 'desc' },
-            take: 1,
+            where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
+            orderBy: (fields, { desc: descOp }) => [descOp(fields.createdAt)],
+            limit: 1,
           },
         },
-        take: limit + 1,
-        cursor: cursor ? { id: cursor } : undefined,
-        orderBy: { key: 'asc' },
+        orderBy: [asc(secrets.key)],
       });
+      let start = 0;
+      if (cursor) {
+        const idx = allSecrets.findIndex((s) => s.id === cursor);
+        start = idx >= 0 ? idx + 1 : 0;
+      }
+      const secretPage = allSecrets.slice(start, start + limit + 1);
 
       let nextCursor: string | undefined = undefined;
-      if (secrets.length > limit) {
-        const nextItem = secrets.pop();
+      if (secretPage.length > limit) {
+        const nextItem = secretPage.pop();
         nextCursor = nextItem?.id;
       }
 
@@ -168,7 +188,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
       const data = await (async () => {
         if (!canViewValues) {
-          return secrets.map((secret) => {
+          return secretPage.map((secret) => {
             const version = secret.versions[0];
             return {
               id: secret.id,
@@ -181,7 +201,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           });
         }
         const dek = await withEnvironmentDek(envId, (d) => d);
-        return secrets.map((secret) => {
+        return secretPage.map((secret) => {
           const version = secret.versions[0];
           let value: string | undefined;
           if (version) {
@@ -217,9 +237,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const { id: secretId } = request.params as { id: string };
-    const secret = await prisma.secret.findUnique({
-      include: { environment: true },
-      where: { id: secretId },
+    const secret = await db.query.secrets.findFirst({
+      where: eq(secrets.id, secretId),
+      with: { environment: true },
     });
     if (!secret) {
       sendError(reply, 404, 'Secret not found');
@@ -236,10 +256,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const versions = await prisma.secretVersion.findMany({
-      where: { secretId },
-      orderBy: { createdAt: 'desc' },
-      take: 2,
+    const versions = await db.query.secretVersions.findMany({
+      where: eq(secretVersions.secretId, secretId),
+      orderBy: [desc(secretVersions.createdAt)],
+      limit: 2,
     });
 
     if (versions.length < 2) {
@@ -285,9 +305,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const { id: secretId } = request.params as { id: string };
-    const secret = await prisma.secret.findUnique({
-      include: { environment: true },
-      where: { id: secretId },
+    const secret = await db.query.secrets.findFirst({
+      where: eq(secrets.id, secretId),
+      with: { environment: true },
     });
     if (!secret) {
       sendError(reply, 404, 'Secret not found');
@@ -304,10 +324,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const versions = await prisma.secretVersion.findMany({
-      where: { secretId },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, createdAt: true, isActive: true },
+    const versions = await db.query.secretVersions.findMany({
+      where: eq(secretVersions.secretId, secretId),
+      orderBy: [desc(secretVersions.createdAt)],
+      columns: { id: true, createdAt: true, isActive: true },
     });
 
     reply.send(
@@ -336,9 +356,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const secret = await prisma.secret.findUnique({
-      include: { environment: true },
-      where: { id: secretId },
+    const secret = await db.query.secrets.findFirst({
+      where: eq(secrets.id, secretId),
+      with: { environment: true },
     });
     if (!secret) {
       sendError(reply, 404, 'Secret not found');
@@ -357,27 +377,27 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     let versions: Array<{
       id: string;
-      ciphertext: Uint8Array<ArrayBuffer>;
-      iv: Uint8Array<ArrayBuffer>;
-      tag: Uint8Array<ArrayBuffer>;
+      ciphertext: Buffer;
+      iv: Buffer;
+      tag: Buffer;
       createdAt: Date;
     }> = [];
 
     if (from && to) {
-      versions = await prisma.secretVersion.findMany({
-        where: { id: { in: [from, to] }, secretId },
-        select: { id: true, ciphertext: true, iv: true, tag: true, createdAt: true },
+      versions = await db.query.secretVersions.findMany({
+        where: and(inArray(secretVersions.id, [from, to]), eq(secretVersions.secretId, secretId)),
+        columns: { id: true, ciphertext: true, iv: true, tag: true, createdAt: true },
       });
       if (versions.length !== 2) {
         sendError(reply, 400, 'Invalid version ids for diff');
         return;
       }
     } else {
-      versions = await prisma.secretVersion.findMany({
-        where: { secretId },
-        orderBy: { createdAt: 'desc' },
-        take: 2,
-        select: { id: true, ciphertext: true, iv: true, tag: true, createdAt: true },
+      versions = await db.query.secretVersions.findMany({
+        where: eq(secretVersions.secretId, secretId),
+        orderBy: [desc(secretVersions.createdAt)],
+        limit: 2,
+        columns: { id: true, ciphertext: true, iv: true, tag: true, createdAt: true },
       });
       if (versions.length < 2) {
         sendError(reply, 400, 'Not enough versions to diff');

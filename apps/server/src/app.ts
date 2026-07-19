@@ -11,6 +11,7 @@ import Fastify from 'fastify';
 import { config } from './config.js';
 import { registerCoreHttpMiddleware } from './server/http/middleware.js';
 import { registerRoutes as registerAuthRoutes } from './server/routes/auth.js';
+import { registerBetterAuthRoutes } from './server/routes/betterAuth.js';
 import { registerRoutes as registerApiTokenRoutes } from './server/routes/apiTokens.js';
 import { registerRoutes as registerAuditRoutes } from './server/routes/audit.js';
 import { registerRoutes as registerExportRoutes } from './server/routes/exports.js';
@@ -76,6 +77,7 @@ export async function buildApp() {
 
   app.get('/health', async () => ({ ok: true }));
 
+  await registerBetterAuthRoutes(app);
   await registerAuthRoutes(app);
   await registerApiTokenRoutes(app);
   await registerAuditRoutes(app);

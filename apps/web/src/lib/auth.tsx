@@ -1,7 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
 import type { UserDto } from '@secrets/shared'
 import { useQueryClient } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { api, ApiError } from './api'
 import { getErrorMessage } from './errors'
 
@@ -10,6 +10,7 @@ interface AuthContextValue {
   loading: boolean
   error: string | null
   login: (payload: { email: string; password: string }) => Promise<void>
+  loginWithPasskey: () => Promise<void>
   register: (payload: {
     email: string
     password: string
@@ -68,6 +69,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
+  const loginWithPasskey = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await api.loginWithPasskey()
+      setUser(data.user)
+    } catch (err) {
+      setError(getErrorMessage(err))
+      throw err
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const register = async (payload: {
     email: string
     password: string
@@ -76,8 +91,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true)
     setError(null)
     try {
-      const data = await api.register(payload)
-      setUser(data.user)
+      await api.register(payload)
+      // Email verification required — no session until verified.
+      setUser(null)
     } catch (err) {
       setError(getErrorMessage(err))
       throw err
@@ -121,6 +137,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       loading,
       error,
       login,
+      loginWithPasskey,
       register,
       logout,
       updateProfile,

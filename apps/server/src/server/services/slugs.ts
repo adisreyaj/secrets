@@ -1,4 +1,5 @@
-import { prisma } from '../../db.js';
+import { and, eq } from 'drizzle-orm';
+import { db, environments, organizations, projects } from '../../db/index.js';
 
 export function slugify(value: string, fallback: string): string {
   const base = value
@@ -14,7 +15,10 @@ export async function ensureUniqueProjectSlug(base: string): Promise<string> {
   let candidate = normalized;
   let suffix = 1;
   while (true) {
-    const existing = await prisma.project.findUnique({ where: { slug: candidate } });
+    const existing = await db.query.projects.findFirst({
+      where: eq(projects.slug, candidate),
+      columns: { id: true },
+    });
     if (!existing) {
       return candidate;
     }
@@ -28,7 +32,10 @@ export async function ensureUniqueOrganizationSlug(base: string): Promise<string
   let candidate = normalized;
   let suffix = 1;
   while (true) {
-    const existing = await prisma.organization.findUnique({ where: { slug: candidate } });
+    const existing = await db.query.organizations.findFirst({
+      where: eq(organizations.slug, candidate),
+      columns: { id: true },
+    });
     if (!existing) {
       return candidate;
     }
@@ -42,9 +49,9 @@ export async function ensureUniqueEnvironmentSlug(projectId: string, base: strin
   let candidate = normalized;
   let suffix = 1;
   while (true) {
-    const existing = await prisma.environment.findFirst({
-      where: { projectId, slug: candidate },
-      select: { id: true },
+    const existing = await db.query.environments.findFirst({
+      where: and(eq(environments.projectId, projectId), eq(environments.slug, candidate)),
+      columns: { id: true },
     });
     if (!existing) {
       return candidate;

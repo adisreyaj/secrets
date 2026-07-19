@@ -1,8 +1,8 @@
-import { Role } from '@prisma/client';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyRequest } from 'fastify';
-import { prisma } from '../../db.js';
+import { db, projectMembers, Role, type Role as RoleType } from '../../db/index.js';
 
-export const ROLE_RANK: Record<Role, number> = {
+export const ROLE_RANK: Record<RoleType, number> = {
   ADMIN: 3,
   EDITOR: 2,
   VIEWER: 1,
@@ -11,7 +11,7 @@ export const ROLE_RANK: Record<Role, number> = {
 export async function getProjectRole(
   request: FastifyRequest,
   projectId: string,
-): Promise<Role | null> {
+): Promise<RoleType | null> {
   if (request.auth?.viaToken) {
     if (request.auth.projectId !== projectId) {
       return null;
@@ -23,14 +23,14 @@ export async function getProjectRole(
     return null;
   }
 
-  const membership = await prisma.projectMember.findUnique({
-    where: {
-      projectId_userId: {
-        projectId,
-        userId: request.auth.user.id,
-      },
-    },
+  const membership = await db.query.projectMembers.findFirst({
+    where: and(
+      eq(projectMembers.projectId, projectId),
+      eq(projectMembers.userId, request.auth.user.id),
+    ),
   });
 
   return membership?.role ?? null;
 }
+
+export { Role };

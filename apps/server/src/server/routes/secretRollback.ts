@@ -1,6 +1,6 @@
-import { Role } from '@prisma/client';
+import { desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '../../db.js';
+import { db, Role, secrets, secretVersions } from '../../db/index.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { logAudit } from '../services/audit.js';
@@ -15,16 +15,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const { id: secretId } = request.params as { id: string };
     const body = request.body as { versionId?: string } | undefined;
 
-    const secret = await prisma.secret.findUnique({
-      include: {
+    const secret = await db.query.secrets.findFirst({
+      where: eq(secrets.id, secretId),
+      with: {
         environment: true,
         versions: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
+          where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
+          orderBy: (fields) => [desc(fields.createdAt)],
+          limit: 1,
         },
       },
-      where: { id: secretId },
     });
     if (!secret) {
       sendError(reply, 404, 'Secret not found');
@@ -41,9 +41,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const versions = await prisma.secretVersion.findMany({
-      where: { secretId },
-      orderBy: { createdAt: 'desc' },
+    const versions = await db.query.secretVersions.findMany({
+      where: eq(secretVersions.secretId, secretId),
+      orderBy: [desc(secretVersions.createdAt)],
     });
 
     if (versions.length < 2 && !body?.versionId) {
@@ -58,10 +58,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    await prisma.$transaction([
-      prisma.secretVersion.updateMany({ where: { secretId }, data: { isActive: false } }),
-      prisma.secretVersion.update({ where: { id: target.id }, data: { isActive: true } }),
-    ]);
+    await db.transaction(async (tx) => {
+      await tx
+        .update(secretVersions)
+        .set({ isActive: false })
+        .where(eq(secretVersions.secretId, secretId));
+      await tx
+        .update(secretVersions)
+        .set({ isActive: true })
+        .where(eq(secretVersions.id, target.id));
+    });
 
     await logAudit({
       projectId: secret.environment.projectId,

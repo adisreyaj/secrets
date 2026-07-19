@@ -24,7 +24,7 @@ export const CliLoginPage = ({
   code?: string | null
   navigate: (path: string) => void
 }) => {
-  const { user, loading, error, login, register } = useAuth()
+  const { user, loading, error, login, loginWithPasskey, register } = useAuth()
   const [projects, setProjects] = useState<ProjectDto[]>([])
   const [projectsError, setProjectsError] = useState<string | null>(null)
   const [mode, setMode] = useState<'global' | 'project'>('global')
@@ -59,6 +59,7 @@ export const CliLoginPage = ({
           loading={loading}
           error={error}
           onLogin={login}
+          onLoginWithPasskey={loginWithPasskey}
           onRegister={register}
         />
       </section>

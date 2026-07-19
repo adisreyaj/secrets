@@ -1,9 +1,9 @@
-import { Role } from '@prisma/client';
+import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { generateToken, hashToken } from '../../auth.js';
 import { config } from '../../config.js';
-import { prisma } from '../../db.js';
+import { apiTokens, db, Role } from '../../db/index.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { logAudit } from '../services/audit.js';
@@ -21,61 +21,63 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     async (request, reply) => {
-    const auth = requireAuth(request, reply);
-    if (!auth) {
-      return;
-    }
+      const auth = requireAuth(request, reply);
+      if (!auth) {
+        return;
+      }
 
-    const { id: projectId } = request.params as { id: string };
-    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-    if (!role) {
-      return;
-    }
+      const { id: projectId } = request.params as { id: string };
+      const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+      if (!role) {
+        return;
+      }
 
-    const body = request.body as { name?: string; readOnly?: boolean } | undefined;
-    if (!body?.name) {
-      sendError(reply, 400, 'Name is required');
-      return;
-    }
+      const body = request.body as { name?: string; readOnly?: boolean } | undefined;
+      if (!body?.name) {
+        sendError(reply, 400, 'Name is required');
+        return;
+      }
 
-    const raw = generateToken();
-    const expiresAt =
-      config.apiTokenTtlDays > 0
-        ? new Date(Date.now() + config.apiTokenTtlDays * 24 * 60 * 60 * 1000)
-        : null;
-    const token = await prisma.apiToken.create({
-      data: {
+      const raw = generateToken();
+      const expiresAt =
+        config.apiTokenTtlDays > 0
+          ? new Date(Date.now() + config.apiTokenTtlDays * 24 * 60 * 60 * 1000)
+          : null;
+      const [token] = await db
+        .insert(apiTokens)
+        .values({
+          projectId,
+          name: body.name,
+          tokenHash: hashToken(raw),
+          createdBy: auth.user!.id,
+          readOnly: body.readOnly === true,
+          expiresAt,
+        })
+        .returning();
+
+      await logAudit({
         projectId,
-        name: body.name,
-        tokenHash: hashToken(raw),
-        createdBy: auth.user!.id,
-        readOnly: body.readOnly === true,
-        expiresAt,
-      },
-    });
+        actorUserId: auth.user?.id,
+        actorServiceAccountId: auth.serviceAccountId ?? null,
+        action: 'token.create',
+        resourceType: 'api_token',
+        resourceId: token.id,
+      });
 
-    await logAudit({
-      projectId,
-      actorUserId: auth.user?.id,
-      actorServiceAccountId: auth.serviceAccountId ?? null,
-      action: 'token.create',
-      resourceType: 'api_token',
-      resourceId: token.id,
-    });
-
-    reply.code(201).send({
-      token: raw,
-      tokenMeta: {
-        id: token.id,
-        projectId: token.projectId,
-        name: token.name,
-        readOnly: token.readOnly,
-        createdAt: token.createdAt.toISOString(),
-        lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
-        expiresAt: token.expiresAt?.toISOString() ?? null,
-      },
-    });
-  });
+      reply.code(201).send({
+        token: raw,
+        tokenMeta: {
+          id: token.id,
+          projectId: token.projectId,
+          name: token.name,
+          readOnly: token.readOnly,
+          createdAt: token.createdAt.toISOString(),
+          lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+          expiresAt: token.expiresAt?.toISOString() ?? null,
+        },
+      });
+    },
+  );
 
   app.get(
     '/projects/:id/api-tokens',
@@ -103,21 +105,26 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const limit = query.limit;
       const cursor = query.cursor;
 
-      const tokens = await prisma.apiToken.findMany({
-        where: { projectId },
-        take: limit + 1,
-        cursor: cursor ? { id: cursor } : undefined,
-        orderBy: { createdAt: 'desc' },
+      const all = await db.query.apiTokens.findMany({
+        where: eq(apiTokens.projectId, projectId),
+        orderBy: [desc(apiTokens.createdAt)],
       });
 
+      let start = 0;
+      if (cursor) {
+        const idx = all.findIndex((t) => t.id === cursor);
+        start = idx >= 0 ? idx + 1 : 0;
+      }
+      const page = all.slice(start, start + limit + 1);
+
       let nextCursor: string | undefined = undefined;
-      if (tokens.length > limit) {
-        const nextItem = tokens.pop();
+      if (page.length > limit) {
+        const nextItem = page.pop();
         nextCursor = nextItem?.id;
       }
 
       reply.send({
-        data: tokens.map((token) => ({
+        data: page.map((token) => ({
           id: token.id,
           projectId: token.projectId,
           name: token.name,
@@ -143,8 +150,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const token = await prisma.apiToken.findFirst({
-      where: { id: tokenId, projectId },
+    const token = await db.query.apiTokens.findFirst({
+      where: and(eq(apiTokens.id, tokenId), eq(apiTokens.projectId, projectId)),
     });
 
     if (!token) {
@@ -152,7 +159,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    await prisma.apiToken.delete({ where: { id: token.id } });
+    await db.delete(apiTokens).where(eq(apiTokens.id, token.id));
 
     await logAudit({
       projectId,

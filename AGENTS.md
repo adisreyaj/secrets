@@ -12,7 +12,7 @@ pnpm dev:server            # Server only (Fastify + TypeScript watch)
 
 # Building
 pnpm build:web             # Build web app (tsc + vite)
-pnpm build:server          # Build server (tsc + prisma)
+pnpm build:server          # Build server (tsc)
 pnpm build:cli             # Build CLI package
 
 # Testing (Vitest)
@@ -29,16 +29,17 @@ pnpm lint:server           # Lint server
 pnpm format:web            # Format web code
 pnpm format:check:web      # Check formatting
 
-# Database
-pnpm prisma:generate       # Generate Prisma client
-pnpm prisma:migrate        # Run migrations
+# Database (Drizzle + Turso/libSQL)
+pnpm db:generate           # Generate Drizzle migrations from schema
+pnpm db:migrate            # Apply migrations
+pnpm db:push               # Push schema (dev / fresh DB)
 pnpm -C apps/server migrate:envelope  # One-time: re-encrypt existing secrets under DEK + AAD (run after deploy)
 ```
 
 ### Tech Stack
 
 - **Web**: React 19 + TypeScript 5.9 + Tailwind 4 + Vite
-- **Server**: Fastify 5 + Prisma + TypeScript (NodeNext)
+- **Server**: Fastify 5 + Drizzle + Turso/libSQL + TypeScript (NodeNext)
 - **Testing**: Vitest + Testing Library (jsdom for web, node for server)
 - **Linting**: oxlint + oxc (not ESLint/Prettier)
 
@@ -183,17 +184,19 @@ className={cn('base-classes', conditional && 'conditional-class', className)}
 - **Package manager**: pnpm only (10.28.2)
 - **Monorepo**: Workspaces in `apps/*` and `packages/*`
 
-### Prisma / Database
+### Drizzle / Database
 
-- Schema in `apps/server/prisma/schema.prisma`
-- After schema changes: `pnpm prisma:migrate` then `pnpm prisma:generate`
-- Use Prisma types in DTOs: `ProjectDto`, `EnvironmentDto`
+- Schema in `apps/server/src/db/schema.ts` (enums in `apps/server/src/db/enums.ts`)
+- After schema changes: `pnpm db:generate` then `pnpm db:migrate` (or `pnpm db:push` for local/dev)
+- Client: `import { db } from '../db/index.js'`
+- Local: `DATABASE_URL=file:./data/local.db` · Turso: `libsql://...` + `DATABASE_AUTH_TOKEN`
 
 ### Environment Variables
 
 - Web: `.env` in `apps/web/` (Vite: `import.meta.env.VITE_*`)
 - Server: `.env` in `apps/server/` (dotenv)
 - Never commit secrets - use `.env.example` as template
+- `DATABASE_URL` is Turso/libSQL (file DB or remote); optional `DATABASE_AUTH_TOKEN` for Turso cloud
 
 ### Encryption (Envelope + AAD)
 

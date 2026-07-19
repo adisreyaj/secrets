@@ -1,4 +1,4 @@
-import type { Role } from '@prisma/client';
+import type { Role } from '../../db/index.js';
 
 export interface AuthUser {
   id: string;

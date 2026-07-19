@@ -1,6 +1,11 @@
-import { AuthIdentityProvider } from '@prisma/client';
+import { and, eq } from 'drizzle-orm';
 import { hashPassword, verifyPassword } from '../../../auth.js';
-import { prisma } from '../../../db.js';
+import {
+  AuthIdentityProvider,
+  authEndUsers,
+  authIdentities,
+  db,
+} from '../../../db/index.js';
 
 export type VerifyLocalCredentialsResult =
   | { status: 'ok'; endUser: { id: string; projectId: string; email: string } }
@@ -16,24 +21,26 @@ export async function registerLocalIdentity(params: {
   const normalizedEmail = params.email.trim().toLowerCase();
   const passwordHash = await hashPassword(params.password);
 
-  return prisma.$transaction(async (tx) => {
-    const endUser = await tx.authEndUser.create({
-      data: {
+  return db.transaction(async (tx) => {
+    const [endUser] = await tx
+      .insert(authEndUsers)
+      .values({
         projectId: params.projectId,
         email: normalizedEmail,
         displayName: params.displayName ?? null,
-      },
-    });
+      })
+      .returning();
 
-    const identity = await tx.authIdentity.create({
-      data: {
+    const [identity] = await tx
+      .insert(authIdentities)
+      .values({
         projectId: params.projectId,
         endUserId: endUser.id,
         provider: AuthIdentityProvider.LOCAL,
         providerSubject: normalizedEmail,
         passwordHash,
-      },
-    });
+      })
+      .returning();
 
     return { endUser, identity };
   });
@@ -46,15 +53,15 @@ export async function verifyLocalCredentials(params: {
 }): Promise<VerifyLocalCredentialsResult> {
   const normalizedEmail = params.email.trim().toLowerCase();
 
-  const identity = await prisma.authIdentity.findFirst({
-    where: {
-      projectId: params.projectId,
-      provider: AuthIdentityProvider.LOCAL,
-      providerSubject: normalizedEmail,
-    },
-    include: {
+  const identity = await db.query.authIdentities.findFirst({
+    where: and(
+      eq(authIdentities.projectId, params.projectId),
+      eq(authIdentities.provider, AuthIdentityProvider.LOCAL),
+      eq(authIdentities.providerSubject, normalizedEmail),
+    ),
+    with: {
       endUser: {
-        select: {
+        columns: {
           id: true,
           projectId: true,
           email: true,
@@ -93,12 +100,14 @@ export async function rotateLocalPassword(params: {
   nextPassword: string;
 }) {
   const passwordHash = await hashPassword(params.nextPassword);
-  return prisma.authIdentity.updateMany({
-    where: {
-      projectId: params.projectId,
-      endUserId: params.endUserId,
-      provider: AuthIdentityProvider.LOCAL,
-    },
-    data: { passwordHash },
-  });
+  return db
+    .update(authIdentities)
+    .set({ passwordHash })
+    .where(
+      and(
+        eq(authIdentities.projectId, params.projectId),
+        eq(authIdentities.endUserId, params.endUserId),
+        eq(authIdentities.provider, AuthIdentityProvider.LOCAL),
+      ),
+    );
 }

@@ -1,3 +1,0 @@
--- AlterTable
-ALTER TABLE `environments` ADD COLUMN `encrypted_dek` LONGBLOB NULL,
-    ADD COLUMN `encrypted_dek_backup` LONGBLOB NULL;

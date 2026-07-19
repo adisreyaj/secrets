@@ -1,4 +1,5 @@
-import { prisma } from '../../db.js';
+import { and, eq, isNull } from 'drizzle-orm';
+import { db, secrets, secretVersions } from '../../db/index.js';
 import { decryptSecret, loadMasterKey } from '../../crypto.js';
 import {
   encryptSecretWithKey,
@@ -25,22 +26,22 @@ export async function migrateLegacySecretsToEnvelope(): Promise<MigrationResult>
   };
 
   const masterKey = loadMasterKey();
-  const environments = await prisma.environment.findMany({
-    select: { id: true, name: true, encryptedDek: true, projectId: true },
+  const environmentRows = await db.query.environments.findMany({
+    columns: { id: true, name: true, encryptedDek: true, projectId: true },
   });
 
-  for (const env of environments) {
+  for (const env of environmentRows) {
     try {
       const dek = await getOrCreateEnvironmentDek(env.id);
-      const secrets = await prisma.secret.findMany({
-        where: { environmentId: env.id, deletedAt: null },
-        include: {
-          versions: { orderBy: { createdAt: 'asc' } },
+      const secretRows = await db.query.secrets.findMany({
+        where: and(eq(secrets.environmentId, env.id), isNull(secrets.deletedAt)),
+        with: {
+          versions: { orderBy: (fields, { asc }) => [asc(fields.createdAt)] },
         },
       });
 
       let touchedSecretIds: string[] = [];
-      for (const secret of secrets) {
+      for (const secret of secretRows) {
         try {
           let anyVersionReEncrypted = false;
           for (const version of secret.versions) {
@@ -48,14 +49,14 @@ export async function migrateLegacySecretsToEnvelope(): Promise<MigrationResult>
               const plaintext = decryptLegacy(version, masterKey);
               const rewritten = encryptSecretWithKey(plaintext, dek, env.id, secret.key);
               if (!buffersEqual(rewritten.ciphertext, version.ciphertext)) {
-                await prisma.secretVersion.update({
-                  where: { id: version.id },
-                  data: {
-                    ciphertext: rewritten.ciphertext,
-                    iv: rewritten.iv,
-                    tag: rewritten.tag,
-                  },
-                });
+                await db
+                  .update(secretVersions)
+                  .set({
+                    ciphertext: Buffer.from(rewritten.ciphertext),
+                    iv: Buffer.from(rewritten.iv),
+                    tag: Buffer.from(rewritten.tag),
+                  })
+                  .where(eq(secretVersions.id, version.id));
                 result.versionsReEncrypted += 1;
                 anyVersionReEncrypted = true;
               }

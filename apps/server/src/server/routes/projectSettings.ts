@@ -1,6 +1,6 @@
-import { Role } from '@prisma/client';
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '../../db.js';
+import { db, projects, Role } from '../../db/index.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { logAudit } from '../services/audit.js';
@@ -18,9 +18,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      select: { id: true, auditRetentionDays: true },
+    const project = await db.query.projects.findFirst({
+      where: eq(projects.id, projectId),
+      columns: { id: true, auditRetentionDays: true },
     });
 
     if (!project) {
@@ -57,11 +57,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    const project = await prisma.project.update({
-      where: { id: projectId },
-      data: { auditRetentionDays: body.auditRetentionDays },
-      select: { id: true, auditRetentionDays: true },
-    });
+    const [project] = await db
+      .update(projects)
+      .set({ auditRetentionDays: body.auditRetentionDays })
+      .where(eq(projects.id, projectId))
+      .returning({ id: projects.id, auditRetentionDays: projects.auditRetentionDays });
+
+    if (!project) {
+      sendError(reply, 404, 'Project not found');
+      return;
+    }
 
     await logAudit({
       projectId,

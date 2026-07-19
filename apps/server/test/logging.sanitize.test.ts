@@ -5,7 +5,7 @@ describe('sanitizeHeaders', () => {
   it('redacts sensitive headers', () => {
     const sanitized = sanitizeHeaders({
       authorization: 'Bearer secret',
-      cookie: 'sm_session=abc',
+      cookie: 'sm.session_token=abc',
       'x-request-id': 'req_1',
     });
 

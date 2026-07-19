@@ -1,14 +1,52 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const sessionsByCode = new Map<string, any>();
-const sessionsById = new Map<string, any>();
-let idCounter = 0;
+const { sessionsByCode, sessionsById, nextId } = vi.hoisted(() => {
+  const sessionsByCode = new Map<string, any>();
+  const sessionsById = new Map<string, any>();
+  let idSeq = 0;
+  return {
+    sessionsByCode,
+    sessionsById,
+    nextId: () => `session_${(idSeq += 1)}`,
+  };
+});
 
-vi.mock('../src/db.js', () => {
-  const prisma = {
-    cliLoginSession: {
-      create: async ({ data }: { data: any }) => {
-        const id = `session_${idCounter += 1}`;
+vi.mock('../src/betterAuth.js', () => ({
+  auth: {
+    handler: async () =>
+      new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    api: {
+      getSession: async () => null,
+      signInEmail: async () => ({ headers: new Headers(), response: { user: {} } }),
+      signUpEmail: async () => ({ headers: new Headers(), response: { user: {} } }),
+      signOut: async () => ({ headers: new Headers(), response: { success: true } }),
+      verifyEmail: async () => ({ headers: new Headers(), response: {} }),
+    },
+  },
+  getDashboardSession: async () => null,
+  applyAuthSetCookies: () => undefined,
+}));
+
+vi.mock('../src/db/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/db/index.js')>();
+
+  const db: any = {
+    query: {
+      cliLoginSessions: {
+        findFirst: async () => {
+          // Single-session tests: return the only stored session.
+          const all = [...sessionsByCode.values()];
+          return all[0] ?? null;
+        },
+      },
+      apiTokens: { findFirst: async () => null },
+      serviceAccountTokens: { findFirst: async () => null },
+      globalCliTokens: { findFirst: async () => null },
+      projectMembers: { findFirst: async () => null },
+    },
+    insert: () => ({
+      values: async (data: any) => {
+        const id = nextId();
         const session = {
           id,
           code: data.code,
@@ -21,27 +59,29 @@ vi.mock('../src/db.js', () => {
         };
         sessionsByCode.set(session.code, session);
         sessionsById.set(session.id, session);
-        return session;
+        return undefined;
       },
-      findUnique: async ({ where }: { where: { code?: string; id?: string } }) => {
-        if (where.code) return sessionsByCode.get(where.code) ?? null;
-        if (where.id) return sessionsById.get(where.id) ?? null;
-        return null;
-      },
-      update: async ({ where, data }: { where: { id: string }; data: any }) => {
-        const session = sessionsById.get(where.id);
-        if (!session) return null;
-        const updated = { ...session, ...data };
-        sessionsById.set(where.id, updated);
-        sessionsByCode.set(updated.code, updated);
-        return updated;
-      },
+    }),
+    update: () => {
+      let patch: Record<string, unknown> = {};
+      const chain: any = {
+        set: (data: Record<string, unknown>) => {
+          patch = data;
+          return chain;
+        },
+        where: async () => {
+          for (const [id, session] of sessionsById) {
+            const updated = { ...session, ...patch };
+            sessionsById.set(id, updated);
+            sessionsByCode.set(updated.code, updated);
+          }
+        },
+      };
+      return chain;
     },
-    userSession: { findFirst: async () => null },
-    apiToken: { findFirst: async () => null },
-    projectMember: { findUnique: async () => null },
   };
-  return { prisma };
+
+  return { ...actual, db };
 });
 
 import { buildApp } from '../src/app.js';
@@ -54,7 +94,6 @@ describe('CLI login endpoints', () => {
   beforeEach(() => {
     sessionsByCode.clear();
     sessionsById.clear();
-    idCounter = 0;
   });
 
   it('starts CLI login and returns login URL + code', async () => {
@@ -86,9 +125,8 @@ describe('CLI login endpoints', () => {
     expect(pending.statusCode).toBe(200);
     expect(pending.json()).toEqual({ status: 'pending' });
 
-    const session = sessionsByCode.get(payload.code);
-    session.token = 'cli-token-value';
-    session.projectId = 'project_123';
+    const session = sessionsByCode.get(payload.code)!;
+    session.token = 'cli-token';
     sessionsByCode.set(payload.code, session);
     sessionsById.set(session.id, session);
 
@@ -100,8 +138,7 @@ describe('CLI login endpoints', () => {
     expect(complete.statusCode).toBe(200);
     expect(complete.json()).toEqual({
       status: 'complete',
-      token: 'cli-token-value',
-      projectId: 'project_123',
+      token: 'cli-token',
     });
     await app.close();
   });
@@ -111,7 +148,7 @@ describe('CLI login endpoints', () => {
     const start = await app.inject({ method: 'POST', url: '/auth/cli-login' });
     const payload = start.json() as { code: string };
 
-    const session = sessionsByCode.get(payload.code);
+    const session = sessionsByCode.get(payload.code)!;
     session.token = 'global-cli-token';
     session.projectId = null;
     sessionsByCode.set(payload.code, session);
@@ -122,7 +159,6 @@ describe('CLI login endpoints', () => {
       url: '/auth/cli-login/complete',
       payload: { code: payload.code },
     });
-
     expect(complete.statusCode).toBe(200);
     expect(complete.json()).toEqual({
       status: 'complete',
@@ -133,26 +169,18 @@ describe('CLI login endpoints', () => {
 
   it('returns 404 for expired code', async () => {
     const app = await buildApp();
-    const code = 'expired-code';
-    const expired = {
-      id: 'session_expired',
-      code,
-      token: null,
-      userId: null,
-      projectId: null,
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() - 60_000),
-      consumedAt: null,
-    };
-    sessionsByCode.set(code, expired);
-    sessionsById.set(expired.id, expired);
+    const start = await app.inject({ method: 'POST', url: '/auth/cli-login' });
+    const payload = start.json() as { code: string };
+    const session = sessionsByCode.get(payload.code)!;
+    session.expiresAt = new Date(Date.now() - 1000);
+    sessionsByCode.set(payload.code, session);
 
-    const response = await app.inject({
+    const complete = await app.inject({
       method: 'POST',
       url: '/auth/cli-login/complete',
-      payload: { code },
+      payload: { code: payload.code },
     });
-    expect(response.statusCode).toBe(404);
+    expect(complete.statusCode).toBe(404);
     await app.close();
   });
 });

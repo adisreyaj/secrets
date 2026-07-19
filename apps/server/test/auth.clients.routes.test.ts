@@ -14,88 +14,109 @@ type AuthClientRecord = {
   deletedAt: Date | null;
 };
 
-const state = {
+const state = vi.hoisted(() => ({
   apiToken: {
     id: 'token_1',
-    tokenHash: hashToken('mgmt-token'),
+    tokenHash: '',
     projectId: 'project_1',
     createdBy: 'user_1',
     readOnly: false,
     creator: { id: 'user_1', email: 'owner@example.com', name: 'Owner' },
   },
-  projectRole: 'ADMIN',
+  projectRole: 'ADMIN' as const,
   clients: [] as AuthClientRecord[],
-};
-
-function nextId(prefix: string, size: number): string {
-  return `${prefix}_${size + 1}`;
-}
-
-vi.mock('../src/db.js', () => ({
-  prisma: {
-    userSession: { findFirst: async () => null },
-    apiToken: {
-      findFirst: async ({ where }: any) =>
-        where?.tokenHash === state.apiToken.tokenHash ? state.apiToken : null,
-      update: async () => ({ id: state.apiToken.id }),
-    },
-    serviceAccountToken: { findFirst: async () => null },
-    globalCliToken: { findFirst: async () => null },
-    projectMember: { findUnique: async () => ({ role: state.projectRole }) },
-    projectModule: { findUnique: async () => ({ enabled: true }) },
-    auditLog: { create: async () => ({ id: 'audit_1' }) },
-    authClient: {
-      findMany: async ({ where }: any) =>
-        state.clients.filter(
-          (client) =>
-            client.projectId === where.projectId && client.deletedAt === where.deletedAt,
-        ),
-      create: async ({ data }: any) => {
-        const now = new Date();
-        const created: AuthClientRecord = {
-          id: nextId('client', state.clients.length),
-          projectId: data.projectId,
-          name: data.name,
-          type: data.type,
-          clientId: data.clientId,
-          clientSecretHash: data.clientSecretHash ?? null,
-          redirectUrisJson: data.redirectUrisJson ?? [],
-          createdAt: now,
-          updatedAt: now,
-          deletedAt: null,
-        };
-        state.clients.push(created);
-        return created;
-      },
-      findFirst: async ({ where }: any) =>
-        state.clients.find((client) => {
-          if (where?.id && client.id !== where.id) return false;
-          if (where?.projectId && client.projectId !== where.projectId) return false;
-          if (where?.clientId && client.clientId !== where.clientId) return false;
-          if (where?.deletedAt === null && client.deletedAt !== null) return false;
-          return true;
-        }) ?? null,
-      update: async ({ where, data }: any) => {
-        const current = state.clients.find((client) => client.id === where.id);
-        if (!current) throw new Error('Client not found');
-        if (Object.prototype.hasOwnProperty.call(data, 'name')) {
-          current.name = data.name ?? current.name;
-        }
-        if (Object.prototype.hasOwnProperty.call(data, 'redirectUrisJson')) {
-          current.redirectUrisJson = data.redirectUrisJson ?? current.redirectUrisJson;
-        }
-        if (Object.prototype.hasOwnProperty.call(data, 'clientSecretHash')) {
-          current.clientSecretHash = data.clientSecretHash ?? current.clientSecretHash;
-        }
-        if (Object.prototype.hasOwnProperty.call(data, 'deletedAt')) {
-          current.deletedAt = data.deletedAt;
-        }
-        current.updatedAt = new Date();
-        return current;
-      },
-    },
-  },
 }));
+
+vi.mock('../src/betterAuth.js', () => ({
+  auth: {
+    handler: async () =>
+      new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    api: { getSession: async () => null },
+  },
+  getDashboardSession: async () => null,
+  applyAuthSetCookies: () => undefined,
+}));
+
+vi.mock('../src/db/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/db/index.js')>();
+
+  let clientSeq = 0;
+
+  const db: any = {
+    query: {
+      apiTokens: {
+        findFirst: async () =>
+          state.apiToken.tokenHash ? state.apiToken : null,
+      },
+      serviceAccountTokens: { findFirst: async () => null },
+      globalCliTokens: { findFirst: async () => null },
+      projectMembers: {
+        findFirst: async () => ({ role: state.projectRole }),
+      },
+      projectModules: {
+        findFirst: async () => ({ enabled: true }),
+      },
+      authClients: {
+        findMany: async () => state.clients.filter((c) => c.deletedAt === null),
+        findFirst: async () =>
+          state.clients.find((c) => c.deletedAt === null) ?? null,
+      },
+    },
+    insert: () => ({
+      values: (data: any) => {
+        if (data.clientId) {
+          const now = new Date();
+          clientSeq += 1;
+          const created: AuthClientRecord = {
+            id: `client_${clientSeq}`,
+            projectId: data.projectId,
+            name: data.name,
+            type: data.type,
+            clientId: data.clientId,
+            clientSecretHash: data.clientSecretHash ?? null,
+            redirectUrisJson: data.redirectUrisJson ?? [],
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: null,
+          };
+          state.clients.push(created);
+          return { returning: async () => [created] };
+        }
+        return { returning: async () => [{ id: 'audit_1' }] };
+      },
+    }),
+    update: () => {
+      let patch: any = {};
+      const chain: any = {
+        set: (data: any) => {
+          patch = data;
+          return chain;
+        },
+        where: () => {
+          if (patch.lastUsedAt) return chain;
+          const current = state.clients.find((c) => !c.deletedAt) ?? state.clients.at(-1);
+          if (current) {
+            Object.assign(current, patch);
+            current.updatedAt = new Date();
+          }
+          return chain;
+        },
+        returning: async () => {
+          const current = state.clients.find((c) => !c.deletedAt) ?? state.clients.at(-1);
+          return current ? [current] : [];
+        },
+      };
+      return chain;
+    },
+  };
+
+  db.query.authClients.findFirst = async () =>
+    state.clients.find((c) => c.deletedAt === null) ?? null;
+  db.query.authClients.findMany = async () =>
+    state.clients.filter((c) => c.deletedAt === null);
+
+  return { ...actual, db };
+});
 
 import { buildApp } from '../src/app.js';
 import { authenticateAuthClient } from '../src/server/services/auth/clientCredentials.js';
@@ -103,6 +124,7 @@ import { authenticateAuthClient } from '../src/server/services/auth/clientCreden
 describe('auth clients management routes', () => {
   beforeAll(() => {
     process.env.MASTER_KEY = Buffer.alloc(32).toString('hex');
+    state.apiToken.tokenHash = hashToken('mgmt-token');
   });
 
   beforeEach(() => {
@@ -165,8 +187,8 @@ describe('auth clients management routes', () => {
       headers,
     });
     expect(list.statusCode).toBe(200);
-    const listBody = list.json() as any[];
-    expect(listBody).toHaveLength(1);
+    const listBody = list.json() as { data: unknown[] };
+    expect(listBody.data).toHaveLength(1);
 
     const del = await app.inject({
       method: 'DELETE',
@@ -181,7 +203,7 @@ describe('auth clients management routes', () => {
       headers,
     });
     expect(listAfterDelete.statusCode).toBe(200);
-    expect(listAfterDelete.json()).toEqual([]);
+    expect(listAfterDelete.json()).toEqual({ data: [], nextCursor: undefined });
 
     await app.close();
   });

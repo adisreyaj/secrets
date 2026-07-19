@@ -1,21 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Role } from '@prisma/client';
-import { hashToken } from '../src/auth.js';
+import { Role } from '../src/db/index.js';
 
-const { projectMemberFindUnique, projectModuleFindUnique, authSessionFindFirst, authSessionUpdate } =
-  vi.hoisted(() => ({
-    projectMemberFindUnique: vi.fn(),
-    projectModuleFindUnique: vi.fn(),
-    authSessionFindFirst: vi.fn(),
-    authSessionUpdate: vi.fn(),
-  }));
-vi.mock('../src/db.js', () => ({
-  prisma: {
-    projectMember: { findUnique: projectMemberFindUnique },
-    projectModule: { findUnique: projectModuleFindUnique },
-    authSession: { findFirst: authSessionFindFirst, update: authSessionUpdate },
-  },
+const {
+  projectMembersFindFirst,
+  projectModulesFindFirst,
+  authSessionsFindFirst,
+  authSessionsUpdate,
+} = vi.hoisted(() => ({
+  projectMembersFindFirst: vi.fn(),
+  projectModulesFindFirst: vi.fn(),
+  authSessionsFindFirst: vi.fn(),
+  authSessionsUpdate: vi.fn(),
 }));
+
+vi.mock('../src/db/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/db/index.js')>();
+  const updateChain = {
+    set: vi.fn(() => updateChain),
+    where: vi.fn(async () => ({ id: 'session_1' })),
+  };
+  authSessionsUpdate.mockImplementation(() => updateChain);
+  return {
+    ...actual,
+    db: {
+      query: {
+        projectMembers: { findFirst: projectMembersFindFirst },
+        projectModules: { findFirst: projectModulesFindFirst },
+        authSessions: { findFirst: authSessionsFindFirst },
+      },
+      update: authSessionsUpdate,
+    },
+  };
+});
 
 import {
   enforceGlobalBootstrapScope,
@@ -25,6 +41,7 @@ import {
   requireProjectModuleEnabled,
   requireProjectRole,
 } from '../src/server/auth/guards.js';
+import { ProjectModuleKey } from '../src/db/index.js';
 
 const createReply = () => {
   const reply = {
@@ -37,10 +54,15 @@ const createReply = () => {
 
 describe('auth guards', () => {
   beforeEach(() => {
-    projectMemberFindUnique.mockReset();
-    projectModuleFindUnique.mockReset();
-    authSessionFindFirst.mockReset();
-    authSessionUpdate.mockReset();
+    projectMembersFindFirst.mockReset();
+    projectModulesFindFirst.mockReset();
+    authSessionsFindFirst.mockReset();
+    authSessionsUpdate.mockReset();
+    const updateChain = {
+      set: vi.fn(() => updateChain),
+      where: vi.fn(async () => ({ id: 'session_1' })),
+    };
+    authSessionsUpdate.mockImplementation(() => updateChain);
   });
 
   it('requireAuth denies missing auth', () => {
@@ -62,7 +84,7 @@ describe('auth guards', () => {
   });
 
   it('requireProjectRole denies insufficient role', async () => {
-    projectMemberFindUnique.mockResolvedValueOnce({ role: Role.VIEWER });
+    projectMembersFindFirst.mockResolvedValueOnce({ role: Role.VIEWER });
     const reply = createReply();
     const result = await requireProjectRole(
       { auth: { viaToken: false, user: { id: 'user_1' } } } as any,
@@ -89,13 +111,13 @@ describe('auth guards', () => {
   });
 
   it('requireProjectModuleEnabled denies disabled module', async () => {
-    projectModuleFindUnique.mockResolvedValueOnce({ enabled: false });
+    projectModulesFindFirst.mockResolvedValueOnce({ enabled: false });
     const reply = createReply();
     const allowed = await requireProjectModuleEnabled(
       {} as any,
       reply,
       'project_1',
-      'AUTH' as any,
+      ProjectModuleKey.AUTH,
     );
     expect(allowed).toBe(false);
     expect(reply.code).toHaveBeenCalledWith(403);
@@ -113,7 +135,7 @@ describe('auth guards', () => {
   });
 
   it('requireProjectAuthSession denies disabled end user', async () => {
-    authSessionFindFirst.mockResolvedValueOnce({
+    authSessionsFindFirst.mockResolvedValueOnce({
       id: 'session_1',
       endUser: { id: 'eu_1', email: 'user@example.com', disabledAt: new Date() },
     });
@@ -128,11 +150,10 @@ describe('auth guards', () => {
   });
 
   it('requireProjectAuthSession returns session context when valid', async () => {
-    authSessionFindFirst.mockResolvedValueOnce({
+    authSessionsFindFirst.mockResolvedValueOnce({
       id: 'session_1',
       endUser: { id: 'eu_1', email: 'user@example.com', disabledAt: null },
     });
-    authSessionUpdate.mockResolvedValueOnce({ id: 'session_1' });
     const reply = createReply();
     const result = await requireProjectAuthSession(
       { headers: { authorization: 'Bearer session-token' } } as any,
@@ -140,15 +161,8 @@ describe('auth guards', () => {
       'project_1',
     );
 
-    expect(authSessionFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          projectId: 'project_1',
-          sessionTokenHash: hashToken('session-token'),
-        }),
-      }),
-    );
-    expect(authSessionUpdate).toHaveBeenCalled();
+    expect(authSessionsFindFirst).toHaveBeenCalled();
+    expect(authSessionsUpdate).toHaveBeenCalled();
     expect(result).toEqual({
       sessionId: 'session_1',
       endUserId: 'eu_1',

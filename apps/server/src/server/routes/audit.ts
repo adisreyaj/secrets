@@ -1,6 +1,6 @@
-import { Prisma, Role } from '@prisma/client';
+import { and, desc, eq, gte, lte } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '../../db.js';
+import { auditLogs, db, Role } from '../../db/index.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { parseDateInput } from '../http/validators.js';
@@ -51,26 +51,21 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const limitRaw = query?.limit ? Number(query.limit) : 200;
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
 
-    const where: Prisma.AuditLogWhereInput = {
-      projectId,
-      action: query?.action ?? undefined,
-      resourceType: query?.resourceType ?? undefined,
-      resourceId: query?.resourceId ?? undefined,
-      actorUserId: query?.actorUserId ?? undefined,
-      actorServiceAccountId: query?.actorServiceAccountId ?? undefined,
-      createdAt:
-        startDate || endDate
-          ? {
-              gte: startDate ?? undefined,
-              lte: endDate ?? undefined,
-            }
+    const logs = await db.query.auditLogs.findMany({
+      where: and(
+        eq(auditLogs.projectId, projectId),
+        query?.action ? eq(auditLogs.action, query.action) : undefined,
+        query?.resourceType ? eq(auditLogs.resourceType, query.resourceType) : undefined,
+        query?.resourceId ? eq(auditLogs.resourceId, query.resourceId) : undefined,
+        query?.actorUserId ? eq(auditLogs.actorUserId, query.actorUserId) : undefined,
+        query?.actorServiceAccountId
+          ? eq(auditLogs.actorServiceAccountId, query.actorServiceAccountId)
           : undefined,
-    };
-
-    const logs = await prisma.auditLog.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit,
+        startDate ? gte(auditLogs.createdAt, startDate) : undefined,
+        endDate ? lte(auditLogs.createdAt, endDate) : undefined,
+      ),
+      orderBy: [desc(auditLogs.createdAt)],
+      limit,
     });
 
     reply.send(

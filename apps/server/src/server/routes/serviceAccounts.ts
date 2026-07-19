@@ -1,23 +1,29 @@
-import { Role } from '@prisma/client';
+import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { generateToken, hashToken } from '../../auth.js';
-import { config } from '../../config.js';
-import { prisma } from '../../db.js';
+import {
+  db,
+  Role,
+  serviceAccountEnvironments,
+  serviceAccounts,
+  serviceAccountTokenEnvironments,
+  serviceAccountTokens,
+} from '../../db/index.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { logAudit } from '../services/audit.js';
 
 const createServiceAccountSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  environmentIds: z.array(z.string().uuid()).default([]),
+  environmentIds: z.array(z.string()).default([]),
 });
 
 const createServiceAccountTokenSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  role: z.nativeEnum(Role),
+  role: z.enum([Role.ADMIN, Role.EDITOR, Role.VIEWER]),
   readOnly: z.boolean().optional(),
-  environmentIds: z.array(z.string().uuid()).default([]),
+  environmentIds: z.array(z.string()).default([]),
   expiresAt: z.string().datetime().nullable().optional(),
 });
 
@@ -43,15 +49,26 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
       const { name, environmentIds } = request.body as z.infer<typeof createServiceAccountSchema>;
 
-      const serviceAccount = await prisma.serviceAccount.create({
-        data: {
-          projectId,
-          name,
-          createdBy: auth.user!.id,
-          environments: {
-            create: environmentIds.map((environmentId) => ({ environmentId })),
-          },
-        },
+      const serviceAccount = await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(serviceAccounts)
+          .values({
+            projectId,
+            name,
+            createdBy: auth.user!.id,
+          })
+          .returning();
+
+        if (environmentIds.length > 0) {
+          await tx.insert(serviceAccountEnvironments).values(
+            environmentIds.map((environmentId) => ({
+              serviceAccountId: created.id,
+              environmentId,
+            })),
+          );
+        }
+
+        return created;
       });
 
       await logAudit({
@@ -74,80 +91,77 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.get(
-    '/projects/:id/service-accounts',
-    async (request, reply) => {
-      const auth = requireAuth(request, reply);
-      if (!auth) {
-        return;
-      }
+  app.get('/projects/:id/service-accounts', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
 
-      const { id: projectId } = request.params as { id: string };
-      const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
-      if (!role) {
-        return;
-      }
+    const { id: projectId } = request.params as { id: string };
+    const role = await requireProjectRole(request, reply, projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
 
-      const serviceAccounts = await prisma.serviceAccount.findMany({
-        where: { projectId },
-        include: {
-          environments: {
-            select: { environmentId: true },
-          },
+    const rows = await db.query.serviceAccounts.findMany({
+      where: eq(serviceAccounts.projectId, projectId),
+      with: {
+        environments: {
+          columns: { environmentId: true },
         },
-        orderBy: { createdAt: 'desc' },
-      });
+      },
+      orderBy: [desc(serviceAccounts.createdAt)],
+    });
 
-      reply.send(
-        serviceAccounts.map((sa) => ({
-          id: sa.id,
-          projectId: sa.projectId,
-          name: sa.name,
-          createdBy: sa.createdBy,
-          createdAt: sa.createdAt.toISOString(),
-          environmentIds: sa.environments.map((e) => e.environmentId),
-        })),
-      );
-    },
-  );
+    reply.send(
+      rows.map((sa) => ({
+        id: sa.id,
+        projectId: sa.projectId,
+        name: sa.name,
+        createdBy: sa.createdBy,
+        createdAt: sa.createdAt.toISOString(),
+        environmentIds: sa.environments.map((e) => e.environmentId),
+      })),
+    );
+  });
 
-  app.delete(
-    '/projects/:id/service-accounts/:serviceAccountId',
-    async (request, reply) => {
-      const auth = requireAuth(request, reply);
-      if (!auth) {
-        return;
-      }
+  app.delete('/projects/:id/service-accounts/:serviceAccountId', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
 
-      const { id: projectId, serviceAccountId } = request.params as { id: string; serviceAccountId: string };
-      const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
-      if (!role) {
-        return;
-      }
+    const { id: projectId, serviceAccountId } = request.params as {
+      id: string;
+      serviceAccountId: string;
+    };
+    const role = await requireProjectRole(request, reply, projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
 
-      const serviceAccount = await prisma.serviceAccount.findFirst({
-        where: { id: serviceAccountId, projectId },
-      });
+    const serviceAccount = await db.query.serviceAccounts.findFirst({
+      where: and(eq(serviceAccounts.id, serviceAccountId), eq(serviceAccounts.projectId, projectId)),
+    });
 
-      if (!serviceAccount) {
-        sendError(reply, 404, 'Service account not found');
-        return;
-      }
+    if (!serviceAccount) {
+      sendError(reply, 404, 'Service account not found');
+      return;
+    }
 
-      await prisma.serviceAccount.delete({ where: { id: serviceAccountId } });
+    await db.delete(serviceAccounts).where(eq(serviceAccounts.id, serviceAccountId));
 
-      await logAudit({
-        projectId,
-        actorUserId: auth.user?.id,
-        actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'service_account.delete',
-        resourceType: 'service_account',
-        resourceId: serviceAccountId,
-      });
+    await logAudit({
+      projectId,
+      actorUserId: auth.user?.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'service_account.delete',
+      resourceType: 'service_account',
+      resourceId: serviceAccountId,
+    });
 
-      reply.code(204).send();
-    },
-  );
+    reply.code(204).send();
+  });
 
   app.post(
     '/service-accounts/:id/tokens',
@@ -163,11 +177,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const { id: serviceAccountId } = request.params as { id: string };
-      const { name, role, readOnly, environmentIds, expiresAt } = request.body as z.infer<typeof createServiceAccountTokenSchema>;
+      const { name, role, readOnly, environmentIds, expiresAt } = request.body as z.infer<
+        typeof createServiceAccountTokenSchema
+      >;
 
-      const serviceAccount = await prisma.serviceAccount.findUnique({
-        where: { id: serviceAccountId },
-        include: { project: true },
+      const serviceAccount = await db.query.serviceAccounts.findFirst({
+        where: eq(serviceAccounts.id, serviceAccountId),
+        with: { project: true },
       });
 
       if (!serviceAccount) {
@@ -175,25 +191,41 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         return;
       }
 
-      const projectRole = await requireProjectRole(request, reply, serviceAccount.projectId, Role.ADMIN);
+      const projectRole = await requireProjectRole(
+        request,
+        reply,
+        serviceAccount.projectId,
+        Role.ADMIN,
+      );
       if (!projectRole) {
         return;
       }
 
       const raw = generateToken();
       const parsedExpiresAt = expiresAt ? new Date(expiresAt) : null;
-      const token = await prisma.serviceAccountToken.create({
-        data: {
-          serviceAccountId,
-          name,
-          role,
-          tokenHash: hashToken(raw),
-          readOnly: readOnly === true,
-          expiresAt: parsedExpiresAt,
-          environments: {
-            create: environmentIds.map((environmentId) => ({ environmentId })),
-          },
-        },
+      const token = await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(serviceAccountTokens)
+          .values({
+            serviceAccountId,
+            name,
+            role,
+            tokenHash: hashToken(raw),
+            readOnly: readOnly === true,
+            expiresAt: parsedExpiresAt,
+          })
+          .returning();
+
+        if (environmentIds.length > 0) {
+          await tx.insert(serviceAccountTokenEnvironments).values(
+            environmentIds.map((environmentId) => ({
+              serviceAccountTokenId: created.id,
+              environmentId,
+            })),
+          );
+        }
+
+        return created;
       });
 
       await logAudit({
@@ -221,101 +253,101 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.get(
-    '/service-accounts/:id/tokens',
-    async (request, reply) => {
-      const auth = requireAuth(request, reply);
-      if (!auth) {
-        return;
-      }
+  app.get('/service-accounts/:id/tokens', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
 
-      const { id: serviceAccountId } = request.params as { id: string };
-      
-      const serviceAccount = await prisma.serviceAccount.findUnique({
-        where: { id: serviceAccountId },
-      });
+    const { id: serviceAccountId } = request.params as { id: string };
 
-      if (!serviceAccount) {
-        sendError(reply, 404, 'Service account not found');
-        return;
-      }
+    const serviceAccount = await db.query.serviceAccounts.findFirst({
+      where: eq(serviceAccounts.id, serviceAccountId),
+    });
 
-      const role = await requireProjectRole(request, reply, serviceAccount.projectId, Role.VIEWER);
-      if (!role) {
-        return;
-      }
+    if (!serviceAccount) {
+      sendError(reply, 404, 'Service account not found');
+      return;
+    }
 
-      const tokens = await prisma.serviceAccountToken.findMany({
-        where: { serviceAccountId },
-        include: {
-          environments: {
-            select: { environmentId: true },
-          },
+    const role = await requireProjectRole(request, reply, serviceAccount.projectId, Role.VIEWER);
+    if (!role) {
+      return;
+    }
+
+    const tokens = await db.query.serviceAccountTokens.findMany({
+      where: eq(serviceAccountTokens.serviceAccountId, serviceAccountId),
+      with: {
+        environments: {
+          columns: { environmentId: true },
         },
-        orderBy: { createdAt: 'desc' },
-      });
+      },
+      orderBy: [desc(serviceAccountTokens.createdAt)],
+    });
 
-      reply.send(
-        tokens.map((token) => ({
-          id: token.id,
-          serviceAccountId: token.serviceAccountId,
-          name: token.name,
-          role: token.role,
-          readOnly: token.readOnly,
-          createdAt: token.createdAt.toISOString(),
-          lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
-          expiresAt: token.expiresAt?.toISOString() ?? null,
-          environmentIds: token.environments.map((e) => e.environmentId),
-        })),
-      );
-    },
-  );
+    reply.send(
+      tokens.map((token) => ({
+        id: token.id,
+        serviceAccountId: token.serviceAccountId,
+        name: token.name,
+        role: token.role,
+        readOnly: token.readOnly,
+        createdAt: token.createdAt.toISOString(),
+        lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+        expiresAt: token.expiresAt?.toISOString() ?? null,
+        environmentIds: token.environments.map((e) => e.environmentId),
+      })),
+    );
+  });
 
-  app.delete(
-    '/service-accounts/:serviceAccountId/tokens/:tokenId',
-    async (request, reply) => {
-      const auth = requireAuth(request, reply);
-      if (!auth) {
-        return;
-      }
+  app.delete('/service-accounts/:serviceAccountId/tokens/:tokenId', async (request, reply) => {
+    const auth = requireAuth(request, reply);
+    if (!auth) {
+      return;
+    }
 
-      const { serviceAccountId, tokenId } = request.params as { serviceAccountId: string; tokenId: string };
-      
-      const serviceAccount = await prisma.serviceAccount.findUnique({
-        where: { id: serviceAccountId },
-      });
+    const { serviceAccountId, tokenId } = request.params as {
+      serviceAccountId: string;
+      tokenId: string;
+    };
 
-      if (!serviceAccount) {
-        sendError(reply, 404, 'Service account not found');
-        return;
-      }
+    const serviceAccount = await db.query.serviceAccounts.findFirst({
+      where: eq(serviceAccounts.id, serviceAccountId),
+    });
 
-      const role = await requireProjectRole(request, reply, serviceAccount.projectId, Role.ADMIN);
-      if (!role) {
-        return;
-      }
+    if (!serviceAccount) {
+      sendError(reply, 404, 'Service account not found');
+      return;
+    }
 
-      const token = await prisma.serviceAccountToken.findFirst({
-        where: { id: tokenId, serviceAccountId },
-      });
+    const role = await requireProjectRole(request, reply, serviceAccount.projectId, Role.ADMIN);
+    if (!role) {
+      return;
+    }
 
-      if (!token) {
-        sendError(reply, 404, 'Token not found');
-        return;
-      }
+    const token = await db.query.serviceAccountTokens.findFirst({
+      where: and(
+        eq(serviceAccountTokens.id, tokenId),
+        eq(serviceAccountTokens.serviceAccountId, serviceAccountId),
+      ),
+    });
 
-      await prisma.serviceAccountToken.delete({ where: { id: tokenId } });
+    if (!token) {
+      sendError(reply, 404, 'Token not found');
+      return;
+    }
 
-      await logAudit({
-        projectId: serviceAccount.projectId,
-        actorUserId: auth.user?.id,
-        actorServiceAccountId: auth.serviceAccountId ?? null,
-        action: 'service_account_token.delete',
-        resourceType: 'service_account_token',
-        resourceId: tokenId,
-      });
+    await db.delete(serviceAccountTokens).where(eq(serviceAccountTokens.id, tokenId));
 
-      reply.code(204).send();
-    },
-  );
+    await logAudit({
+      projectId: serviceAccount.projectId,
+      actorUserId: auth.user?.id,
+      actorServiceAccountId: auth.serviceAccountId ?? null,
+      action: 'service_account_token.delete',
+      resourceType: 'service_account_token',
+      resourceId: tokenId,
+    });
+
+    reply.code(204).send();
+  });
 }

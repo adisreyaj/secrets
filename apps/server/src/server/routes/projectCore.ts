@@ -1,14 +1,22 @@
-import { Role } from '@prisma/client';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { prisma } from '../../db.js';
+import {
+  db,
+  isUniqueConstraintError,
+  organizationMembers,
+  ProjectModuleKey,
+  projectMembers,
+  projectModules,
+  projects,
+  Role,
+} from '../../db/index.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { ROLE_RANK } from '../auth/policies.js';
 import { sendError } from '../http/replies.js';
 import { toProjectDto } from '../mappers/projects.js';
 import { deleteProjectWithGuards } from '../services/deletions.js';
 import { normalizeIdentifier } from '../services/identifiers.js';
-import { isPrismaUniqueError } from '../services/prismaErrors.js';
 import { logAudit } from '../services/audit.js';
 import { ensureUniqueProjectSlug } from '../services/slugs.js';
 import { renameProjectWithGuards } from '../services/projectUpdates.js';
@@ -32,13 +40,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
     if (organizationId) {
-      const organizationMembership = await prisma.organizationMember.findUnique({
-        where: {
-          organizationId_userId: {
-            organizationId,
-            userId: auth.user.id,
-          },
-        },
+      const organizationMembership = await db.query.organizationMembers.findFirst({
+        where: and(
+          eq(organizationMembers.organizationId, organizationId),
+          eq(organizationMembers.userId, auth.user.id),
+        ),
       });
       if (!organizationMembership) {
         sendError(reply, 403, 'Organization access denied');
@@ -50,9 +56,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    const memberships = await prisma.projectMember.findMany({
-      where: { userId: auth.user.id },
-      select: { project: { select: { name: true } } },
+    const memberships = await db.query.projectMembers.findMany({
+      where: eq(projectMembers.userId, auth.user.id),
+      with: { project: { columns: { name: true } } },
     });
     const conflict = memberships.some(
       (membership) => normalizeIdentifier(membership.project.name) === normalizeIdentifier(name),
@@ -65,28 +71,32 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const slug = await ensureUniqueProjectSlug(name);
     let project;
     try {
-      project = await prisma.project.create({
-        data: {
-          name,
-          slug,
-          organizationId: organizationId ?? null,
-          members: {
-            create: {
-              userId: auth.user!.id,
-              role: Role.ADMIN,
-            },
-          },
-          modules: {
-            create: [
-              { module: 'SECRETS', enabled: true },
-              { module: 'FLAGS', enabled: true },
-              { module: 'AUTH', enabled: true },
-            ],
-          },
-        },
+      project = await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(projects)
+          .values({
+            name,
+            slug,
+            organizationId: organizationId ?? null,
+          })
+          .returning();
+
+        await tx.insert(projectMembers).values({
+          projectId: created.id,
+          userId: auth.user!.id,
+          role: Role.ADMIN,
+        });
+
+        await tx.insert(projectModules).values([
+          { projectId: created.id, module: ProjectModuleKey.SECRETS, enabled: true },
+          { projectId: created.id, module: ProjectModuleKey.FLAGS, enabled: true },
+          { projectId: created.id, module: ProjectModuleKey.AUTH, enabled: true },
+        ]);
+
+        return created;
       });
     } catch (error) {
-      if (isPrismaUniqueError(error)) {
+      if (isUniqueConstraintError(error)) {
         sendError(reply, 409, 'Project name already exists');
         return;
       }
@@ -125,22 +135,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const limit = query.limit;
       const cursor = query.cursor;
 
-      const memberships = await prisma.projectMember.findMany({
-        where: { userId: auth.user!.id },
-        include: { project: true },
-        take: limit + 1,
-        cursor: cursor ? { id: cursor } : undefined,
-        orderBy: { project: { createdAt: 'desc' } },
+      const all = await db.query.projectMembers.findMany({
+        where: eq(projectMembers.userId, auth.user!.id),
+        with: { project: true },
       });
+      all.sort(
+        (a, b) => b.project.createdAt.getTime() - a.project.createdAt.getTime(),
+      );
+
+      let start = 0;
+      if (cursor) {
+        const idx = all.findIndex((m) => m.id === cursor);
+        start = idx >= 0 ? idx + 1 : 0;
+      }
+      const page = all.slice(start, start + limit + 1);
 
       let nextCursor: string | undefined = undefined;
-      if (memberships.length > limit) {
-        const nextItem = memberships.pop();
+      if (page.length > limit) {
+        const nextItem = page.pop();
         nextCursor = nextItem?.id;
       }
 
       reply.send({
-        data: memberships.map((membership) => toProjectDto(membership.project, membership.role)),
+        data: page.map((membership) => toProjectDto(membership.project, membership.role)),
         nextCursor,
       });
     },
@@ -199,13 +216,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const nextOrganizationId = body.organizationId?.trim() || null;
     if (nextOrganizationId) {
-      const organizationMembership = await prisma.organizationMember.findUnique({
-        where: {
-          organizationId_userId: {
-            organizationId: nextOrganizationId,
-            userId: auth.user.id,
-          },
-        },
+      const organizationMembership = await db.query.organizationMembers.findFirst({
+        where: and(
+          eq(organizationMembers.organizationId, nextOrganizationId),
+          eq(organizationMembers.userId, auth.user.id),
+        ),
       });
       if (!organizationMembership) {
         sendError(reply, 403, 'Organization access denied');
@@ -217,10 +232,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    const project = await prisma.project.update({
-      where: { id: projectId },
-      data: { organizationId: nextOrganizationId },
-    });
+    const [project] = await db
+      .update(projects)
+      .set({ organizationId: nextOrganizationId })
+      .where(eq(projects.id, projectId))
+      .returning();
+
+    if (!project) {
+      sendError(reply, 404, 'Project not found');
+      return;
+    }
 
     reply.send(toProjectDto(project, projectRole));
   });
@@ -265,7 +286,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const { slug } = request.params as { slug: string };
-    const project = await prisma.project.findUnique({ where: { slug } });
+    const project = await db.query.projects.findFirst({ where: eq(projects.slug, slug) });
     if (!project) {
       sendError(reply, 404, 'Project not found');
       return;

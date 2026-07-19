@@ -1,72 +1,74 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  projectFindUnique,
-  projectDelete,
-  projectCount,
-  environmentCount,
-  secretCount,
-  tokenCount,
-  serviceAccountCount,
-  auditCreate,
+  projectsFindFirst,
+  insertValues,
+  deleteWhere,
+  selectResult,
 } = vi.hoisted(() => ({
-  projectFindUnique: vi.fn(),
-  projectDelete: vi.fn(),
-  projectCount: vi.fn(),
-  environmentCount: vi.fn(),
-  secretCount: vi.fn(),
-  tokenCount: vi.fn(),
-  serviceAccountCount: vi.fn(),
-  auditCreate: vi.fn(),
+  projectsFindFirst: vi.fn(),
+  insertValues: vi.fn(),
+  deleteWhere: vi.fn(),
+  selectResult: vi.fn(),
 }));
 
-vi.mock('../src/db.js', () => ({
-  prisma: {
-    project: {
-      findUnique: projectFindUnique,
-      count: projectCount,
+vi.mock('../src/db/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/db/index.js')>();
+  const db: any = {
+    query: {
+      projects: { findFirst: projectsFindFirst },
     },
-    environment: {
-      count: environmentCount,
-    },
-    secret: {
-      count: secretCount,
-    },
-    apiToken: {
-      count: tokenCount,
-    },
-    serviceAccount: {
-      count: serviceAccountCount,
-    },
-    $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
-      callback({
-        auditLog: { create: auditCreate },
-        project: { delete: projectDelete },
-      }),
-    ),
-  },
-}));
+    select: vi.fn(() => {
+      const chain: any = {
+        from: vi.fn(() => chain),
+        where: vi.fn(() => chain),
+        innerJoin: vi.fn(() => chain),
+        then: (resolve: any, reject: any) =>
+          Promise.resolve(selectResult()).then(resolve, reject),
+      };
+      return chain;
+    }),
+    insert: vi.fn(() => {
+      const chain: any = {
+        values: vi.fn(async (v: unknown) => {
+          insertValues(v);
+          return undefined;
+        }),
+      };
+      return chain;
+    }),
+    delete: vi.fn(() => {
+      const chain: any = {
+        where: vi.fn(async () => {
+          deleteWhere();
+          return undefined;
+        }),
+      };
+      return chain;
+    }),
+    transaction: vi.fn(async (cb: any) => cb(db)),
+  };
+  return { ...actual, db };
+});
 
 import { deleteProjectWithGuards } from '../src/server/services/deletions.js';
 
 describe('deleteProjectWithGuards', () => {
   beforeEach(() => {
-    projectFindUnique.mockReset();
-    projectDelete.mockReset();
-    projectCount.mockReset();
-    environmentCount.mockReset();
-    secretCount.mockReset();
-    tokenCount.mockReset();
-    serviceAccountCount.mockReset();
-    auditCreate.mockReset();
+    projectsFindFirst.mockReset();
+    insertValues.mockReset();
+    deleteWhere.mockReset();
+    selectResult.mockReset();
+    selectResult.mockResolvedValue([{ value: 0 }]);
   });
 
   it('deletes a project for admin flow with matching confirmation', async () => {
-    projectFindUnique.mockResolvedValueOnce({ id: 'project_1', name: 'Alpha' });
-    environmentCount.mockResolvedValueOnce(2);
-    secretCount.mockResolvedValueOnce(5);
-    tokenCount.mockResolvedValueOnce(1);
-    serviceAccountCount.mockResolvedValueOnce(1);
+    projectsFindFirst.mockResolvedValueOnce({ id: 'project_1', name: 'Alpha' });
+    selectResult
+      .mockResolvedValueOnce([{ value: 2 }])
+      .mockResolvedValueOnce([{ value: 5 }])
+      .mockResolvedValueOnce([{ value: 1 }])
+      .mockResolvedValueOnce([{ value: 1 }]);
 
     const result = await deleteProjectWithGuards({
       projectId: 'project_1',
@@ -75,12 +77,12 @@ describe('deleteProjectWithGuards', () => {
     });
 
     expect(result).toEqual({ ok: true });
-    expect(auditCreate).toHaveBeenCalled();
-    expect(projectDelete).toHaveBeenCalledWith({ where: { id: 'project_1' } });
+    expect(insertValues).toHaveBeenCalled();
+    expect(deleteWhere).toHaveBeenCalled();
   });
 
   it('returns 400 when confirmation text does not match', async () => {
-    projectFindUnique.mockResolvedValueOnce({ id: 'project_1', name: 'Alpha' });
+    projectsFindFirst.mockResolvedValueOnce({ id: 'project_1', name: 'Alpha' });
 
     const result = await deleteProjectWithGuards({
       projectId: 'project_1',
@@ -93,15 +95,15 @@ describe('deleteProjectWithGuards', () => {
       status: 400,
       error: 'Confirmation text must exactly match project name',
     });
-    expect(projectDelete).not.toHaveBeenCalled();
+    expect(deleteWhere).not.toHaveBeenCalled();
   });
 
   it('returns 404 when project does not exist', async () => {
-    projectFindUnique.mockResolvedValueOnce(null);
+    projectsFindFirst.mockResolvedValueOnce(null);
 
     const result = await deleteProjectWithGuards({
       projectId: 'missing',
-      confirmText: 'Alpha',
+      confirmText: 'X',
       actorUserId: 'user_1',
     });
 

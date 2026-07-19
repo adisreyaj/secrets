@@ -1,6 +1,6 @@
-import { Role } from '@prisma/client';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '../../db.js';
+import { db, environments, Role, secrets, secretVersions } from '../../db/index.js';
 import {
   requireAuth,
   requireEnvironmentScope,
@@ -32,16 +32,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const secret = await prisma.secret.findUnique({
-      include: {
+    const secret = await db.query.secrets.findFirst({
+      where: eq(secrets.id, secretId),
+      with: {
         environment: true,
         versions: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
+          where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
+          orderBy: (fields, { desc }) => [desc(fields.createdAt)],
+          limit: 1,
         },
       },
-      where: { id: secretId },
     });
     if (!secret) {
       sendError(reply, 404, 'Secret not found');
@@ -70,8 +70,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const targetEnvs = await prisma.environment.findMany({
-      where: { id: { in: targetIdsWithoutSource } },
+    const targetEnvs = await db.query.environments.findMany({
+      where: inArray(environments.id, targetIdsWithoutSource),
     });
     if (targetEnvs.length !== targetIdsWithoutSource.length) {
       sendError(reply, 404, 'One or more environments not found');
@@ -96,11 +96,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const updated: string[] = [];
     const skipped: string[] = [];
 
-    await prisma.$transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       for (const env of targetEnvs) {
         const targetDek = await withEnvironmentDek(env.id, (d) => d);
-        const existing = await tx.secret.findUnique({
-          where: { environmentId_key: { environmentId: env.id, key: secret.key } },
+        const existing = await tx.query.secrets.findFirst({
+          where: and(eq(secrets.environmentId, env.id), eq(secrets.key, secret.key)),
         });
 
         if (existing && !overwrite) {
@@ -110,9 +110,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
         let targetSecretId = existing?.id;
         if (!targetSecretId) {
-          const createdSecret = await tx.secret.create({
-            data: { environmentId: env.id, key: secret.key },
-          });
+          const [createdSecret] = await tx
+            .insert(secrets)
+            .values({ environmentId: env.id, key: secret.key })
+            .returning();
           targetSecretId = createdSecret.id;
           created.push(env.id);
         } else {
@@ -121,25 +122,23 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
         const payload = encryptSecretWithKey(value, targetDek, env.id, secret.key);
 
-        await tx.secretVersion.updateMany({
-          where: { secretId: targetSecretId },
-          data: { isActive: false },
+        await tx
+          .update(secretVersions)
+          .set({ isActive: false })
+          .where(eq(secretVersions.secretId, targetSecretId));
+        await tx.insert(secretVersions).values({
+          secretId: targetSecretId,
+          ciphertext: Buffer.from(payload.ciphertext),
+          iv: Buffer.from(payload.iv),
+          tag: Buffer.from(payload.tag),
+          keyVersion: activeVersion.keyVersion,
+          createdBy: auth.user?.id,
+          isActive: true,
         });
-        await tx.secretVersion.create({
-          data: {
-            secretId: targetSecretId,
-            ciphertext: payload.ciphertext,
-            iv: payload.iv,
-            tag: payload.tag,
-            keyVersion: activeVersion.keyVersion,
-            createdBy: auth.user?.id,
-            isActive: true,
-          },
-        });
-        await tx.secret.update({
-          where: { id: targetSecretId },
-          data: { updatedAt: new Date(), deletedAt: null },
-        });
+        await tx
+          .update(secrets)
+          .set({ updatedAt: new Date(), deletedAt: null })
+          .where(eq(secrets.id, targetSecretId));
       }
     });
 
@@ -181,7 +180,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const targetEnv = await prisma.environment.findUnique({ where: { id: targetEnvId } });
+    const targetEnv = await db.query.environments.findFirst({
+      where: eq(environments.id, targetEnvId),
+    });
     if (!targetEnv) {
       sendError(reply, 404, 'Target environment not found');
       return;
@@ -190,7 +191,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const sourceEnv = await prisma.environment.findUnique({ where: { id: sourceEnvironmentId } });
+    const sourceEnv = await db.query.environments.findFirst({
+      where: eq(environments.id, sourceEnvironmentId),
+    });
     if (!sourceEnv) {
       sendError(reply, 404, 'Source environment not found');
       return;
@@ -217,20 +220,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const overwrite = body?.overwrite === true;
     const keys = body?.keys?.filter((key) => key.trim().length > 0);
 
-    const sourceSecrets = await prisma.secret.findMany({
-      where: {
-        environmentId: sourceEnv.id,
-        deletedAt: null,
-        ...(keys?.length ? { key: { in: keys } } : {}),
-      },
-      include: {
+    const sourceSecrets = await db.query.secrets.findMany({
+      where: and(
+        eq(secrets.environmentId, sourceEnv.id),
+        isNull(secrets.deletedAt),
+        keys?.length ? inArray(secrets.key, keys) : undefined,
+      ),
+      with: {
         versions: {
-          where: { isActive: true },
-          orderBy: { createdAt: 'desc' },
-          take: 1,
+          where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
+          orderBy: (fields, { desc }) => [desc(fields.createdAt)],
+          limit: 1,
         },
       },
-      orderBy: { key: 'asc' },
+      orderBy: [asc(secrets.key)],
     });
 
     if (sourceSecrets.length === 0) {
@@ -268,7 +271,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const sourceDek = await withEnvironmentDek(sourceEnv.id, (d) => d);
 
-    await prisma.$transaction(async (tx) => {
+    await db.transaction(async (tx) => {
       for (const sourceSecret of sourceSecrets) {
         const version = sourceSecret.versions[0];
         if (!version) {
@@ -281,10 +284,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           continue;
         }
 
-        const existing = await tx.secret.findUnique({
-          where: {
-            environmentId_key: { environmentId: targetEnv.id, key: sourceSecret.key },
-          },
+        const existing = await tx.query.secrets.findFirst({
+          where: and(
+            eq(secrets.environmentId, targetEnv.id),
+            eq(secrets.key, sourceSecret.key),
+          ),
         });
 
         if (existing && !overwrite) {
@@ -309,9 +313,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
         let targetSecretId = existing?.id;
         if (!targetSecretId) {
-          const createdSecret = await tx.secret.create({
-            data: { environmentId: targetEnv.id, key: sourceSecret.key },
-          });
+          const [createdSecret] = await tx
+            .insert(secrets)
+            .values({ environmentId: targetEnv.id, key: sourceSecret.key })
+            .returning();
           targetSecretId = createdSecret.id;
           created.push(sourceSecret.key);
         } else {
@@ -326,25 +331,23 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         );
         const payload = encryptSecretWithKey(value, targetDek, targetEnv.id, sourceSecret.key);
 
-        await tx.secretVersion.updateMany({
-          where: { secretId: targetSecretId },
-          data: { isActive: false },
+        await tx
+          .update(secretVersions)
+          .set({ isActive: false })
+          .where(eq(secretVersions.secretId, targetSecretId));
+        await tx.insert(secretVersions).values({
+          secretId: targetSecretId,
+          ciphertext: Buffer.from(payload.ciphertext),
+          iv: Buffer.from(payload.iv),
+          tag: Buffer.from(payload.tag),
+          keyVersion: version.keyVersion,
+          createdBy: auth.user?.id,
+          isActive: true,
         });
-        await tx.secretVersion.create({
-          data: {
-            secretId: targetSecretId,
-            ciphertext: payload.ciphertext,
-            iv: payload.iv,
-            tag: payload.tag,
-            keyVersion: version.keyVersion,
-            createdBy: auth.user?.id,
-            isActive: true,
-          },
-        });
-        await tx.secret.update({
-          where: { id: targetSecretId },
-          data: { updatedAt: new Date(), deletedAt: null },
-        });
+        await tx
+          .update(secrets)
+          .set({ updatedAt: new Date(), deletedAt: null })
+          .where(eq(secrets.id, targetSecretId));
       }
     });
 

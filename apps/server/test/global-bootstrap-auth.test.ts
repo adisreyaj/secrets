@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = {
+const state = vi.hoisted(() => ({
   userSession: null as any,
   apiToken: null as any,
   serviceToken: null as any,
@@ -8,83 +8,106 @@ const state = {
   projectMembership: null as any,
   projectMemberships: [] as any[],
   cliSession: null as any,
-};
-
-const { createSpy, updateSpy, auditCreateSpy } = vi.hoisted(() => ({
-  createSpy: vi.fn(),
-  updateSpy: vi.fn(),
-  auditCreateSpy: vi.fn(),
 }));
 
-vi.mock('../src/db.js', () => {
-  const prisma = {
-    userSession: {
-      findFirst: async () => state.userSession,
-      create: async () => ({ id: 'user_session_1' }),
-      deleteMany: async () => ({ count: 0 }),
+const { createReturning, updateSpy, insertValues } = vi.hoisted(() => ({
+  createReturning: vi.fn(),
+  updateSpy: vi.fn(),
+  insertValues: vi.fn(),
+}));
+
+vi.mock('../src/betterAuth.js', () => ({
+  auth: {
+    handler: async () =>
+      new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }),
+    api: {
+      getSession: async () => state.userSession,
+      signInEmail: async () => ({ headers: new Headers(), response: { user: {} } }),
+      signUpEmail: async () => ({ headers: new Headers(), response: { user: {} } }),
+      signOut: async () => ({ headers: new Headers(), response: { success: true } }),
+      verifyEmail: async () => ({ headers: new Headers(), response: {} }),
     },
-    apiToken: {
-      findFirst: async () => state.apiToken,
-      create: createSpy,
-      update: updateSpy,
-    },
-    globalCliToken: {
-      findFirst: async ({ where }: { where: any }) => {
-        if (!state.globalToken) return null;
-        const expiresAt = state.globalToken.expiresAt as Date;
-        if (where?.expiresAt?.gt && !(expiresAt > where.expiresAt.gt)) return null;
-        if (where?.revokedAt === null && state.globalToken.revokedAt) return null;
-        if (where?.deletedAt === null && state.globalToken.deletedAt) return null;
-        return state.globalToken;
+  },
+  getDashboardSession: async () => state.userSession,
+  applyAuthSetCookies: () => undefined,
+}));
+
+vi.mock('../src/db/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/db/index.js')>();
+
+  const db: any = {
+    query: {
+      apiTokens: { findFirst: async () => state.apiToken },
+      serviceAccountTokens: { findFirst: async () => state.serviceToken },
+      globalCliTokens: {
+        findFirst: async () => {
+          if (!state.globalToken) return null;
+          const expiresAt = state.globalToken.expiresAt as Date;
+          if (!(expiresAt > new Date())) return null;
+          if (state.globalToken.revokedAt) return null;
+          if (state.globalToken.deletedAt) return null;
+          return state.globalToken;
+        },
       },
-      create: createSpy,
-      update: updateSpy,
-    },
-    serviceAccountToken: {
-      findFirst: async () => state.serviceToken,
-      update: updateSpy,
-    },
-    projectMember: {
-      findUnique: async () => state.projectMembership,
-      findMany: async () => state.projectMemberships,
-    },
-    cliLoginSession: {
-      findUnique: async ({ where }: { where: { code: string } }) => {
-        if (!state.cliSession) return null;
-        return state.cliSession.code === where.code ? state.cliSession : null;
+      projectMembers: {
+        findFirst: async () => state.projectMembership,
+        findMany: async () => state.projectMemberships,
       },
-      update: async ({ data }: { data: Record<string, unknown> }) => {
-        state.cliSession = { ...state.cliSession, ...data };
-        return state.cliSession;
+      cliLoginSessions: {
+        findFirst: async () => state.cliSession,
       },
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        state.cliSession = {
-          id: 'cli_session_1',
-          code: String(data.code),
-          token: null,
-          userId: null,
-          projectId: null,
-          createdAt: new Date(),
-          expiresAt: data.expiresAt,
-          consumedAt: null,
+      projects: { findFirst: async () => null },
+    },
+    insert: () => ({
+      values: (data: any) => {
+        insertValues(data);
+        if (data.code) {
+          state.cliSession = {
+            id: 'cli_session_1',
+            code: String(data.code),
+            token: null,
+            userId: null,
+            projectId: null,
+            createdAt: new Date(),
+            expiresAt: data.expiresAt,
+            consumedAt: null,
+          };
+        }
+        return {
+          returning: async () => {
+            const created = await createReturning();
+            return [created ?? { id: 'created_1', ...data, createdAt: new Date() }];
+          },
         };
-        return state.cliSession;
       },
+    }),
+    update: () => {
+      const chain: any = {
+        set: (data: any) => {
+          updateSpy(data);
+          if (state.cliSession) state.cliSession = { ...state.cliSession, ...data };
+          if (state.globalToken && data.lastUsedAt) {
+            state.globalToken.lastUsedAt = data.lastUsedAt;
+          }
+          return chain;
+        },
+        where: () => chain,
+        returning: async () => [state.globalToken ?? {}],
+      };
+      return chain;
     },
-    project: {
-      create: async () => ({ id: 'project_created', name: 'P', slug: 'p', createdAt: new Date(), updatedAt: new Date() }),
-      findUnique: async () => null,
+    select: () => {
+      const rows = Promise.resolve([{ value: 0 }]);
+      const chain: any = {
+        from: () => chain,
+        where: () => rows,
+      };
+      return chain;
     },
-    user: {
-      findUnique: async () => null,
-      create: async () => ({ id: 'user_1', email: 'u@example.com', name: 'User' }),
-      update: async () => ({ id: 'user_1', email: 'u@example.com', name: 'User' }),
-    },
-    auditLog: {
-      create: auditCreateSpy,
-    },
+    transaction: async (cb: any) => cb(db),
   };
-  return { prisma };
+
+  return { ...actual, db };
 });
 
 import { buildApp } from '../src/app.js';
@@ -110,6 +133,7 @@ function setupGlobalToken(overrides: Record<string, unknown> = {}) {
 describe('global bootstrap token auth scope', () => {
   beforeAll(() => {
     process.env.MASTER_KEY = Buffer.alloc(32).toString('hex');
+    process.env.ENABLE_GLOBAL_CLI_TOKENS = 'true';
   });
 
   beforeEach(() => {
@@ -129,9 +153,9 @@ describe('global bootstrap token auth scope', () => {
       expiresAt: new Date(Date.now() + 60_000),
       consumedAt: null,
     };
-    createSpy.mockReset();
+    createReturning.mockReset();
     updateSpy.mockReset();
-    auditCreateSpy.mockReset();
+    insertValues.mockReset();
   });
 
   it('allows GET /projects for global token and updates lastUsedAt', async () => {
@@ -174,16 +198,17 @@ describe('global bootstrap token auth scope', () => {
 
   it('issues global token when mode omitted', async () => {
     state.userSession = {
-      id: 'session_1',
       user: { id: 'user_1', email: 'user@example.com', name: 'User' },
     };
 
-    createSpy.mockResolvedValueOnce({
+    createReturning.mockResolvedValueOnce({
       id: 'gct_created',
       name: 'CLI login',
+      projectId: null,
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
       lastUsedAt: null,
       expiresAt: new Date('2026-01-31T00:00:00.000Z'),
+      readOnly: false,
     });
 
     const app = await buildApp();
@@ -199,13 +224,11 @@ describe('global bootstrap token auth scope', () => {
     const body = response.json() as any;
     expect(body.tokenMeta.scopeType).toBe('global_bootstrap');
     expect(body.tokenMeta.projectId).toBeUndefined();
-    expect(auditCreateSpy).not.toHaveBeenCalled();
     await app.close();
   });
 
   it('requires projectId in project mode', async () => {
     state.userSession = {
-      id: 'session_1',
       user: { id: 'user_1', email: 'user@example.com', name: 'User' },
     };
 

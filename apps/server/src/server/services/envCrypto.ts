@@ -6,15 +6,16 @@ import {
   loadMasterKey,
   type EncryptedPayload,
 } from '../../crypto.js';
-import { prisma } from '../../db.js';
+import { db, environments } from '../../db/index.js';
+import { eq } from 'drizzle-orm';
 
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 
 type EnvironmentLite = {
   id: string;
-  encryptedDek: Uint8Array | null;
-  encryptedDekBackup: Uint8Array | null;
+  encryptedDek: Buffer | null;
+  encryptedDekBackup: Buffer | null;
 };
 
 const dekCache = new Map<string, Buffer>();
@@ -62,10 +63,11 @@ function toBuffer(value: Uint8Array | Buffer | null | undefined): Buffer | null 
 }
 
 async function loadEnvironmentLite(environmentId: string): Promise<EnvironmentLite | null> {
-  return prisma.environment.findUnique({
-    where: { id: environmentId },
-    select: { id: true, encryptedDek: true, encryptedDekBackup: true },
+  const env = await db.query.environments.findFirst({
+    where: eq(environments.id, environmentId),
+    columns: { id: true, encryptedDek: true, encryptedDekBackup: true },
   });
+  return env ?? null;
 }
 
 export async function getOrCreateEnvironmentDek(environmentId: string): Promise<Buffer> {
@@ -101,14 +103,10 @@ export async function provisionEnvironmentDek(environmentId: string): Promise<Bu
   const wrapped = encryptSecret(dek.toString('base64'), masterKey, aadForSecret(environmentId, 'dek'));
 
   const packed = packDekPayload(wrapped);
-  const packedBytes = new Uint8Array(packed.length);
-  packedBytes.set(packed);
-  await prisma.environment.update({
-    where: { id: environmentId },
-    data: {
-      encryptedDek: packedBytes,
-    },
-  });
+  await db
+    .update(environments)
+    .set({ encryptedDek: packed })
+    .where(eq(environments.id, environmentId));
 
   dekCache.set(environmentId, dek);
   return dek;

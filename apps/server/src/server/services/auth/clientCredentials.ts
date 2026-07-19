@@ -1,17 +1,18 @@
+import { and, eq, isNull } from 'drizzle-orm';
 import { hashToken } from '../../../auth.js';
-import { prisma } from '../../../db.js';
+import { authClients, db } from '../../../db/index.js';
 
 export async function authenticateAuthClient(params: {
   projectId: string;
   clientId: string;
   clientSecret?: string;
 }) {
-  const client = await prisma.authClient.findFirst({
-    where: {
-      projectId: params.projectId,
-      clientId: params.clientId,
-      deletedAt: null,
-    },
+  const client = await db.query.authClients.findFirst({
+    where: and(
+      eq(authClients.projectId, params.projectId),
+      eq(authClients.clientId, params.clientId),
+      isNull(authClients.deletedAt),
+    ),
   });
   if (!client) {
     return null;

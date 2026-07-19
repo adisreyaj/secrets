@@ -7,7 +7,7 @@ export const LoginPage = ({
 }: {
   navigate: (path: string) => void
 }) => {
-  const { user, loading, error, login, register } = useAuth()
+  const { user, loading, error, login, loginWithPasskey, register } = useAuth()
 
   useEffect(() => {
     if (user) {
@@ -21,6 +21,7 @@ export const LoginPage = ({
         loading={loading}
         error={error}
         onLogin={login}
+        onLoginWithPasskey={loginWithPasskey}
         onRegister={register}
       />
     </section>
