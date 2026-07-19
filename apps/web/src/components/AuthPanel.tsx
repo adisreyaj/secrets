@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react'
+import { betterAuthClient } from '../lib/betterAuthClient'
 import { ErrorBanner } from './ErrorBanner'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
 import { Input } from './ui/input'
+import { Separator } from './ui/separator'
 
 export const AuthPanel = ({
   loading,
   error,
   onLogin,
+  onLoginWithPasskey,
   onRegister,
 }: {
   loading: boolean
   error: string | null
   onLogin: (payload: { email: string; password: string }) => Promise<void>
+    onLoginWithPasskey: () => Promise<void>
   onRegister: (payload: {
     email: string
     password: string
@@ -21,15 +25,31 @@ export const AuthPanel = ({
 }) => {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [form, setForm] = useState({ name: '', email: '', password: '' })
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
   const signupAllowed = true
   const passwordAutoComplete =
-    mode === 'login' ? 'current-password' : 'new-password'
+    mode === 'login' ? 'current-password webauthn' : 'new-password'
 
   useEffect(() => {
     if (!signupAllowed && mode === 'register') {
       setMode('login')
     }
   }, [signupAllowed, mode])
+
+  // Conditional UI: let the browser offer a saved passkey on the email field.
+  useEffect(() => {
+    if (mode !== 'login') return
+    if (
+      typeof PublicKeyCredential === 'undefined' ||
+      !PublicKeyCredential.isConditionalMediationAvailable
+    ) {
+      return
+    }
+    void PublicKeyCredential.isConditionalMediationAvailable().then((available) => {
+      if (!available) return
+      void betterAuthClient.signIn.passkey({ autoFill: true })
+    })
+  }, [mode])
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -44,6 +64,17 @@ export const AuthPanel = ({
       })
     }
   }
+
+  const handlePasskeySignIn = async () => {
+    setPasskeyLoading(true)
+    try {
+      await onLoginWithPasskey()
+    } finally {
+      setPasskeyLoading(false)
+    }
+  }
+
+  const busy = loading || passkeyLoading
 
   return (
     <Card className="border-border/70 bg-card/90 shadow-soft mx-auto w-full max-w-md rounded-3xl p-8">
@@ -91,7 +122,7 @@ export const AuthPanel = ({
             }
             placeholder="Email"
             type="email"
-            autoComplete="email"
+            autoComplete={mode === 'login' ? 'username webauthn' : 'email'}
           />
         </label>
         <label className="grid gap-2 text-sm">
@@ -108,7 +139,7 @@ export const AuthPanel = ({
           />
         </label>
         {error ? <ErrorBanner message={error} className="mt-3" /> : null}
-        <Button type="submit" disabled={loading} className="w-full">
+        <Button type="submit" disabled={busy} className="w-full">
           {loading
             ? 'Loading...'
             : mode === 'login'
@@ -116,6 +147,24 @@ export const AuthPanel = ({
               : 'Create account'}
         </Button>
       </form>
+      {mode === 'login' ? (
+        <>
+          <div className="my-4 flex items-center gap-3">
+            <Separator className="flex-1" />
+            <span className="text-muted-foreground text-xs">or</span>
+            <Separator className="flex-1" />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={busy}
+            onClick={() => void handlePasskeySignIn()}
+          >
+            {passkeyLoading ? 'Waiting for passkey...' : 'Sign in with passkey'}
+          </Button>
+        </>
+      ) : null}
       {signupAllowed ? (
         <Button
           variant="ghost"

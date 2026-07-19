@@ -1,3 +1,4 @@
+import { passkey } from '@better-auth/passkey';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { fromNodeHeaders } from 'better-auth/node';
@@ -5,15 +6,16 @@ import type { IncomingHttpHeaders } from 'node:http';
 import { hashPassword, verifyPassword } from './auth.js';
 import { config } from './config.js';
 import {
-  account,
-  db,
-  session,
-  users,
-  verification,
+    account,
+    db,
+    passkey as passkeyTable,
+    session,
+    users,
+    verification,
 } from './db/index.js';
 import {
-  buildEmailVerificationEmail,
-  createAuthEmailProvider,
+    buildEmailVerificationEmail,
+    createAuthEmailProvider,
 } from './server/services/auth/email.js';
 
 const betterAuthSecret =
@@ -26,6 +28,17 @@ const betterAuthBaseUrl =
   process.env.AUTH_RUNTIME_BASE_URL?.trim() ||
   `http://localhost:${config.port}`;
 
+/** RP ID must match the page origin host (web app), not the API host. */
+const passkeyRpID =
+  process.env.PASSKEY_RP_ID?.trim() ||
+  (() => {
+    try {
+      return new URL(config.appOrigin).hostname;
+    } catch {
+      return 'localhost';
+    }
+  })();
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: 'sqlite',
@@ -34,6 +47,7 @@ export const auth = betterAuth({
       session,
       account,
       verification,
+      passkey: passkeyTable,
     },
   }),
   secret: betterAuthSecret,
@@ -82,6 +96,13 @@ export const auth = betterAuth({
   user: {
     additionalFields: {},
   },
+  plugins: [
+    passkey({
+      rpID: passkeyRpID,
+      rpName: process.env.PASSKEY_RP_NAME?.trim() || 'Secrets',
+      origin: config.appOrigins,
+    }),
+  ],
 });
 
 export type DashboardAuthSession = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;

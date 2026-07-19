@@ -1,13 +1,13 @@
 import type {
-  AuthResponse,
-  CliLoginIssueRequest,
-  CliLoginIssueResponse,
-  LoginRequest,
-  RegisterRequest,
-  UpdateMeRequest,
-  AuthProjectConfigDto,
-  AuthProviderDto,
-  AuthClientDto,
+    AuthClientDto,
+    AuthProjectConfigDto,
+    AuthProviderDto,
+    AuthResponse,
+    CliLoginIssueRequest,
+    CliLoginIssueResponse,
+    LoginRequest,
+    RegisterRequest,
+    UpdateMeRequest,
 } from '@secrets/shared'
 import { ApiError, type ApiFetchFn } from '../apiBase'
 import { betterAuthClient } from '../betterAuthClient'
@@ -47,6 +47,14 @@ export const createAuthClient = (
     })
     if (error) {
       throw new ApiError(error.message || 'Invalid credentials', error.status || 401)
+    }
+    return apiFetch<AuthResponse>('/me')
+  },
+  loginWithPasskey: async (): Promise<AuthResponse> => {
+    resetCsrfToken()
+    const { error } = await betterAuthClient.signIn.passkey()
+    if (error) {
+      throw new ApiError(error.message || 'Passkey sign-in failed', error.status || 401)
     }
     return apiFetch<AuthResponse>('/me')
   },

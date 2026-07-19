@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.6.23",
+    "@better-auth/passkey": "^1.6.23",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^12.0.1",

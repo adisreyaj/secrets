@@ -1,24 +1,24 @@
 import { createId } from '@paralleldrive/cuid2';
 import { relations } from 'drizzle-orm';
 import {
-  blob,
-  index,
-  integer,
-  primaryKey,
-  sqliteTable,
-  text,
-  uniqueIndex,
+    blob,
+    index,
+    integer,
+    primaryKey,
+    sqliteTable,
+    text,
+    uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import type {
-  ApprovalAction,
-  ApprovalStatus,
-  AuthClientType,
-  AuthIdentityProvider,
-  FeatureFlagRuntime,
-  FeatureFlagValueType,
-  InviteStatus,
-  ProjectModuleKey,
-  Role,
+    ApprovalAction,
+    ApprovalStatus,
+    AuthClientType,
+    AuthIdentityProvider,
+    FeatureFlagRuntime,
+    FeatureFlagValueType,
+    InviteStatus,
+    ProjectModuleKey,
+    Role,
 } from './enums.js';
 
 const id = () => text('id').primaryKey().$defaultFn(() => createId());
@@ -88,6 +88,26 @@ export const verification = sqliteTable('verification', {
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [index('verification_identifier_idx').on(t.identifier)]);
+
+/** better-auth passkey plugin (`@better-auth/passkey`) */
+export const passkey = sqliteTable('passkey', {
+  id: id(),
+  name: text('name'),
+  publicKey: text('public_key').notNull(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  credentialID: text('credential_id').notNull(),
+  counter: integer('counter').notNull(),
+  deviceType: text('device_type').notNull(),
+  backedUp: bool('backed_up', false),
+  transports: text('transports'),
+  createdAt: createdAt(),
+  aaguid: text('aaguid'),
+}, (t) => [
+  index('passkey_user_id_idx').on(t.userId),
+  index('passkey_credential_id_idx').on(t.credentialID),
+]);
 
 export const organizations = sqliteTable('organizations', {
   id: id(),
@@ -718,10 +738,15 @@ export const authProviderConfigs = sqliteTable('auth_provider_configs', {
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
+  passkeys: many(passkey),
   memberships: many(projectMembers),
   organizationMemberships: many(organizationMembers),
   createdApiTokens: many(apiTokens),
   createdGlobalCliTokens: many(globalCliTokens),
+}));
+
+export const passkeyRelations = relations(passkey, ({ one }) => ({
+  user: one(users, { fields: [passkey.userId], references: [users.id] }),
 }));
 
 export const apiTokensRelations = relations(apiTokens, ({ one }) => ({
