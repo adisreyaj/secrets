@@ -1,39 +1,39 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
 import { isAPIError } from 'better-auth/api';
 import { fromNodeHeaders } from 'better-auth/node';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { generateToken, hashPassword, hashToken, verifyPassword } from '../../auth.js';
 import { applyAuthSetCookies, auth } from '../../betterAuth.js';
 import { config } from '../../config.js';
 import {
-  account,
-  apiTokens,
-  AuthClientType,
-  authClients,
-  authProviderConfigs,
-  cliLoginSessions,
-  db,
-  globalCliTokens,
-  ProjectModuleKey,
-  Role,
-  users,
-  type AuthClientType as AuthClientTypeT,
+    account,
+    apiTokens,
+    authClients,
+    AuthClientType,
+    authProviderConfigs,
+    cliLoginSessions,
+    db,
+    globalCliTokens,
+    ProjectModuleKey,
+    Role,
+    users,
+    type AuthClientType as AuthClientTypeT,
 } from '../../db/index.js';
-import { toUserDto } from '../mappers/users.js';
 import {
-  requireAuth,
-  requireProjectModuleEnabled,
-  requireProjectRole,
+    requireAuth,
+    requireProjectModuleEnabled,
+    requireProjectRole,
 } from '../auth/guards.js';
 import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME } from '../auth/session.js';
+import { toUserDto } from '../mappers/users.js';
 import { logAudit } from '../services/audit.js';
-import { buildCliLoginUrl } from '../services/format.js';
 import { ensureAuthProjectConfig, updateAuthProjectConfig } from '../services/auth/core.js';
 import {
-  rotateAuthProviderSecret,
-  upsertAuthProviderConfig,
+    rotateAuthProviderSecret,
+    upsertAuthProviderConfig,
 } from '../services/auth/providerConfigs.js';
+import { buildCliLoginUrl } from '../services/format.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   const toAuthClientDto = (client: {
@@ -125,39 +125,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       }
 
       reply.code(201).send({
-        message: 'Registration successful. Please check your email to verify your account.',
+        message: 'Registration successful.',
         email,
       });
-    },
-  );
-
-  app.post(
-    '/auth/verify-email',
-    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
-    async (request, reply) => {
-      const body = request.body as { token?: string } | undefined;
-      if (!body?.token) {
-        reply.code(400).send({ error: 'Token is required' });
-        return;
-      }
-
-      try {
-        const { headers } = await auth.api.verifyEmail({
-          query: { token: body.token },
-          headers: fromNodeHeaders(request.headers),
-          returnHeaders: true,
-        });
-        applyAuthSetCookies(reply, headers);
-      } catch (error) {
-        if (isAPIError(error)) {
-          const status = typeof error.status === 'number' ? error.status : 400;
-          reply.code(status >= 400 && status < 600 ? status : 400).send({ error: error.message });
-          return;
-        }
-        throw error;
-      }
-
-      reply.send({ message: 'Email verified successfully' });
     },
   );
 
@@ -201,11 +171,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         });
       } catch (error) {
         if (isAPIError(error)) {
-          const message = error.message || 'Invalid credentials';
-          if (/verif/i.test(message)) {
-            reply.code(401).send({ error: 'Email not verified. Please check your email.' });
-            return;
-          }
           reply.code(401).send({ error: 'Invalid credentials' });
           return;
         }

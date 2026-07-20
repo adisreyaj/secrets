@@ -7,11 +7,10 @@ const state = {
   } | null,
 };
 
-const { signInEmail, signUpEmail, signOut, verifyEmail } = vi.hoisted(() => ({
+const { signInEmail, signUpEmail, signOut } = vi.hoisted(() => ({
   signInEmail: vi.fn(),
   signUpEmail: vi.fn(),
   signOut: vi.fn(),
-  verifyEmail: vi.fn(),
 }));
 
 vi.mock('../src/betterAuth.js', () => ({
@@ -26,7 +25,6 @@ vi.mock('../src/betterAuth.js', () => ({
       signInEmail,
       signUpEmail,
       signOut,
-      verifyEmail,
     },
   },
   getDashboardSession: async () => state.dashboardSession,
@@ -87,7 +85,6 @@ describe('dashboard auth via better-auth', () => {
     signInEmail.mockReset();
     signUpEmail.mockReset();
     signOut.mockReset();
-    verifyEmail.mockReset();
   });
 
   it('registers through better-auth signUpEmail', async () => {
@@ -106,7 +103,7 @@ describe('dashboard auth via better-auth', () => {
 
     expect(response.statusCode).toBe(201);
     expect(response.json()).toEqual({
-      message: 'Registration successful. Please check your email to verify your account.',
+      message: 'Registration successful.',
       email: 'user@example.com',
     });
     expect(signUpEmail).toHaveBeenCalled();

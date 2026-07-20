@@ -7,7 +7,8 @@ export const LoginPage = ({
 }: {
   navigate: (path: string) => void
 }) => {
-  const { user, loading, error, login, loginWithPasskey, register } = useAuth()
+  const { user, loading, error, clearError, login, loginWithPasskey, register } =
+    useAuth()
 
   useEffect(() => {
     if (user) {
@@ -16,10 +17,11 @@ export const LoginPage = ({
   }, [user, navigate])
 
   return (
-    <section className="flex flex-1 flex-col items-center justify-center gap-6">
+    <section className="flex w-full flex-col items-center justify-center gap-6">
       <AuthPanel
         loading={loading}
         error={error}
+        onClearError={clearError}
         onLogin={login}
         onLoginWithPasskey={loginWithPasskey}
         onRegister={register}

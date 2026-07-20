@@ -13,6 +13,10 @@ import {
   encryptSecretWithKey,
   withEnvironmentDek,
 } from '../services/envCrypto.js';
+import {
+  getActiveVersionsBySecretId,
+  SECRET_ENVIRONMENT_COLUMNS,
+} from '../services/secretQueries.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post('/secrets/:id/copy', async (request, reply) => {
@@ -35,12 +39,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const secret = await db.query.secrets.findFirst({
       where: eq(secrets.id, secretId),
       with: {
-        environment: true,
-        versions: {
-          where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
-          orderBy: (fields, { desc }) => [desc(fields.createdAt)],
-          limit: 1,
-        },
+        environment: { columns: SECRET_ENVIRONMENT_COLUMNS },
       },
     });
     if (!secret) {
@@ -58,7 +57,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const activeVersion = secret.versions[0];
+    const activeVersion = (await getActiveVersionsBySecretId([secret.id])).get(secret.id);
     if (!activeVersion) {
       sendError(reply, 400, 'Secret has no active version');
       return;
@@ -226,15 +225,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         isNull(secrets.deletedAt),
         keys?.length ? inArray(secrets.key, keys) : undefined,
       ),
-      with: {
-        versions: {
-          where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
-          orderBy: (fields, { desc }) => [desc(fields.createdAt)],
-          limit: 1,
-        },
-      },
       orderBy: [asc(secrets.key)],
     });
+    const versionsBySecretId = await getActiveVersionsBySecretId(sourceSecrets.map((s) => s.id));
 
     if (sourceSecrets.length === 0) {
       const skippedDetails =
@@ -273,7 +266,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     await db.transaction(async (tx) => {
       for (const sourceSecret of sourceSecrets) {
-        const version = sourceSecret.versions[0];
+        const version = versionsBySecretId.get(sourceSecret.id);
         if (!version) {
           skipped.push(sourceSecret.key);
           skippedDetails.push({

@@ -14,6 +14,10 @@ import {
   decryptSecretWithKey,
   withEnvironmentDek,
 } from '../services/envCrypto.js';
+import {
+  getActiveVersionsBySecretId,
+  SECRET_ENVIRONMENT_COLUMNS,
+} from '../services/secretQueries.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/projects/:id/secrets/search', async (request, reply) => {
@@ -74,16 +78,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         like(secrets.key, `%${q.replace(/%/g, '\\%').replace(/_/g, '\\_')}%`),
       ),
       with: {
-        environment: true,
-        versions: {
-          where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
-          orderBy: (fields, { desc: descOp }) => [descOp(fields.createdAt)],
-          limit: 1,
-        },
+        environment: { columns: SECRET_ENVIRONMENT_COLUMNS },
       },
       orderBy: [asc(secrets.key)],
       limit: 200,
     });
+    const versionsBySecretId = await getActiveVersionsBySecretId(secretRows.map((s) => s.id));
 
     const canViewValues =
       query.includeValues === 'true' && ROLE_RANK[role] >= ROLE_RANK.EDITOR;
@@ -91,7 +91,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const envDekCache = new Map<string, Buffer>();
     const data = await Promise.all(
       secretRows.map(async (secret) => {
-        const version = secret.versions[0];
+        const version = versionsBySecretId.get(secret.id);
         let value: string | undefined;
         if (canViewValues && version) {
           let dek = envDekCache.get(secret.environmentId);
@@ -162,13 +162,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
       const allSecrets = await db.query.secrets.findMany({
         where: and(eq(secrets.environmentId, envId), isNull(secrets.deletedAt)),
-        with: {
-          versions: {
-            where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
-            orderBy: (fields, { desc: descOp }) => [descOp(fields.createdAt)],
-            limit: 1,
-          },
-        },
         orderBy: [asc(secrets.key)],
       });
       let start = 0;
@@ -184,12 +177,13 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         nextCursor = nextItem?.id;
       }
 
+      const versionsBySecretId = await getActiveVersionsBySecretId(secretPage.map((s) => s.id));
       const canViewValues = includeValues && ROLE_RANK[role] >= ROLE_RANK.EDITOR;
 
       const data = await (async () => {
         if (!canViewValues) {
           return secretPage.map((secret) => {
-            const version = secret.versions[0];
+            const version = versionsBySecretId.get(secret.id);
             return {
               id: secret.id,
               environmentId: secret.environmentId,
@@ -202,7 +196,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         }
         const dek = await withEnvironmentDek(envId, (d) => d);
         return secretPage.map((secret) => {
-          const version = secret.versions[0];
+          const version = versionsBySecretId.get(secret.id);
           let value: string | undefined;
           if (version) {
             value = decryptSecretWithKey(
@@ -239,7 +233,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const { id: secretId } = request.params as { id: string };
     const secret = await db.query.secrets.findFirst({
       where: eq(secrets.id, secretId),
-      with: { environment: true },
+      with: { environment: { columns: SECRET_ENVIRONMENT_COLUMNS } },
     });
     if (!secret) {
       sendError(reply, 404, 'Secret not found');
@@ -307,7 +301,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const { id: secretId } = request.params as { id: string };
     const secret = await db.query.secrets.findFirst({
       where: eq(secrets.id, secretId),
-      with: { environment: true },
+      with: { environment: { columns: SECRET_ENVIRONMENT_COLUMNS } },
     });
     if (!secret) {
       sendError(reply, 404, 'Secret not found');
@@ -358,7 +352,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const secret = await db.query.secrets.findFirst({
       where: eq(secrets.id, secretId),
-      with: { environment: true },
+      with: { environment: { columns: SECRET_ENVIRONMENT_COLUMNS } },
     });
     if (!secret) {
       sendError(reply, 404, 'Secret not found');

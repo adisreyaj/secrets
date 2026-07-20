@@ -186,13 +186,6 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
       const existingSecrets = await db.query.secrets.findMany({
         where: and(eq(secrets.environmentId, envId), inArray(secrets.key, keys)),
-        with: {
-          versions: {
-            where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
-            orderBy: (fields, { desc }) => [desc(fields.createdAt)],
-            limit: 1,
-          },
-        },
       });
       const existingByKey = new Map(existingSecrets.map((secret) => [secret.key, secret]));
       const activeByKey = new Map(

@@ -10,9 +10,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "pnpm --filter server --filter web --parallel dev",
-    "dev:server": "pnpm -C apps/server dev",
-    "dev:web": "pnpm -C apps/web dev",
+    "dev": "env -u PORT portless secrets pnpm --filter web dev",
+    "dev:server": "env -u PORT portless api.secrets pnpm --filter server dev",
+    "dev:full": "pnpm --parallel run dev:server dev",
+    "dev:plain": "pnpm --filter web dev",
+    "dev:server:plain": "pnpm --filter server dev",
     "build:server": "pnpm -C apps/server build",
     "build:web": "pnpm -C apps/web build",
     "build:cli": "pnpm -C packages/cli build",
@@ -40,6 +42,7 @@
   "devDependencies": {
     "oxc": "^1.0.1",
     "oxlint": "^0.16.0",
+    "portless": "^0.15.4",
     "yalc": "1.0.0-pre.53"
   }
 }

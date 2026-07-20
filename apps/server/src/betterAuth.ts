@@ -13,10 +13,6 @@ import {
     users,
     verification,
 } from './db/index.js';
-import {
-    buildEmailVerificationEmail,
-    createAuthEmailProvider,
-} from './server/services/auth/email.js';
 
 const betterAuthSecret =
   process.env.BETTER_AUTH_SECRET?.trim() ||
@@ -26,6 +22,7 @@ const betterAuthSecret =
 const betterAuthBaseUrl =
   process.env.BETTER_AUTH_URL?.trim() ||
   process.env.AUTH_RUNTIME_BASE_URL?.trim() ||
+  process.env.PORTLESS_URL?.trim() ||
   `http://localhost:${config.port}`;
 
 /** RP ID must match the page origin host (web app), not the API host. */
@@ -70,27 +67,10 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
-    requireEmailVerification: true,
+    requireEmailVerification: false,
     password: {
       hash: hashPassword,
       verify: async ({ hash, password }) => verifyPassword(password, hash),
-    },
-  },
-  emailVerification: {
-    sendOnSignUp: true,
-    autoSignInAfterVerification: true,
-    sendVerificationEmail: async ({ user, url, token }) => {
-      const emailProvider = createAuthEmailProvider();
-      const content = buildEmailVerificationEmail({
-        verificationToken: token,
-        verificationUrl: url,
-        appName: 'Secrets Manager',
-      });
-      await emailProvider.send({
-        to: user.email,
-        subject: content.subject,
-        text: content.text,
-      });
     },
   },
   user: {

@@ -2,6 +2,12 @@ export type Role = 'ADMIN' | 'EDITOR' | 'VIEWER';
 export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'DENIED' | 'CANCELED';
 export type ApprovalAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'ROLLBACK' | 'COPY' | 'COPY_FROM';
 
+/** Cursor-paginated list response used by several GET collection endpoints. */
+export interface CursorPage<T> {
+  data: T[];
+  nextCursor?: string;
+}
+
 export interface UserDto {
   id: string;
   email: string;

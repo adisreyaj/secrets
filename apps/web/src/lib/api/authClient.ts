@@ -5,26 +5,23 @@ import type {
     AuthResponse,
     CliLoginIssueRequest,
     CliLoginIssueResponse,
+    CursorPage,
     LoginRequest,
     RegisterRequest,
     UpdateMeRequest,
 } from '@secrets/shared'
 import { ApiError, type ApiFetchFn } from '../apiBase'
 import { betterAuthClient } from '../betterAuthClient'
+import { unwrapCursorPage } from '../queryResult'
 
 type ResetCsrfTokenFn = () => void
-
-type RegisterResponse = {
-  message: string
-  email: string
-}
 
 export const createAuthClient = (
   apiFetch: ApiFetchFn,
   resetCsrfToken: ResetCsrfTokenFn,
 ) => ({
   getMe: () => apiFetch<AuthResponse>('/me'),
-  register: async (payload: RegisterRequest): Promise<RegisterResponse> => {
+  register: async (payload: RegisterRequest): Promise<AuthResponse> => {
     resetCsrfToken()
     const { error } = await betterAuthClient.signUp.email({
       email: payload.email,
@@ -34,10 +31,7 @@ export const createAuthClient = (
     if (error) {
       throw new ApiError(error.message || 'Registration failed', error.status || 400)
     }
-    return {
-      message: 'Registration successful. Please check your email to verify your account.',
-      email: payload.email,
-    }
+    return apiFetch<AuthResponse>('/me')
   },
   login: async (payload: LoginRequest): Promise<AuthResponse> => {
     resetCsrfToken()
@@ -96,8 +90,12 @@ export const createAuthClient = (
         body: JSON.stringify(payload),
       },
     ),
-  listAuthProviders: (projectId: string) =>
-    apiFetch<AuthProviderDto[]>(`/projects/${projectId}/auth/providers`),
+  listAuthProviders: async (projectId: string) => {
+    const page = await apiFetch<CursorPage<AuthProviderDto>>(
+      `/projects/${projectId}/auth/providers`,
+    )
+    return unwrapCursorPage(page)
+  },
   createAuthProvider: (
     projectId: string,
     payload: {
@@ -129,8 +127,12 @@ export const createAuthClient = (
       method: 'POST',
       body: JSON.stringify({ clientSecret }),
     }),
-  listAuthClients: (projectId: string) =>
-    apiFetch<AuthClientDto[]>(`/projects/${projectId}/auth/clients`),
+  listAuthClients: async (projectId: string) => {
+    const page = await apiFetch<CursorPage<AuthClientDto>>(
+      `/projects/${projectId}/auth/clients`,
+    )
+    return unwrapCursorPage(page)
+  },
   createAuthClient: (
     projectId: string,
     payload: {

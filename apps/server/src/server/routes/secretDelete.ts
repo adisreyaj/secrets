@@ -1,10 +1,11 @@
-import { desc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { db, Role, secrets } from '../../db/index.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { logAudit } from '../services/audit.js';
+import { SECRET_ENVIRONMENT_COLUMNS } from '../services/secretQueries.js';
 
 const deleteSecretParamsSchema = z.object({
   id: z.string().uuid('Invalid secret ID'),
@@ -29,12 +30,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const secret = await db.query.secrets.findFirst({
         where: eq(secrets.id, secretId),
         with: {
-          environment: true,
-          versions: {
-            where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
-            orderBy: (fields) => [desc(fields.createdAt)],
-            limit: 1,
-          },
+          environment: { columns: SECRET_ENVIRONMENT_COLUMNS },
         },
       });
       if (!secret) {

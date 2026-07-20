@@ -1,13 +1,25 @@
-import { ArrowLeft, KeyRound, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { EmptyState } from '../components/EmptyState'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { PageHeader } from '../components/PageHeader'
 import { SectionCard, SectionHeader } from '../components/SectionCard'
 import { ShortcutHint } from '../components/ShortcutHint'
+import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../components/ui/dialog'
 import { Input } from '../components/ui/input'
 import { useAuth } from '../lib/auth'
 import { betterAuthClient } from '../lib/betterAuthClient'
+import { formatDateTime } from '../lib/format'
 import { useRegisterShortcut } from '../lib/shortcuts'
 import { useRequireAuth } from '../lib/useRequireAuth'
 
@@ -42,10 +54,12 @@ export const ProfilePage = ({
   const [passkeys, setPasskeys] = useState<PasskeyRow[]>([])
   const [passkeysLoading, setPasskeysLoading] = useState(true)
   const [passkeyAdding, setPasskeyAdding] = useState(false)
+  const [passkeyDialogOpen, setPasskeyDialogOpen] = useState(false)
   const [passkeyBusyId, setPasskeyBusyId] = useState<string | null>(null)
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
   const [passkeySuccess, setPasskeySuccess] = useState<string | null>(null)
   const [newPasskeyName, setNewPasskeyName] = useState('')
+  const passkeyNameInputRef = useRef<HTMLInputElement | null>(null)
 
   const loadPasskeys = useCallback(async () => {
     setPasskeysLoading(true)
@@ -72,7 +86,19 @@ export const ProfilePage = ({
     }
   }, [user, loadPasskeys])
 
+  useEffect(() => {
+    if (passkeyDialogOpen) {
+      const timeout = window.setTimeout(() => {
+        passkeyNameInputRef.current?.focus()
+        passkeyNameInputRef.current?.select()
+      }, 0)
+      return () => window.clearTimeout(timeout)
+    }
+    setNewPasskeyName('')
+  }, [passkeyDialogOpen])
+
   useRegisterShortcut('b', () => navigate('/projects'))
+  useRegisterShortcut('n', () => setPasskeyDialogOpen(true))
 
   const handleProfileSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -114,7 +140,9 @@ export const ProfilePage = ({
     }
   }
 
-  const handleAddPasskey = async () => {
+  const handleAddPasskey = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (passkeyAdding) return
     setPasskeyAdding(true)
     setPasskeyError(null)
     setPasskeySuccess(null)
@@ -125,7 +153,7 @@ export const ProfilePage = ({
       if (error) {
         throw new Error(error.message || 'Failed to add passkey')
       }
-      setNewPasskeyName('')
+      setPasskeyDialogOpen(false)
       setPasskeySuccess('Passkey added.')
       await loadPasskeys()
     } catch (error) {
@@ -271,68 +299,134 @@ export const ProfilePage = ({
         </form>
       </SectionCard>
 
-      <SectionCard className="space-y-6">
-        <SectionHeader kicker="Security" title="Passkeys" />
-        <p className="text-muted-foreground text-sm">
+      <SectionCard>
+        <SectionHeader
+          kicker="Security"
+          title="Passkeys"
+          action={
+            <Dialog open={passkeyDialogOpen} onOpenChange={setPasskeyDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="default">
+                  <Plus className="h-4 w-4" />
+                  New passkey
+                  <ShortcutHint keys="n" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="border-border/70 bg-popover text-popover-foreground rounded-3xl">
+                <DialogHeader className="text-left">
+                  <DialogTitle>Create passkey</DialogTitle>
+                  <DialogDescription>
+                    Sign in with Face ID, Touch ID, Windows Hello, or a hardware
+                    security key.
+                  </DialogDescription>
+                </DialogHeader>
+                <form
+                  onSubmit={(event) => void handleAddPasskey(event)}
+                  className="grid gap-4"
+                >
+                  <label className="grid gap-2 text-sm">
+                    <span className="muted-label">Passkey name</span>
+                    <Input
+                      ref={passkeyNameInputRef}
+                      value={newPasskeyName}
+                      onChange={(event) => setNewPasskeyName(event.target.value)}
+                      placeholder="e.g. MacBook Touch ID"
+                      autoComplete="off"
+                    />
+                    <span className="text-muted-foreground text-xs">
+                      Optional label to help you recognize this device later.
+                    </span>
+                  </label>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setPasskeyDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={passkeyAdding}>
+                      {passkeyAdding ? 'Waiting...' : 'Create passkey'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          }
+        />
+        <p className="text-muted-foreground mt-2 text-sm">
           Sign in with Face ID, Touch ID, Windows Hello, or a hardware security
           key.
         </p>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="grid flex-1 gap-2 text-sm">
-            <span className="muted-label">Label (optional)</span>
-            <Input
-              value={newPasskeyName}
-              onChange={(event) => setNewPasskeyName(event.target.value)}
-              placeholder="e.g. MacBook Touch ID"
-            />
-          </label>
-          <Button
-            type="button"
-            disabled={passkeyAdding}
-            onClick={() => void handleAddPasskey()}
-          >
-            <KeyRound className="h-4 w-4" />
-            {passkeyAdding ? 'Waiting...' : 'Add passkey'}
-          </Button>
-        </div>
-        {passkeyError ? <ErrorBanner message={passkeyError} /> : null}
-        {passkeySuccess ? (
-          <p className="text-sm text-emerald-600">{passkeySuccess}</p>
+        {passkeyError ? (
+          <ErrorBanner message={passkeyError} className="mt-4" />
         ) : null}
-        {passkeysLoading ? (
-          <p className="text-muted-foreground text-sm">Loading passkeys...</p>
-        ) : passkeys.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            No passkeys yet. Add one after signing in with your password.
-          </p>
-        ) : (
-          <ul className="divide-border divide-y rounded-xl border">
-            {passkeys.map((item) => (
-              <li
-                key={item.id}
-                className="flex items-center justify-between gap-3 px-4 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm">{passkeyLabel(item)}</p>
-                  <p className="text-muted-foreground text-xs">
-                    {item.deviceType ?? 'unknown device'}
-                    {item.backedUp ? ' · synced' : ''}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={passkeyBusyId === item.id}
-                  onClick={() => void handleDeletePasskey(item.id)}
-                  aria-label={`Remove ${passkeyLabel(item)}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+        {passkeySuccess ? (
+          <p className="mt-4 text-sm text-emerald-600">{passkeySuccess}</p>
+        ) : null}
+        <ul className="mt-5 space-y-3">
+          {passkeysLoading ? (
+            <li>
+              <EmptyState title="Loading passkeys..." />
+            </li>
+          ) : passkeys.length === 0 ? (
+              <li>
+                <EmptyState title="No passkeys yet. Add one after signing in with your password." />
               </li>
-            ))}
-          </ul>
-        )}
+            ) : (
+                passkeys.map((item) => {
+                  const createdAt =
+                    item.createdAt instanceof Date
+                      ? item.createdAt.toISOString()
+                      : item.createdAt
+                  return (
+                    <li
+                      key={item.id}
+                  className="border-border bg-card flex items-center justify-between gap-3 rounded-2xl border px-4 py-3"
+                >
+                  <article className="min-w-0">
+                    <p className="text-foreground truncate font-semibold">
+                      {passkeyLabel(item)}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Created{' '}
+                      <time dateTime={createdAt ?? undefined}>
+                        {formatDateTime(createdAt)}
+                      </time>
+                    </p>
+                  </article>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge
+                      variant="secondary"
+                      className="bg-muted text-muted-foreground"
+                    >
+                      {item.deviceType ?? 'unknown'}
+                    </Badge>
+                    {item.backedUp ? (
+                      <Badge
+                        variant="secondary"
+                        className="bg-emerald-50 text-emerald-700"
+                      >
+                        Synced
+                      </Badge>
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      disabled={passkeyBusyId === item.id}
+                      onClick={() => void handleDeletePasskey(item.id)}
+                      aria-label={`Remove ${passkeyLabel(item)}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {passkeyBusyId === item.id ? 'Removing...' : 'Delete'}
+                    </Button>
+                  </div>
+                </li>
+              )
+            })
+          )}
+        </ul>
       </SectionCard>
     </section>
   )

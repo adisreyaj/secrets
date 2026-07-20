@@ -5,28 +5,16 @@ import type {
   SecretDto,
   SecretVersionDto,
 } from '@secrets/shared'
-import { Copy, History, Pencil, RotateCcw, Trash2, X } from 'lucide-react'
-import { memo, useCallback, useMemo, useState } from 'react'
-import { formatDateTime, formatKeyPreview } from '../lib/format'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { ErrorBanner } from './ErrorBanner'
 import { MissingKeysSection } from './secrets/MissingKeysSection'
 import { SecretActionDialog } from './secrets/SecretActionDialog'
 import { SecretDiffDialog } from './secrets/SecretDiffDialog'
+import { SecretRegistryRow } from './secrets/SecretRegistryRow'
 import { SecretsTableHeader } from './secrets/SecretsTableHeader'
 import { useSecretsEditor } from './secrets/useSecretsEditor'
 import { SectionCard } from './SectionCard'
-import { Button } from './ui/button'
-import { Input } from './ui/input'
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from './ui/table'
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 type SecretEditorChange = { id: string; key?: string; value?: string }
 
@@ -88,49 +76,6 @@ type SecretsTableProps = {
   className?: string
 }
 
-type SecretsTableBodyProps = {
-  secrets: SecretDto[]
-  loading: boolean
-  onStartEdit: (secret: SecretDto) => void
-  onOpenRollback: (secret: SecretDto) => void
-  onOpenDiff: (secret: SecretDto) => void
-  onOpenDelete: (secret: SecretDto) => void
-  onOpenCopy: (secret: SecretDto) => void
-  canCopy: boolean
-  pendingBySecretId?: Map<string, ApprovalRequestDto>
-  editingRows: Record<
-    string,
-    { key: string; value: string; dirtyKey: boolean; dirtyValue: boolean }
-  >
-  rowErrors: Record<string, string>
-  includeValues: boolean
-  onRowKeyChange: (secretId: string, value: string) => void
-  onRowValueChange: (secretId: string, value: string) => void
-  onCancelRow: (secretId: string) => void
-}
-
-type SecretRowProps = {
-  secret: SecretDto
-  editingRow?: {
-    key: string
-    value: string
-    dirtyKey: boolean
-    dirtyValue: boolean
-  }
-  rowError?: string
-  includeValues: boolean
-  canCopy: boolean
-  pendingRequest?: ApprovalRequestDto
-  onOpenCopy: (secret: SecretDto) => void
-  onStartEdit: (secret: SecretDto) => void
-  onCancelRow: (secretId: string) => void
-  onOpenRollback: (secret: SecretDto) => void
-  onOpenDiff: (secret: SecretDto) => void
-  onOpenDelete: (secret: SecretDto) => void
-  onRowKeyChange: (secretId: string, value: string) => void
-  onRowValueChange: (secretId: string, value: string) => void
-}
-
 export const SecretsTable = ({
   secrets,
   environments,
@@ -159,6 +104,12 @@ export const SecretsTable = ({
   const [dialogMode, setDialogMode] = useState<
     'rollback' | 'delete' | 'copy' | 'diff' | null
   >(null)
+  /** Per-row masks while global values are shown. Cleared when values are hidden. */
+  const [maskedIds, setMaskedIds] = useState<Set<string>>(() => new Set())
+  /** Row to leave unmasked after the next values load (click-to-reveal). */
+  const [pendingRevealId, setPendingRevealId] = useState<string | null>(null)
+  const [pendingEditId, setPendingEditId] = useState<string | null>(null)
+  const [copiedSecretId, setCopiedSecretId] = useState<string | null>(null)
 
   const openRollbackDialog = useCallback((secret: SecretDto) => {
     setActiveSecret(secret)
@@ -208,6 +159,95 @@ export const SecretsTable = ({
     [environments, environmentId],
   )
 
+  const canCopy = otherEnvironments.length > 0
+
+  useEffect(() => {
+    if (!includeValues) {
+      setMaskedIds(new Set())
+      setPendingRevealId(null)
+      setPendingEditId(null)
+    }
+  }, [includeValues])
+
+  useEffect(() => {
+    if (!includeValues || !pendingRevealId) return
+    // List API loads all values at once — mask every other row.
+    setMaskedIds(
+      new Set(
+        secrets
+          .map((item) => item.id)
+          .filter((id) => id !== pendingRevealId),
+      ),
+    )
+    setPendingRevealId(null)
+  }, [includeValues, pendingRevealId, secrets])
+
+  useEffect(() => {
+    if (!includeValues || !pendingEditId) return
+    const secret = secrets.find((item) => item.id === pendingEditId)
+    if (!secret || secret.value === undefined) return
+    startEditingRow(secret)
+    setMaskedIds((prev) => {
+      if (!prev.has(secret.id)) return prev
+      const next = new Set(prev)
+      next.delete(secret.id)
+      return next
+    })
+    setPendingEditId(null)
+  }, [includeValues, pendingEditId, secrets, startEditingRow])
+
+  const handleReveal = useCallback(
+    (secret: SecretDto) => {
+      // Values already loaded: unmask this row only.
+      if (includeValues) {
+        setMaskedIds((prev) => {
+          if (!prev.has(secret.id)) return prev
+          const next = new Set(prev)
+          next.delete(secret.id)
+          return next
+        })
+        return
+      }
+      setPendingRevealId(secret.id)
+      onToggleValues(true)
+    },
+    [includeValues, onToggleValues],
+  )
+
+  const handleHide = useCallback((secretId: string) => {
+    setMaskedIds((prev) => {
+      if (prev.has(secretId)) return prev
+      const next = new Set(prev)
+      next.add(secretId)
+      return next
+    })
+  }, [])
+
+  const handleStartEdit = useCallback(
+    (secret: SecretDto) => {
+      if (includeValues && secret.value !== undefined) {
+        startEditingRow(secret)
+        return
+      }
+      setPendingEditId(secret.id)
+      onToggleValues(true)
+    },
+    [includeValues, onToggleValues, startEditingRow],
+  )
+
+  const handleCopyValue = useCallback(async (secret: SecretDto) => {
+    if (secret.value === undefined) return
+    try {
+      await navigator.clipboard.writeText(secret.value)
+      setCopiedSecretId(secret.id)
+      window.setTimeout(() => {
+        setCopiedSecretId((current) => (current === secret.id ? null : current))
+      }, 2000)
+    } catch {
+      toast.error('Could not copy to clipboard')
+    }
+  }, [])
+
   return (
     <SectionCard className={className}>
       <div className="flex items-center justify-between gap-4">
@@ -218,6 +258,7 @@ export const SecretsTable = ({
         </div>
       </div>
       <SecretsTableHeader
+        secretCount={secrets.length}
         searchValue={searchValue}
         onSearchChange={onSearchChange}
         pendingChangesCount={pendingChangesCount}
@@ -241,38 +282,43 @@ export const SecretsTable = ({
       />
 
       <div
-        className="group border-border mt-5 overflow-x-auto rounded-2xl border"
+        className="mt-5 space-y-2 pt-6"
         data-show-values={includeValues ? 'true' : 'false'}
       >
-        <Table className="min-w-190 border-separate border-spacing-0">
-          <TableCaption className="sr-only">Secrets list</TableCaption>
-          <TableHeader className="bg-muted">
-            <TableRow className="text-muted-foreground text-xs tracking-[0.1em] uppercase">
-              <TableHead>Key</TableHead>
-              <TableHead>Value</TableHead>
-              <TableHead>Version</TableHead>
-              <TableHead>Updated</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <SecretsTableBody
-            secrets={secrets}
-            loading={loading}
-            canCopy={otherEnvironments.length > 0}
-            pendingBySecretId={pendingBySecretId}
-            onOpenDelete={openDeleteDialog}
-            onOpenRollback={openRollbackDialog}
-            onOpenDiff={openDiffDialog}
-            onStartEdit={startEditingRow}
-            onOpenCopy={openCopyDialog}
-            editingRows={editingRows}
-            rowErrors={rowErrors}
-            includeValues={includeValues}
-            onRowKeyChange={handleRowKeyChange}
-            onRowValueChange={handleRowValueChange}
-            onCancelRow={cancelEditingRow}
-          />
-        </Table>
+        {loading ? (
+          <div className="text-muted-foreground rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm">
+            Loading secrets...
+          </div>
+        ) : secrets.length === 0 ? (
+          <div className="text-muted-foreground rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm">
+            No secrets in this environment.
+          </div>
+        ) : (
+          secrets.map((secret) => (
+            <SecretRegistryRow
+              key={secret.id}
+              secret={secret}
+              editingRow={editingRows[secret.id]}
+              rowError={rowErrors[secret.id]}
+              includeValues={includeValues}
+              masked={maskedIds.has(secret.id)}
+              canCopy={canCopy}
+              justCopied={copiedSecretId === secret.id}
+              pendingRequest={pendingBySecretId?.get(secret.id)}
+              onReveal={handleReveal}
+              onHide={handleHide}
+              onCopyValue={handleCopyValue}
+              onOpenCopy={openCopyDialog}
+              onStartEdit={handleStartEdit}
+              onCancelRow={cancelEditingRow}
+              onOpenRollback={openRollbackDialog}
+              onOpenDiff={openDiffDialog}
+              onOpenDelete={openDeleteDialog}
+              onRowKeyChange={handleRowKeyChange}
+              onRowValueChange={handleRowValueChange}
+            />
+          ))
+        )}
       </div>
 
       <SecretActionDialog
@@ -295,238 +341,3 @@ export const SecretsTable = ({
     </SectionCard>
   )
 }
-
-const SecretsTableBody = memo(
-  ({
-    secrets,
-    loading,
-    onStartEdit,
-    onOpenRollback,
-    onOpenDiff,
-    onOpenDelete,
-    onOpenCopy,
-    canCopy,
-    pendingBySecretId,
-    editingRows,
-    rowErrors,
-    includeValues,
-    onRowKeyChange,
-    onRowValueChange,
-    onCancelRow,
-  }: SecretsTableBodyProps) => {
-    return (
-      <TableBody>
-        {loading ? (
-          <TableRow>
-            <TableCell
-              className="text-muted-foreground py-6 text-sm"
-              colSpan={5}
-            >
-              Loading secrets...
-            </TableCell>
-          </TableRow>
-        ) : secrets.length === 0 ? (
-          <TableRow>
-            <TableCell
-              className="text-muted-foreground py-6 text-sm"
-              colSpan={5}
-            >
-              No secrets in this environment.
-            </TableCell>
-          </TableRow>
-        ) : (
-          secrets.map((secret) => (
-            <SecretRow
-              key={secret.id}
-              secret={secret}
-              editingRow={editingRows[secret.id]}
-              rowError={rowErrors[secret.id]}
-              includeValues={includeValues}
-              canCopy={canCopy}
-              pendingRequest={pendingBySecretId?.get(secret.id)}
-              onOpenCopy={onOpenCopy}
-              onStartEdit={onStartEdit}
-              onCancelRow={onCancelRow}
-              onOpenRollback={onOpenRollback}
-              onOpenDiff={onOpenDiff}
-              onOpenDelete={onOpenDelete}
-              onRowKeyChange={onRowKeyChange}
-              onRowValueChange={onRowValueChange}
-            />
-          ))
-        )}
-      </TableBody>
-    )
-  },
-)
-
-const SecretRow = memo(
-  ({
-    secret,
-    editingRow,
-    rowError,
-    includeValues,
-    canCopy,
-    pendingRequest,
-    onOpenCopy,
-    onStartEdit,
-    onCancelRow,
-    onOpenRollback,
-    onOpenDiff,
-    onOpenDelete,
-    onRowKeyChange,
-    onRowValueChange,
-  }: SecretRowProps) => {
-    const isEditing = !!editingRow
-    const isPending = !!pendingRequest
-    return (
-      <TableRow className="text-muted-foreground text-sm">
-        <TableHead className="text-foreground py-3 font-semibold" scope="row">
-          {isEditing ? (
-            <div className="space-y-1">
-              <Input
-                value={editingRow?.key ?? ''}
-                onChange={(event) =>
-                  onRowKeyChange(secret.id, event.target.value)
-                }
-                size="xxs"
-                placeholder="SECRET_KEY"
-              />
-              {rowError ? (
-                <p className="text-xs text-rose-600">{rowError}</p>
-              ) : null}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <p>{secret.key}</p>
-              {isPending ? (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold tracking-widest text-amber-700 uppercase">
-                  Pending
-                </span>
-              ) : null}
-            </div>
-          )}
-        </TableHead>
-        <TableCell className="py-3">
-          {isEditing ? (
-            <div className="flex items-center gap-2">
-              <Input
-                value={editingRow?.value ?? ''}
-                onChange={(event) =>
-                  onRowValueChange(secret.id, event.target.value)
-                }
-                size="xxs"
-                placeholder="New value"
-              />
-            </div>
-          ) : includeValues ? (
-            <span>{formatKeyPreview(secret.value)}</span>
-          ) : (
-            <span>*******</span>
-          )}
-        </TableCell>
-        <TableCell className="py-3">
-          {secret.versionId?.slice(0, 6) ?? '—'}
-        </TableCell>
-        <TableCell className="py-3">
-          <time dateTime={secret.updatedAt}>
-            {formatDateTime(secret.updatedAt)}
-          </time>
-        </TableCell>
-        <TableCell className="py-3 text-right">
-          <div className="flex flex-wrap justify-end gap-2 text-xs">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => onOpenCopy(secret)}
-                  disabled={!canCopy || isEditing || isPending}
-                  aria-label="Copy secret"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                Copy this key to other environments
-              </TooltipContent>
-            </Tooltip>
-
-            {isEditing ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() => onCancelRow(secret.id)}
-                    aria-label="Cancel edits"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Cancel edits for this row</TooltipContent>
-              </Tooltip>
-            ) : (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() => onStartEdit(secret)}
-                    disabled={isEditing || isPending}
-                    aria-label="Edit secret"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Edit secret key or value</TooltipContent>
-              </Tooltip>
-            )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => onOpenRollback(secret)}
-                  disabled={isEditing || isPending}
-                  aria-label="Rollback secret"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Restore previous value</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => onOpenDiff(secret)}
-                  disabled={isEditing}
-                  aria-label="View diff"
-                >
-                  <History className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>View last change</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="destructive"
-                  onClick={() => onOpenDelete(secret)}
-                  disabled={isEditing || isPending}
-                  aria-label="Delete secret"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Remove secret</TooltipContent>
-            </Tooltip>
-          </div>
-        </TableCell>
-      </TableRow>
-    )
-  },
-)

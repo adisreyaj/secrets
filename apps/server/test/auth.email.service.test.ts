@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  NoopAuthEmailProvider,
-  ResendAuthEmailProvider,
-  buildEmailVerificationEmail,
-  buildPasswordResetEmail,
+    NoopAuthEmailProvider,
+    ResendAuthEmailProvider,
+    buildPasswordResetEmail,
 } from '../src/server/services/auth/email.js';
 
 describe('auth email provider', () => {
@@ -64,18 +63,10 @@ describe('auth email provider', () => {
     ).rejects.toThrow(/Email service request failed/);
   });
 
-  it('builds reset and verify templates', () => {
+  it('builds reset template', () => {
     const reset = buildPasswordResetEmail({ resetToken: 'reset-token' });
-    const verify = buildEmailVerificationEmail({ verificationToken: 'verify-token' });
-    const verifyWithUrl = buildEmailVerificationEmail({
-      verificationToken: 'verify-token',
-      verificationUrl: 'https://example.com/verify?token=verify-token',
-    });
 
     expect(reset.subject).toContain('Reset your password');
     expect(reset.text).toContain('reset-token');
-    expect(verify.subject).toContain('Verify your email');
-    expect(verify.text).toContain('verify-token');
-    expect(verifyWithUrl.text).toContain('https://example.com/verify?token=verify-token');
   });
 });

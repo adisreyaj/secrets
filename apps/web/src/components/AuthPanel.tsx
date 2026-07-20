@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { betterAuthClient } from '../lib/betterAuthClient'
 import { ErrorBanner } from './ErrorBanner'
 import { Button } from './ui/button'
@@ -9,12 +10,14 @@ import { Separator } from './ui/separator'
 export const AuthPanel = ({
   loading,
   error,
+  onClearError,
   onLogin,
   onLoginWithPasskey,
   onRegister,
 }: {
   loading: boolean
   error: string | null
+    onClearError: () => void
   onLogin: (payload: { email: string; password: string }) => Promise<void>
     onLoginWithPasskey: () => Promise<void>
   onRegister: (payload: {
@@ -62,6 +65,7 @@ export const AuthPanel = ({
         email: form.email,
         password: form.password,
       })
+      toast.success('Account created. Welcome!')
     }
   }
 
@@ -167,8 +171,13 @@ export const AuthPanel = ({
       ) : null}
       {signupAllowed ? (
         <Button
-          variant="ghost"
-          onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+          type="button"
+          variant="link"
+          className="mt-4 w-full"
+          onClick={() => {
+            onClearError()
+            setMode(mode === 'login' ? 'register' : 'login')
+          }}
         >
           {mode === 'login'
             ? 'Need an account? Register'

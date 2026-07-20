@@ -1,24 +1,28 @@
 import type {
-  ApprovalRequestResponse,
-  BulkImportRequest,
-  BulkImportResponse,
-  CopyEnvironmentSecretsRequest,
-  CopyEnvironmentSecretsResponse,
-  CopySecretRequest,
-  CopySecretResponse,
-  SecretDiffResponse,
-  SecretDto,
-  SecretSearchResultDto,
-  SecretVersionDto,
-  UpdateSecretRequest,
+    ApprovalRequestResponse,
+    BulkImportRequest,
+    BulkImportResponse,
+    CopyEnvironmentSecretsRequest,
+    CopyEnvironmentSecretsResponse,
+    CopySecretRequest,
+    CopySecretResponse,
+    CursorPage,
+    SecretDiffResponse,
+    SecretDto,
+    SecretSearchResultDto,
+    SecretVersionDto,
+    UpdateSecretRequest,
 } from '@secrets/shared'
 import type { ApiFetchFn } from '../apiBase'
+import { unwrapCursorPage } from '../queryResult'
 
 export const createSecretsClient = (apiFetch: ApiFetchFn) => ({
-  listSecrets: (environmentId: string, includeValues: boolean) =>
-    apiFetch<SecretDto[]>(
+  listSecrets: async (environmentId: string, includeValues: boolean) => {
+    const page = await apiFetch<CursorPage<SecretDto>>(
       `/environments/${environmentId}/secrets?includeValues=${includeValues}`,
-    ),
+    )
+    return unwrapCursorPage(page)
+  },
   createSecret: (
     environmentId: string,
     payload: { key: string; value: string },

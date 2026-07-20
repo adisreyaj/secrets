@@ -5,6 +5,7 @@ import {
   encryptSecretWithKey,
   getOrCreateEnvironmentDek,
 } from '../services/envCrypto.js';
+import { getVersionsBySecretId } from '../services/secretQueries.js';
 
 type MigrationResult = {
   environmentsProcessed: number;
@@ -35,16 +36,14 @@ export async function migrateLegacySecretsToEnvelope(): Promise<MigrationResult>
       const dek = await getOrCreateEnvironmentDek(env.id);
       const secretRows = await db.query.secrets.findMany({
         where: and(eq(secrets.environmentId, env.id), isNull(secrets.deletedAt)),
-        with: {
-          versions: { orderBy: (fields, { asc }) => [asc(fields.createdAt)] },
-        },
       });
+      const versionsBySecretId = await getVersionsBySecretId(secretRows.map((s) => s.id));
 
       let touchedSecretIds: string[] = [];
       for (const secret of secretRows) {
         try {
           let anyVersionReEncrypted = false;
-          for (const version of secret.versions) {
+          for (const version of versionsBySecretId.get(secret.id) ?? []) {
             try {
               const plaintext = decryptLegacy(version, masterKey);
               const rewritten = encryptSecretWithKey(plaintext, dek, env.id, secret.key);

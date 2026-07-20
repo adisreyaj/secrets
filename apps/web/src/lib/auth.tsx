@@ -9,6 +9,7 @@ interface AuthContextValue {
   user: UserDto | null
   loading: boolean
   error: string | null
+  clearError: () => void
   login: (payload: { email: string; password: string }) => Promise<void>
   loginWithPasskey: () => Promise<void>
   register: (payload: {
@@ -32,6 +33,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<UserDto | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const clearError = () => {
+    setError(null)
+  }
 
   const refresh = async () => {
     setLoading(true)
@@ -91,9 +96,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true)
     setError(null)
     try {
-      await api.register(payload)
-      // Email verification required — no session until verified.
-      setUser(null)
+      const data = await api.register(payload)
+      setUser(data.user)
     } catch (err) {
       setError(getErrorMessage(err))
       throw err
@@ -136,6 +140,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       user,
       loading,
       error,
+      clearError,
       login,
       loginWithPasskey,
       register,

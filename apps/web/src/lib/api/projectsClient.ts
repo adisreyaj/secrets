@@ -1,24 +1,29 @@
 import type {
-  AcceptInviteRequest,
-  AcceptInviteResponse,
-  CreateEnvironmentRequest,
-  CreateInviteRequest,
-  CreateInviteResponse,
-  CreateProjectRequest,
-  DeleteEnvironmentRequest,
-  DeleteProjectRequest,
-  EnvironmentDto,
-  ProjectDto,
-  ProjectInviteDto,
-  ProjectMemberDto,
-  ProjectModuleDto,
-  UpdateProjectModuleRequest,
-  UpdateProjectRequest,
+    AcceptInviteRequest,
+    AcceptInviteResponse,
+    CreateEnvironmentRequest,
+    CreateInviteRequest,
+    CreateInviteResponse,
+    CreateProjectRequest,
+    CursorPage,
+    DeleteEnvironmentRequest,
+    DeleteProjectRequest,
+    EnvironmentDto,
+    ProjectDto,
+    ProjectInviteDto,
+    ProjectMemberDto,
+    ProjectModuleDto,
+    UpdateProjectModuleRequest,
+    UpdateProjectRequest,
 } from '@secrets/shared'
 import type { ApiFetchFn } from '../apiBase'
+import { unwrapCursorPage } from '../queryResult'
 
 export const createProjectsClient = (apiFetch: ApiFetchFn) => ({
-  listProjects: () => apiFetch<ProjectDto[]>('/projects'),
+  listProjects: async () => {
+    const page = await apiFetch<CursorPage<ProjectDto>>('/projects')
+    return unwrapCursorPage(page)
+  },
   createProject: (payload: CreateProjectRequest) =>
     apiFetch<ProjectDto>('/projects', {
       method: 'POST',
@@ -47,8 +52,12 @@ export const createProjectsClient = (apiFetch: ApiFetchFn) => ({
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
-  listEnvironments: (projectId: string) =>
-    apiFetch<EnvironmentDto[]>(`/projects/${projectId}/environments`),
+  listEnvironments: async (projectId: string) => {
+    const page = await apiFetch<CursorPage<EnvironmentDto>>(
+      `/projects/${projectId}/environments`,
+    )
+    return unwrapCursorPage(page)
+  },
   createEnvironment: (projectId: string, payload: CreateEnvironmentRequest) =>
     apiFetch<EnvironmentDto>(`/projects/${projectId}/environments`, {
       method: 'POST',

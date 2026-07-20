@@ -4,6 +4,7 @@ import { db, Role, secrets, secretVersions } from '../../db/index.js';
 import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { logAudit } from '../services/audit.js';
+import { SECRET_ENVIRONMENT_COLUMNS } from '../services/secretQueries.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post('/secrets/:id/rollback', async (request, reply) => {
@@ -18,12 +19,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const secret = await db.query.secrets.findFirst({
       where: eq(secrets.id, secretId),
       with: {
-        environment: true,
-        versions: {
-          where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
-          orderBy: (fields) => [desc(fields.createdAt)],
-          limit: 1,
-        },
+        environment: { columns: SECRET_ENVIRONMENT_COLUMNS },
       },
     });
     if (!secret) {

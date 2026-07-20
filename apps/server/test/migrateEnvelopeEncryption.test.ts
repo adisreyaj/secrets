@@ -1,43 +1,45 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { state, environmentsFindMany, secretsFindMany, versionsUpdate } = vi.hoisted(() => {
-  const state = {
-    environments: new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        projectId: string;
-        encryptedDek: Buffer | null;
-        encryptedDekBackup: Buffer | null;
-      }
-    >(),
-    secrets: new Map<
-      string,
-      {
-        id: string;
-        environmentId: string;
-        key: string;
-        versions: Array<{
+const { state, environmentsFindMany, secretsFindMany, secretVersionsFindMany, versionsUpdate } =
+  vi.hoisted(() => {
+    const state = {
+      environments: new Map<
+        string,
+        {
           id: string;
-          secretId: string;
-          ciphertext: Buffer;
-          iv: Buffer;
-          tag: Buffer;
-          keyVersion: string;
-          isActive: boolean;
-          createdAt: Date;
-        }>;
-      }
-    >(),
-  };
-  return {
-    state,
-    environmentsFindMany: vi.fn(async () => Array.from(state.environments.values())),
-    secretsFindMany: vi.fn(async () => []),
-    versionsUpdate: vi.fn(),
-  };
-});
+          name: string;
+          projectId: string;
+          encryptedDek: Buffer | null;
+          encryptedDekBackup: Buffer | null;
+        }
+      >(),
+      secrets: new Map<
+        string,
+        {
+          id: string;
+          environmentId: string;
+          key: string;
+          versions: Array<{
+            id: string;
+            secretId: string;
+            ciphertext: Buffer;
+            iv: Buffer;
+            tag: Buffer;
+            keyVersion: string;
+            isActive: boolean;
+            createdAt: Date;
+          }>;
+        }
+      >(),
+    };
+    return {
+      state,
+      environmentsFindMany: vi.fn(async () => Array.from(state.environments.values())),
+      secretsFindMany: vi.fn(async () => []),
+      secretVersionsFindMany: vi.fn(async () => []),
+      versionsUpdate: vi.fn(),
+    };
+  });
 
 vi.mock('../src/db/index.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/db/index.js')>();
@@ -73,6 +75,7 @@ vi.mock('../src/db/index.js', async (importOriginal) => {
           findFirst: async () => [...state.environments.values()][0] ?? null,
         },
         secrets: { findMany: secretsFindMany },
+        secretVersions: { findMany: secretVersionsFindMany },
       },
       update: vi.fn(() => updateChain),
     },
@@ -93,18 +96,19 @@ beforeEach(() => {
   clearEnvironmentDekCache();
   environmentsFindMany.mockClear();
   secretsFindMany.mockClear();
+  secretVersionsFindMany.mockClear();
   versionsUpdate.mockClear();
   secretsFindMany.mockImplementation(async () => {
     const env = [...state.environments.values()][0];
     if (!env) return [];
     return Array.from(state.secrets.values())
       .filter((s) => s.environmentId === env.id)
-      .map((secret) => ({
-        ...secret,
-        versions: [...secret.versions].sort(
-          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-        ),
-      }));
+      .map(({ versions: _versions, ...secret }) => secret);
+  });
+  secretVersionsFindMany.mockImplementation(async () => {
+    return Array.from(state.secrets.values())
+      .flatMap((secret) => secret.versions)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   });
 });
 

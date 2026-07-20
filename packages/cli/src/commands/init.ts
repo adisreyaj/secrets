@@ -1,13 +1,19 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
-import { parseEnvFile, summarizeImportResults } from '../env.js'
-import { loadClient, readStoredAuth, resolveBaseUrl, CONFIG_FILENAME } from '../core/context.js'
+import {
+    apiFetch,
+    apiRequest,
+    createEnvironment,
+    unwrapCursorPage,
+    type CursorPage,
+} from '../clients/api.js'
+import { CONFIG_FILENAME, readStoredAuth, resolveBaseUrl } from '../core/context.js'
 import { CliError } from '../core/errors.js'
-import { askConfirm, askText, chooseIndex } from '../core/prompts.js'
 import { outputSuccess } from '../core/output.js'
+import { askConfirm, askText, chooseIndex } from '../core/prompts.js'
 import type { CommandContext } from '../core/types.js'
-import { apiFetch, apiRequest, createEnvironment } from '../clients/api.js'
+import { parseEnvFile, summarizeImportResults } from '../env.js'
 
 function hasFlagSelections(ctx: CommandContext) {
   return Boolean(ctx.flags.project || ctx.flags.projectName || ctx.flags.env || ctx.flags.envName)
@@ -49,11 +55,13 @@ export async function initCommand(ctx: CommandContext) {
     .then(() => true)
     .catch(() => false)
 
-  const projects = await apiFetch<{ id: string; name: string; slug?: string | null }[]>(
-    baseUrl,
-    token,
-    '/projects',
-    ctx.debug,
+  const projects = unwrapCursorPage(
+    await apiFetch<CursorPage<{ id: string; name: string; slug?: string | null }>>(
+      baseUrl,
+      token,
+      '/projects',
+      ctx.debug,
+    ),
   )
 
   let project: { id: string; slug?: string | null }
@@ -98,11 +106,13 @@ export async function initCommand(ctx: CommandContext) {
     )
   }
 
-  const environments = await apiFetch<{ id: string; name: string; slug?: string | null }[]>(
-    baseUrl,
-    token,
-    `/projects/${project.id}/environments`,
-    ctx.debug,
+  const environments = unwrapCursorPage(
+    await apiFetch<CursorPage<{ id: string; name: string; slug?: string | null }>>(
+      baseUrl,
+      token,
+      `/projects/${project.id}/environments`,
+      ctx.debug,
+    ),
   )
 
   let environment: { id: string; slug?: string | null }

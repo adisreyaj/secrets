@@ -31,6 +31,7 @@ import {
   setLastEnvironmentId,
   setLastProjectId,
 } from './lib/shortcuts.utils'
+import { cn } from './lib/utils'
 const AuditPage = lazy(() =>
   import('./pages/AuditPage').then((m) => ({ default: m.AuditPage })),
 )
@@ -280,7 +281,14 @@ const AppShell = () => {
           className="bg-blob-right/50 pointer-events-none absolute top-10 right-0 z-0 h-72 w-72 rounded-full blur-3xl"
           aria-hidden="true"
         />
-        <main className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-6 pb-16">
+        <main
+          className={cn(
+            'relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col px-6',
+            isPublicRoute
+              ? 'justify-center py-8'
+              : 'gap-8 pb-16',
+          )}
+        >
           {shouldWaitForAuth || shouldBlockProtectedRoute ? (
             <section className="flex flex-1 flex-col items-center justify-center gap-2">
               <p className="text-foreground text-base">Checking your session</p>

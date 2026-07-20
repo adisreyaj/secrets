@@ -1,5 +1,5 @@
-import fs from 'node:fs/promises'
-import path from 'node:path'
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 export const CONFIG_FILENAME = '.secretsrc.json'
 const DEFAULT_BASE_URL = 'https://secrets.api.adi.so';
@@ -79,6 +79,19 @@ export interface FeatureFlagRuntimeClient {
     flagKey: string
     subjectKey: string
   }) => Promise<boolean>
+}
+
+type CursorPage<T> = {
+  data: T[]
+  nextCursor?: string
+}
+
+function unwrapCursorPage<T>(
+  value: CursorPage<T> | T[] | null | undefined,
+): T[] {
+  if (Array.isArray(value)) return value
+  if (value && Array.isArray(value.data)) return value.data
+  return []
 }
 
 async function apiFetch<T>(
@@ -261,9 +274,13 @@ export function createClient(options: SecretsClientOptions): SecretsClient {
     }
 
     const envId = await resolveEnvId()
-    const secrets = await apiFetch<
-      { key: string; value?: string }[]
-    >(baseUrl, options.token, `/environments/${envId}/secrets?includeValues=true`)
+    const secrets = unwrapCursorPage(
+      await apiFetch<CursorPage<{ key: string; value?: string }>>(
+        baseUrl,
+        options.token,
+        `/environments/${envId}/secrets?includeValues=true`,
+      ),
+    )
 
     const data: Record<string, string> = {}
     for (const secret of secrets) {

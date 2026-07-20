@@ -25,7 +25,6 @@ vi.mock('../src/betterAuth.js', () => ({
       signInEmail: async () => ({ headers: new Headers(), response: { user: {} } }),
       signUpEmail: async () => ({ headers: new Headers(), response: { user: {} } }),
       signOut: async () => ({ headers: new Headers(), response: { success: true } }),
-      verifyEmail: async () => ({ headers: new Headers(), response: {} }),
     },
   },
   getDashboardSession: async () => state.userSession,

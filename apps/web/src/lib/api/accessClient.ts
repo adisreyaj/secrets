@@ -1,18 +1,24 @@
 import type {
-  ApiTokenDto,
-  CreateServiceAccountRequest,
-  CreateServiceAccountTokenRequest,
-  CreateServiceAccountTokenResponse,
-  CreateTokenRequest,
-  CreateTokenResponse,
-  ServiceAccountDto,
-  ServiceAccountTokenDto,
+    ApiTokenDto,
+    CreateServiceAccountRequest,
+    CreateServiceAccountTokenRequest,
+    CreateServiceAccountTokenResponse,
+    CreateTokenRequest,
+    CreateTokenResponse,
+    CursorPage,
+    ServiceAccountDto,
+    ServiceAccountTokenDto,
 } from '@secrets/shared'
 import type { ApiFetchFn } from '../apiBase'
+import { unwrapCursorPage } from '../queryResult'
 
 export const createAccessClient = (apiFetch: ApiFetchFn) => ({
-  listTokens: (projectId: string) =>
-    apiFetch<ApiTokenDto[]>(`/projects/${projectId}/api-tokens`),
+  listTokens: async (projectId: string) => {
+    const page = await apiFetch<CursorPage<ApiTokenDto>>(
+      `/projects/${projectId}/api-tokens`,
+    )
+    return unwrapCursorPage(page)
+  },
   createToken: (projectId: string, payload: CreateTokenRequest) =>
     apiFetch<CreateTokenResponse>(`/projects/${projectId}/api-tokens`, {
       method: 'POST',

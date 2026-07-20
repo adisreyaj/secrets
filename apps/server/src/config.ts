@@ -1,7 +1,7 @@
 const normalizeOrigin = (value: string) => value.trim().replace(/\/$/, '');
 const normalizeListValue = (value: string) => value.trim().toLowerCase();
 const parseAppOrigins = (value?: string) =>
-  (value ?? 'http://localhost:5173')
+  (value ?? 'https://secrets.localhost,http://localhost:5173')
     .split(',')
     .map((origin) => normalizeOrigin(origin))
     .filter(Boolean);
@@ -36,7 +36,10 @@ export const config = {
   resendApiKey: process.env.RESEND_API_KEY ?? '',
   authLoginMaxAttempts: Number(process.env.AUTH_LOGIN_MAX_ATTEMPTS ?? 5),
   authLoginLockMs: Number(process.env.AUTH_LOGIN_LOCK_MS ?? 5 * 60 * 1000),
-  authRuntimeBaseUrl: process.env.AUTH_RUNTIME_BASE_URL ?? 'http://localhost:3001',
+  authRuntimeBaseUrl:
+    process.env.AUTH_RUNTIME_BASE_URL ??
+    process.env.PORTLESS_URL ??
+    'http://localhost:3001',
   googleOauthScopes:
     process.env.GOOGLE_OAUTH_SCOPES?.split(',').map((item) => item.trim()).filter(Boolean) ??
     ['openid', 'email', 'profile'],

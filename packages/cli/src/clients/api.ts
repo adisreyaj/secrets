@@ -1,5 +1,18 @@
-import type { DebugLogger } from '../log.js'
 import { ApiError, CliError } from '../core/errors.js'
+import type { DebugLogger } from '../log.js'
+
+export type CursorPage<T> = {
+  data: T[]
+  nextCursor?: string
+}
+
+export function unwrapCursorPage<T>(
+  value: CursorPage<T> | T[] | null | undefined,
+): T[] {
+  if (Array.isArray(value)) return value
+  if (value && Array.isArray(value.data)) return value.data
+  return []
+}
 
 function parseMessage(payload: unknown, fallback: string) {
   if (!payload || typeof payload !== 'object') {

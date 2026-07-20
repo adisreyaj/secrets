@@ -5,6 +5,7 @@ import { requireAuth, requireProjectRole } from '../auth/guards.js';
 import { sendError } from '../http/replies.js';
 import { formatDotenvValue } from '../services/format.js';
 import { decryptSecretWithKey, withEnvironmentDek } from '../services/envCrypto.js';
+import { getActiveVersionsBySecretId } from '../services/secretQueries.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.get('/environments/:id/export', async (request, reply) => {
@@ -35,20 +36,14 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
     const secretRows = await db.query.secrets.findMany({
       where: and(eq(secrets.environmentId, envId), isNull(secrets.deletedAt)),
-      with: {
-        versions: {
-          where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
-          orderBy: (fields, { desc }) => [desc(fields.createdAt)],
-          limit: 1,
-        },
-      },
       orderBy: [asc(secrets.key)],
     });
+    const versionsBySecretId = await getActiveVersionsBySecretId(secretRows.map((s) => s.id));
 
     const dek = await withEnvironmentDek(envId, (d) => d);
     const lines: string[] = [];
     for (const secret of secretRows) {
-      const version = secret.versions[0];
+      const version = versionsBySecretId.get(secret.id);
       if (!version) {
         continue;
       }

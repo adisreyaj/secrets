@@ -26,6 +26,7 @@ import {
   encryptSecretWithKey,
   withEnvironmentDek,
 } from '../services/envCrypto.js';
+import { getActiveVersionsBySecretId } from '../services/secretQueries.js';
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post('/projects/:id/environments', async (request, reply) => {
@@ -92,20 +93,16 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const targetDek = await withEnvironmentDek(env.id, (dek) => dek);
       const sourceSecrets = await db.query.secrets.findMany({
         where: and(eq(secrets.environmentId, sourceEnv.id), isNull(secrets.deletedAt)),
-        with: {
-          versions: {
-            where: (fields, { eq: eqOp }) => eqOp(fields.isActive, true),
-            orderBy: (fields, { desc: descOp }) => [descOp(fields.createdAt)],
-            limit: 1,
-          },
-        },
         orderBy: [asc(secrets.key)],
       });
+      const versionsBySecretId = await getActiveVersionsBySecretId(
+        sourceSecrets.map((s) => s.id),
+      );
 
       if (sourceSecrets.length > 0) {
         await db.transaction(async (tx) => {
           for (const secret of sourceSecrets) {
-            const version = secret.versions[0];
+            const version = versionsBySecretId.get(secret.id);
             if (!version) {
               await tx.insert(secrets).values({
                 environmentId: env.id,

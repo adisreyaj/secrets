@@ -109,18 +109,3 @@ export function buildPasswordResetEmail(params: {
     text: `Use this token to reset your password: ${params.resetToken}`,
   };
 }
-
-export function buildEmailVerificationEmail(params: {
-  verificationToken: string;
-  verificationUrl?: string;
-  appName?: string;
-}): Pick<AuthEmailMessage, 'subject' | 'text'> {
-  const appName = params.appName ?? 'Secrets';
-  const linkLine = params.verificationUrl
-    ? `Open this link to verify your email: ${params.verificationUrl}`
-    : `Use this token to verify your email: ${params.verificationToken}`;
-  return {
-    subject: `${appName}: Verify your email`,
-    text: linkLine,
-  };
-}

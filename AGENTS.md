@@ -5,10 +5,12 @@
 ### Commands
 
 ```bash
-# Development
-pnpm dev                    # Start web + server in parallel
-pnpm dev:web               # Web only (Vite)
-pnpm dev:server            # Server only (Fastify + TypeScript watch)
+# Development (portless — stable .localhost URLs)
+pnpm dev                    # Web (https://secrets.localhost) via portless
+pnpm dev:server            # API (https://api.secrets.localhost) via portless
+pnpm dev:full              # Web + API (both via portless)
+pnpm dev:plain             # Web (:5173) without portless
+pnpm dev:server:plain      # API (:3001) without portless
 
 # Building
 pnpm build:web             # Build web app (tsc + vite)
